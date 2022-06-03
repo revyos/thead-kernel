@@ -118,7 +118,7 @@ static void etnaviv_sched_timedout_job(struct drm_sched_job *sched_job)
 
 	/* get the GPU back into the init state */
 	etnaviv_core_dump(submit);
-	etnaviv_gpu_recover_hang(gpu);
+	etnaviv_gpu_recover_hang(submit);
 
 	drm_sched_resubmit_jobs(&gpu->sched);
 
