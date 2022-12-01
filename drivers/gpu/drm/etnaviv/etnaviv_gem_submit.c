@@ -407,9 +407,9 @@ static void submit_cleanup(struct kref *kref)
 		dma_fence_put(submit->in_fence);
 	if (submit->out_fence) {
 		/* first remove from IDR, so fence can not be found anymore */
-		mutex_lock(&submit->gpu->fence_lock);
+		mutex_lock(&submit->gpu->idr_lock);
 		idr_remove(&submit->gpu->fence_idr, submit->out_fence_id);
-		mutex_unlock(&submit->gpu->fence_lock);
+		mutex_unlock(&submit->gpu->idr_lock);
 		dma_fence_put(submit->out_fence);
 	}
 
