@@ -15,7 +15,7 @@ env:
 
 jobs:
   kernel:
-    runs-on:	ubuntu-22.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Install software
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v3
         with:
             path: 'kernel'
-      
+
       - name: Checkout img
         uses: actions/checkout@v3
         with:
@@ -53,19 +53,21 @@ jobs:
 
               pushd kernel
                 make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} revyos_defconfig
-                make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc)
-                make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc) dtbs
-                if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                  sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
-                fi
-                sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
-
+                #make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc)
+                #make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc) dtbs
+                #if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
+                #  sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
+                #fi
+                #sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
+                make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc) bindeb-pkg
                 # Install Kernel
-                sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
+                #sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
                 # sudo cp -v arch/riscv/boot/Image.gz ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+                # Copy DEB
+                sudo cp -v ../*.deb ${GITHUB_WORKSPACE}/rootfs/
               popd
 
       - name: IMG_MODULE compile
@@ -95,11 +97,11 @@ jobs:
 
       - name: compress
         run: tar -zcvf kernel.tar.gz rootfs
-        
+
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
           name: kernel.tar.gz
           path: kernel.tar.gz
           retention-days: 30
- 
+
