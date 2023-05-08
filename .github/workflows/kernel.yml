@@ -53,16 +53,7 @@ jobs:
 
               pushd kernel
                 make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} revyos_defconfig
-                #make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc)
-                #make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc) dtbs
-                #if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                #  sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
-                #fi
-                #sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
                 make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} -j$(nproc) bindeb-pkg
-                # Install Kernel
-                #sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
-                # sudo cp -v arch/riscv/boot/Image.gz ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
@@ -83,14 +74,24 @@ jobs:
               pushd img_module/rogue_km
                 export KERNELDIR=${GITHUB_WORKSPACE}/kernel/
                 make
-                for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
+                find ${GITHUB_WORKSPACE}/rootfs/ | xargs echo
+                for package in $(find ${GITHUB_WORKSPACE}/rootfs/ -name 'image' | xargs grep -v "\-dbg_" | grep "\.deb")
                 do
-                  sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/drm_nulldisp.ko \
-                    "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/extra/drm_nulldisp.ko"
-                  sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/pvrsrvkm.ko \
-                    "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/extra/pvrsrvkm.ko"
-                  sudo depmod -a -b "${GITHUB_WORKSPACE}/rootfs" "${kernel_version}"
+                  echo $package
+                  mkdir proot
+                  sudo dpkg-deb -R $package proot
+                  for kernel_version in $(ls proot/lib/modules/);
+                  do
+                    sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/drm_nulldisp.ko \
+                    "proot/lib/modules/${kernel_version}/extra/drm_nulldisp.ko"
+                    sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/pvrsrvkm.ko \
+                    "proot/lib/modules/${kernel_version}/extra/pvrsrvkm.ko"
+                    sudo depmod -a -b "proot" "${kernel_version}"
+                  done
+                  sudo dpkg-deb -b proot
+                  ls *.deb
                 done
+
                 # cp -vr output/lib/firmware ${GITHUB_WORKSPACE}/rootfs/
               popd
               tree ${GITHUB_WORKSPACE}/rootfs
@@ -104,4 +105,3 @@ jobs:
           name: kernel.tar.gz
           path: kernel.tar.gz
           retention-days: 30
-
