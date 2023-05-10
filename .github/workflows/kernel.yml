@@ -15,7 +15,7 @@ env:
 
 jobs:
   kernel:
-    runs-on:	ubuntu-22.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Install software
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v3
         with:
             path: 'kernel'
-      
+
       - name: Checkout img
         uses: actions/checkout@v3
         with:
@@ -60,9 +60,13 @@ jobs:
                 fi
                 sudo make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
 
+                # build perf & install
+                make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 -C tools/perf/
+                sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/sbin/
+                sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/
+
                 # Install Kernel
                 sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
-                # sudo cp -v arch/riscv/boot/Image.gz ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
@@ -95,11 +99,11 @@ jobs:
 
       - name: compress
         run: tar -zcvf kernel.tar.gz rootfs
-        
+
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
           name: kernel.tar.gz
           path: kernel.tar.gz
           retention-days: 30
- 
+
