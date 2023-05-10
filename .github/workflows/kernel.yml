@@ -63,7 +63,7 @@ jobs:
                 # build perf & install
                 make CROSS_COMPILE=${toolchain_tripe} ARCH=${ARCH} LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 -C tools/perf/
                 sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/sbin/
-                sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/
+                sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/perf-thead
 
                 # Install Kernel
                 sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
