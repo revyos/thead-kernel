@@ -68,8 +68,12 @@ jobs:
                 # Install Kernel
                 sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
 
+                # record commit-id
+                git rev-parse HEAD > kernel-commitid
+                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
+
                 # Install DTB
-                sudo cp -v arch/riscv/boot/dts/thead/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+                sudo cp -v arch/riscv/boot/dts/thead/light-lpi4a.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
               popd
 
       - name: IMG_MODULE compile
@@ -106,4 +110,3 @@ jobs:
           name: kernel.tar.gz
           path: kernel.tar.gz
           retention-days: 30
-
