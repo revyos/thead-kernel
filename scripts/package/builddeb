@@ -109,8 +109,10 @@ deploy_libc_headers () {
 version=$KERNELRELEASE
 tmpdir=debian/linux-image
 dbg_dir=debian/linux-image-dbg
+tools_dir="$objtree/debian/toolstmp"
 packagename=linux-image-$version
 dbg_packagename=$packagename-dbg
+tools_packagename=linux-tools-thead-$version
 
 if [ "$ARCH" = "um" ] ; then
 	packagename=user-mode-linux-$version
@@ -131,9 +133,10 @@ parisc|mips|powerpc)
 esac
 
 BUILD_DEBUG=$(if_enabled_echo CONFIG_DEBUG_INFO Yes)
+BUILD_TOOLS=1
 
 # Setup the directory structure
-rm -rf "$tmpdir" "$dbg_dir" debian/files
+rm -rf "$tmpdir" "$dbg_dir" "$tools_dir" debian/files
 mkdir -m 755 -p "$tmpdir/DEBIAN"
 mkdir -p "$tmpdir/lib" "$tmpdir/boot"
 
@@ -232,6 +235,32 @@ if [ -n "$BUILD_DEBUG" ] ; then
 	# kdump-tools
 	ln -s lib/modules/$version/vmlinux $dbg_dir/usr/lib/debug/vmlinux-$version
 	create_package "$dbg_packagename" "$dbg_dir"
+fi
+
+if [ -n "$BUILD_TOOLS" ] ; then
+	# HACK - change output dir from relative to absolute
+	mkdir -p $tools_dir
+	tools_dest=`readlink -f $tools_dir`
+	if [ -n "$O" ] ; then
+		output=$(readlink -f $objtree)
+		mkdir -p $output/tools/perf
+		output="O=$output/tools/perf"
+	fi
+	$MAKE -C $srctree/tools/perf $output LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 srctree=$KBUILD_SRC prefix=$tools_dest/usr install
+	cat <<EOF >> debian/control
+
+Package: $tools_packagename
+Architecture: any
+Replaces: linux-base, linux-tools-common
+Depends: \${shlibs:Depends}
+Description: Performance analysis tools for Linux $version
+ This package contains the 'perf' performance analysis tools for Linux
+ kernel version $version .
+EOF
+
+	mv $tools_dest/usr/bin/perf $tools_dest/usr/bin/perf-thead
+	dpkg-shlibdeps $tools_dest/usr/bin/*
+	create_package "$tools_packagename" "$tools_dir"
 fi
 
 exit 0
