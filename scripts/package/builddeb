@@ -84,6 +84,25 @@ deploy_kernel_headers () {
 	tar -c -f - -T debian/hdrobjfiles | tar -xf - -C $destdir
 	rm -f debian/hdrsrcfiles debian/hdrobjfiles
 
+	if [ -n "$CROSS_COMPILE" ]; then
+		if grep -q '^CONFIG_BUILD_BIN2C' $KCONFIG_CONFIG ; then
+			${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/bin2c" "$objtree/scripts/bin2c.c"
+		fi
+		if grep -q '^CONFIG_KALLSYMS' $KCONFIG_CONFIG ; then
+			${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/kallsyms" "$objtree/scripts/kallsyms.c"
+		fi
+		if grep -q '^CONFIG_ASN1' $KCONFIG_CONFIG ; then
+			${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/asn1_compiler" "$objtree/scripts/asn1_compiler.c" -I$srctree/include
+		fi
+		if grep -q '^CONFIG_VT' $KCONFIG_CONFIG ; then
+			${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/conmakehash" "$objtree/scripts/conmakehash.c"
+		fi
+		${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/basic/fixdep" "$objtree/scripts/basic/fixdep.c"
+		${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/unifdef" "$objtree/scripts/unifdef.c"
+		${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/mod/mk_elfconfig" "$objtree/scripts/mod/mk_elfconfig.c"
+		${CROSS_COMPILE}gcc -O2 -o "$destdir/scripts/mod/modpost" "$objtree/scripts/mod/modpost.c" "$objtree/scripts/mod/file2alias.c" "$objtree/scripts/mod/sumversion.c"
+	fi
+
 	# copy .config manually to be where it's expected to be
 	cp $KCONFIG_CONFIG $destdir/.config
 
