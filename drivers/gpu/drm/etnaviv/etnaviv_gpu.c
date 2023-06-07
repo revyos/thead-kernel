@@ -866,8 +866,6 @@ int etnaviv_gpu_init(struct etnaviv_gpu *gpu)
 	pm_runtime_mark_last_busy(gpu->dev);
 	pm_runtime_put_autosuspend(gpu->dev);
 
-	gpu->initialized = true;
-
 	return 0;
 
 fail:
@@ -1796,11 +1794,8 @@ static void etnaviv_gpu_unbind(struct device *dev, struct device *master,
 	if (gpu->mmu_context)
 		etnaviv_iommu_context_put(gpu->mmu_context);
 
-	if (gpu->initialized) {
-		etnaviv_cmdbuf_free(&gpu->buffer);
-		etnaviv_iommu_global_fini(gpu);
-		gpu->initialized = false;
-	}
+	etnaviv_cmdbuf_free(&gpu->buffer);
+	etnaviv_iommu_global_fini(gpu);
 
 	gpu->drm = NULL;
 	idr_destroy(&gpu->fence_idr);
