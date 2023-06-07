@@ -1731,13 +1731,11 @@ static int etnaviv_gpu_bind(struct device *dev, struct device *master,
 	if (ret)
 		goto out_workqueue;
 
-#ifdef CONFIG_PM
-	ret = pm_runtime_get_sync(gpu->dev);
-#else
+#ifndef CONFIG_PM
 	ret = etnaviv_gpu_clk_enable(gpu);
-#endif
 	if (ret < 0)
 		goto out_sched;
+#endif
 
 
 	gpu->drm = drm;
@@ -1749,9 +1747,6 @@ static int etnaviv_gpu_bind(struct device *dev, struct device *master,
 	init_waitqueue_head(&gpu->fence_event);
 
 	priv->gpu[priv->num_gpus++] = gpu;
-
-	pm_runtime_mark_last_busy(gpu->dev);
-	pm_runtime_put_autosuspend(gpu->dev);
 
 	return 0;
 
@@ -1935,7 +1930,7 @@ static int etnaviv_gpu_rpm_resume(struct device *dev)
 		return ret;
 
 	/* Re-initialise the basic hardware state */
-	if (gpu->drm && gpu->initialized) {
+	if (gpu->initialized) {
 		ret = etnaviv_gpu_hw_resume(gpu);
 		if (ret) {
 			etnaviv_gpu_clk_disable(gpu);
