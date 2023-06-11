@@ -519,4 +519,13 @@ config DRM_PANEL_HX8394
 	  Say Y if you want to enable support for panels based on the
 	  HX8394 controller.
 
+config DRM_PANEL_JADARD_JD9365DA_H3
+	tristate "Jadard JD9365DA-H3 WXGA DSI panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y here if you want to enable support for Jadard JD9365DA-H3
+	  WXGA MIPI DSI panel. The panel support TFT dot matrix LCD with
+	  800RGBx1280 dots at maximum.
 endmenu
