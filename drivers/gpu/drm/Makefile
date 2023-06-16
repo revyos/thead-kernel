@@ -57,6 +57,8 @@ drm_kms_helper-$(CONFIG_DRM_DP_CEC) += drm_dp_cec.o
 obj-$(CONFIG_DRM_KMS_HELPER) += drm_kms_helper.o
 obj-$(CONFIG_DRM_DEBUG_SELFTEST) += selftests/
 
+obj-$(CONFIG_DRM_POWERVR_ROGUE) += img-rogue/
+
 obj-$(CONFIG_DRM)	+= drm.o
 obj-$(CONFIG_DRM_MIPI_DBI) += drm_mipi_dbi.o
 obj-$(CONFIG_DRM_MIPI_DSI) += drm_mipi_dsi.o
