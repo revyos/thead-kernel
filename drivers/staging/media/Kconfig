@@ -38,6 +38,10 @@ source "drivers/staging/media/sunxi/Kconfig"
 
 source "drivers/staging/media/tegra-vde/Kconfig"
 
+source "drivers/staging/media/vpu-vc8000d-kernel/Kconfig"
+
+source "drivers/staging/media/vpu-vc8000e-kernel/Kconfig"
+
 source "drivers/staging/media/zoran/Kconfig"
 
 source "drivers/staging/media/tegra-video/Kconfig"

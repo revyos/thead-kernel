@@ -12,3 +12,5 @@ obj-$(CONFIG_VIDEO_HANTRO)	+= hantro/
 obj-$(CONFIG_VIDEO_IPU3_IMGU)	+= ipu3/
 obj-$(CONFIG_VIDEO_ROCKCHIP_ISP1)	+= rkisp1/
 obj-$(CONFIG_VIDEO_ZORAN)	+= zoran/
+obj-$(CONFIG_VIDEO_VC8000D)	+= vpu-vc8000d-kernel/linux/subsys_driver/ vpu-vc8000d-kernel/linux/memalloc/
+obj-$(CONFIG_VIDEO_VC8000E)	+= vpu-vc8000e-kernel/linux/kernel_module/
