@@ -5,6 +5,8 @@
 
 menu "Graphics support"
 
+source "drivers/video/video_memory/Kconfig"
+
 if HAS_IOMEM
 
 config HAVE_FB_ATMEL
