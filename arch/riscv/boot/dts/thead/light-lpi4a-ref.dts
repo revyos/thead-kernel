@@ -192,12 +192,19 @@
 		sound-name-prefix = "DUMMY";
 	};
 
+	fan: pwm-fan {
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		pwms = <&pwm 1 10000000 0>;
+		cooling-levels = <0 64 192 255>;
+	};
+
 	reg_vref_1v8: regulator-adc-verf {
 			compatible = "regulator-fixed";
 			regulator-name = "vref-1v8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-	status = "okay";
+			status = "okay";
 	};
 
         reg_tp_pwr_en: regulator-pwr-en {
@@ -559,6 +566,48 @@
 		};
 	};
 
+	thermal-zones {
+		cpu-thermal-zone {
+			trips {
+				fan_config0: fan-trip0 {
+					temperature = <40000>;
+					hysteresis = <5000>;
+					type = "active";
+				};
+
+				fan_config1: fan-trip1 {
+					temperature = <50000>;
+					hysteresis = <5000>;
+					type = "active";
+				};
+
+				fan_config2: fan-trip2 {
+					temperature = <60000>;
+					hysteresis = <5000>;
+					type = "active";
+				};
+			};
+
+			cooling-maps {
+				fan-on {
+					trip = <&fan_config0>;
+					cooling-device =
+						<&fan 1 1>;
+				};
+				fan-faster {
+					trip = <&fan_config1>;
+					cooling-device =
+						<&fan 2 2>;
+				};
+				fan-full {
+					trip = <&fan_config2>;
+					cooling-device =
+						<&fan 3 3>;
+				};
+			};
+		};
+	};
+
 };
 
 &resmem {
@@ -638,8 +687,8 @@
 	};
 
 	pcal6408ahk_a: gpio@20 {
-		compatible = "nxp,pcal9554b";
-		reg = <0x20>;
+		compatible = "nxp,pca9557";
+		reg = <0x18>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
@@ -942,8 +991,8 @@
 	status = "okay";
 
 	pcal6408ahk_b: gpio@20 {
-		compatible = "nxp,pcal9554b";
-		reg = <0x20>;
+		compatible = "nxp,pca9557";
+		reg = <0x18>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
@@ -954,8 +1003,8 @@
 	status = "okay";
 
 	pcal6408ahk_c: gpio@20 {
-		compatible = "nxp,pcal9554b";
-		reg = <0x20>;
+		compatible = "nxp,pca9557";
+		reg = <0x18>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
@@ -971,8 +1020,8 @@
 	status = "okay";
 
 	pcal6408ahk_d: gpio@20 {
-		compatible = "nxp,pcal9554b";
-		reg = <0x20>;
+		compatible = "nxp,pca9557";
+		reg = <0x18>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
