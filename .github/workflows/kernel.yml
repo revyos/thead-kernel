@@ -57,12 +57,8 @@ jobs:
               pushd kernel
                 make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} revyos_defconfig
                 if [ x"${{ matrix.name }}" = x"gcc-12" ]; then
-                  echo "CONFIG_VECTOR=n" >> .config
                   echo "CONFIG_THEAD_ISA=n" >> .config
                 elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
-                  echo "CONFIG_VECTOR=y" >> .config
-                  echo "CONFIG_VECTOR_0_7=y" >> .config
-                  echo "CONFIG_VECTOR_1_0=n" >> .config
                   echo "CONFIG_THEAD_ISA=y" >> .config
                 fi
                 make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} -j$(nproc)
