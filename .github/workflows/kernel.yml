@@ -42,13 +42,6 @@ jobs:
         with:
             path: 'kernel'
 
-      - name: Checkout img
-        uses: actions/checkout@v3
-        with:
-            repository: 'revyos/gpu_bxm_4_64-kernel'
-            ref: 'master'
-            path: 'img_module'
-
       - name: Configure toolchains
         run: |
               mkdir rootfs && mkdir rootfs/boot
@@ -94,31 +87,6 @@ jobs:
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/light-lpi4a.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
               popd
-
-      - name: IMG_MODULE compile
-        run: |
-              export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
-
-              export PVR_BUILD_DIR=thead_linux
-              export PVR_ARCH=rogue
-              export RGX_BVNC=36.52.104.182
-              export RGX_BNC=36.52.104.182
-              export CROSS_COMPILE=${{ matrix.toolchain_tripe }}
-
-              pushd img_module/rogue_km
-                export KERNELDIR=${GITHUB_WORKSPACE}/kernel/
-                make
-                for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
-                do
-                  sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/drm_nulldisp.ko \
-                    "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/extra/drm_nulldisp.ko"
-                  sudo install -D -p -m 644 binary_thead_linux_wayland_release/target_riscv64/kbuild/pvrsrvkm.ko \
-                    "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/extra/pvrsrvkm.ko"
-                  sudo depmod -a -b "${GITHUB_WORKSPACE}/rootfs" "${kernel_version}"
-                done
-                # cp -vr output/lib/firmware ${GITHUB_WORKSPACE}/rootfs/
-              popd
-              tree ${GITHUB_WORKSPACE}/rootfs
 
       - name: compress
         run: tar -zcvf thead-kernel-${{ matrix.name }}.tar.gz rootfs
