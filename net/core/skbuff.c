@@ -87,6 +87,21 @@ static struct kmem_cache *skbuff_ext_cache __ro_after_init;
 #endif
 int sysctl_max_skb_frags __read_mostly = MAX_SKB_FRAGS;
 EXPORT_SYMBOL(sysctl_max_skb_frags);
+gfp_t skb_gfp_dma32 = 0;
+
+void skb_set_alloc_dma32(gfp_t gfp_dma32)
+{
+	if(gfp_dma32 | GFP_DMA32)
+		skb_gfp_dma32 = __GFP_DMA32;
+	else
+		skb_gfp_dma32 = 0;
+}
+EXPORT_SYMBOL(skb_set_alloc_dma32);
+gfp_t skb_get_alloc_dma32(void)
+{
+	return skb_gfp_dma32;
+}
+EXPORT_SYMBOL(skb_get_alloc_dma32);
 
 /**
  *	skb_panic - private function for out-of-line support
@@ -379,7 +394,7 @@ static void *__napi_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
 {
 	struct napi_alloc_cache *nc = this_cpu_ptr(&napi_alloc_cache);
 
-	return page_frag_alloc(&nc->page, fragsz, gfp_mask);
+	return page_frag_alloc(&nc->page, fragsz, gfp_mask | skb_gfp_dma32);
 }
 
 void *napi_alloc_frag(unsigned int fragsz)
@@ -405,10 +420,10 @@ void *netdev_alloc_frag(unsigned int fragsz)
 	fragsz = SKB_DATA_ALIGN(fragsz);
 	if (in_irq() || irqs_disabled()) {
 		nc = this_cpu_ptr(&netdev_alloc_cache);
-		data = page_frag_alloc(nc, fragsz, GFP_ATOMIC);
+		data = page_frag_alloc(nc, fragsz, GFP_ATOMIC | skb_gfp_dma32);
 	} else {
 		local_bh_disable();
-		data = __napi_alloc_frag(fragsz, GFP_ATOMIC);
+		data = __napi_alloc_frag(fragsz, GFP_ATOMIC | skb_gfp_dma32);
 		local_bh_enable();
 	}
 	return data;
@@ -458,12 +473,12 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev, unsigned int len,
 
 	if (in_irq() || irqs_disabled()) {
 		nc = this_cpu_ptr(&netdev_alloc_cache);
-		data = page_frag_alloc(nc, len, gfp_mask);
+		data = page_frag_alloc(nc, len, gfp_mask | skb_gfp_dma32);
 		pfmemalloc = nc->pfmemalloc;
 	} else {
 		local_bh_disable();
 		nc = this_cpu_ptr(&napi_alloc_cache.page);
-		data = page_frag_alloc(nc, len, gfp_mask);
+		data = page_frag_alloc(nc, len, gfp_mask | skb_gfp_dma32);
 		pfmemalloc = nc->pfmemalloc;
 		local_bh_enable();
 	}
@@ -531,7 +546,7 @@ struct sk_buff *__napi_alloc_skb(struct napi_struct *napi, unsigned int len,
 	if (sk_memalloc_socks())
 		gfp_mask |= __GFP_MEMALLOC;
 
-	data = page_frag_alloc(&nc->page, len, gfp_mask);
+	data = page_frag_alloc(&nc->page, len, gfp_mask | skb_gfp_dma32);
 	if (unlikely(!data))
 		return NULL;
 
