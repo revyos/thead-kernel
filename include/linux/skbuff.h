@@ -1088,6 +1088,8 @@ struct sk_buff *build_skb(void *data, unsigned int frag_size);
 struct sk_buff *build_skb_around(struct sk_buff *skb,
 				 void *data, unsigned int frag_size);
 
+void skb_set_alloc_dma32(gfp_t gfp_dma32);
+gfp_t skb_get_alloc_dma32(void);
 /**
  * alloc_skb - allocate a network buffer
  * @size: size to allocate
