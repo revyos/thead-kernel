@@ -1340,13 +1340,16 @@ static int __stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p
 {
 	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
 	struct stmmac_rx_buffer *buf = &rx_q->buf_pool[i];
+	gfp_t gfp = (GFP_ATOMIC | __GFP_NOWARN);
+	if (priv->dma_cap.addr64 <= 32)
+		gfp |= GFP_DMA32;
 
-	buf->page = page_pool_dev_alloc_pages(rx_q->page_pool);
+	buf->page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 	if (!buf->page)
 		return -ENOMEM;
 
 	if (priv->sph) {
-		buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+		buf->sec_page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 		if (!buf->sec_page)
 			return -ENOMEM;
 
@@ -1425,6 +1428,10 @@ static int __stmmac_init_rx_skbuffers(struct stmmac_priv *priv, struct dma_desc 
 	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
 	struct stmmac_rx_skbuffer *buf = &rx_q->skbuf_pool[i];
 	struct sk_buff *skb = NULL;
+	gfp_t gfp = (GFP_ATOMIC | __GFP_NOWARN);
+	if (priv->dma_cap.addr64 <= 32)
+		gfp |= GFP_DMA32;
+
 	skb = netdev_alloc_skb(priv->dev, stmmac_get_rx_buf_frsize(priv));
 	if (!skb)
 		return -ENOMEM;
@@ -1433,7 +1440,7 @@ static int __stmmac_init_rx_skbuffers(struct stmmac_priv *priv, struct dma_desc 
 		return -ENOMEM;
 	
 	if (priv->sph) {
-		buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+		buf->sec_page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 		if (!buf->sec_page)
 			return -ENOMEM;
 
@@ -3789,6 +3796,10 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 	struct stmmac_rx_skbuffer *buf ;
 	struct sk_buff *skb = NULL;
 #endif
+	 gfp_t gfp = (GFP_ATOMIC | __GFP_NOWARN);
+
+	if (priv->dma_cap.addr64 <= 32)
+		gfp |= GFP_DMA32;
 
 	len = DIV_ROUND_UP(priv->dma_buf_sz, PAGE_SIZE) * PAGE_SIZE;
 
@@ -3803,13 +3814,13 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 		buf = &rx_q->buf_pool[entry];
 
 		if (!buf->page) {
-			buf->page = page_pool_dev_alloc_pages(rx_q->page_pool);
+			buf->page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 			if (!buf->page)
 				break;
 		}
 
 		if (priv->sph && !buf->sec_page) {
-			buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+			buf->sec_page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 			if (!buf->sec_page)
 				break;
 
@@ -3850,7 +3861,7 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 					   DMA_FROM_DEVICE);
 		
 		if (priv->sph && !buf->sec_page) {
-			buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+			buf->sec_page = page_pool_alloc_pages(rx_q->page_pool,gfp);
 			if (!buf->sec_page)
 				break;
 
@@ -5282,6 +5293,11 @@ int stmmac_dvr_probe(struct device *device,
 			priv->dma_cap.addr64 = 32;
 		}
 	}
+	if(priv->dma_cap.addr64 <= 32){
+		skb_set_alloc_dma32(GFP_DMA32);
+	}
+	dev_info(priv->device, "Using %d bits DMA width,skb alloc dma32 flag %x\n",
+				 priv->dma_cap.addr64,skb_get_alloc_dma32());
 
 	ndev->features |= ndev->hw_features | NETIF_F_HIGHDMA;
 	ndev->watchdog_timeo = msecs_to_jiffies(watchdog);
