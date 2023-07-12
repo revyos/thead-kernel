@@ -119,7 +119,7 @@ endif
 ifeq ($(CONFIG_RISCV_M_MODE)$(CONFIG_SOC_KENDRYTE),yy)
 KBUILD_IMAGE := $(boot)/loader.bin
 else
-KBUILD_IMAGE := $(boot)/Image.gz
+KBUILD_IMAGE := $(boot)/Image
 endif
 BOOT_TARGETS := Image Image.gz loader loader.bin
 
