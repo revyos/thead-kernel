@@ -66,7 +66,7 @@ jobs:
                 if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
                   sudo make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
                 fi
-                sudo make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
+                sudo make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install -j$(nproc)
 
                 # build perf & install
                 make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 -C tools/perf/
