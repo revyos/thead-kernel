@@ -11,6 +11,7 @@ env:
   xuetie_toolchain: https://occ-oss-prod.oss-cn-hangzhou.aliyuncs.com/resource//1663142514282
   toolchain_file_name: Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1-20220906.tar.gz
   ARCH: riscv
+  board: lpi4a
 
 jobs:
   kernel:
@@ -24,6 +25,8 @@ jobs:
             toolchain_tripe: riscv64-linux-gnu-
 
     runs-on: ubuntu-22.04
+    env:
+      CROSS_COMPILE: ${{ matrix.toolchain_tripe }}
 
     steps:
       - name: Install software
@@ -31,7 +34,8 @@ jobs:
               sudo apt update && \
               sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
                                   libncurses-dev gawk flex bison openssl libssl-dev tree \
-                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
+                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler \
+                                  devscripts
               sudo update-alternatives --install \
                   /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
               sudo update-alternatives --install \
@@ -55,26 +59,29 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd kernel
-                make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} revyos_defconfig
+                make revyos_defconfig
                 if [ x"${{ matrix.name }}" = x"gcc-12" ]; then
                   echo "CONFIG_THEAD_ISA=n" >> .config
                 elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
                   echo "CONFIG_THEAD_ISA=y" >> .config
                 fi
-                make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} -j$(nproc)
-                make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} -j$(nproc) dtbs
-                if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                  sudo make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
-                fi
-                sudo make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install -j$(nproc)
+                make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
+                make -j$(nproc) dtbs
+                # if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
+                #   sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
+                # fi
+                # sudo make INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install -j$(nproc)
+
+                # Copy deb
+                sudo dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
 
                 # build perf & install
-                make CROSS_COMPILE=${{ matrix.toolchain_tripe }} ARCH=${ARCH} LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 -C tools/perf/
-                sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/sbin/
-                sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/perf-thead
+                # make LDFLAGS=-static NO_LIBELF=1 NO_JVMTI=1 VF=1 -C tools/perf/
+                # sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/sbin/
+                # sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/perf-thead
 
                 # Install Kernel
-                sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
+                # sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # record commit-id
                 git rev-parse HEAD > kernel-commitid
