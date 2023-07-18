@@ -60,6 +60,7 @@ jobs:
 
               pushd kernel
                 make revyos_defconfig
+                export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 if [ x"${{ matrix.name }}" = x"gcc-12" ]; then
                   echo "CONFIG_THEAD_ISA=n" >> .config
                 elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
