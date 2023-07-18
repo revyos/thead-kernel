@@ -1,0 +1,27 @@
+menuconfig VHA
+       tristate "IMG neural network accelerator"
+       default m
+
+if VHA
+choice 
+      prompt "VHA platform"
+      config VHA_THEAD_LIGHT_FPGA_C910
+             bool "driver runs with T-Head Light-FPGA hw platform using a device tree."
+             select HW_AX3
+      config VHA_DUMMY
+             bool "driver runs without hardware."
+endchoice
+config TARGET_OSID
+      int
+      default 0
+config HW_AX3
+      bool "driver runs AX31xx/AX33xx/AX35xx hardware."
+      select VHA_MMU_MIRRORED_CTX
+      select VHA_SYS_AURA
+config VHA_MMU_MIRRORED_CTX
+      bool "driver is compiled with mirrored MMU page tables regarding MODEL & IO."
+      depends on HW_AX3
+config VHA_SYS_AURA
+      bool "driver runs with Aura system configuration file."
+      depends on HW_AX3
+endif
