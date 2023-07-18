@@ -45,6 +45,9 @@ obj-$(CONFIG_VIRTIO)		+= virtio/
 obj-$(CONFIG_VDPA)		+= vdpa/
 obj-$(CONFIG_XEN)		+= xen/
 
+# npu-ax3386-gpl driver
+obj-y				+= nna/
+
 # regulators early, since some subsystems rely on them to initialize
 obj-$(CONFIG_REGULATOR)		+= regulator/
 

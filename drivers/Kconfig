@@ -8,6 +8,7 @@ source "drivers/eisa/Kconfig"
 source "drivers/pci/Kconfig"
 source "drivers/pcmcia/Kconfig"
 source "drivers/rapidio/Kconfig"
+source "drivers/nna/Kconfig"
 
 
 source "drivers/base/Kconfig"
