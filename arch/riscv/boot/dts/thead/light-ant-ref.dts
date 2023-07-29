@@ -15,7 +15,7 @@
 
 	memory@0 {
 		device_type = "memory";
-		reg = <0x0 0x00000000 0x0 0x80000000>;
+		reg = <0x0 0x200000 0x0 0x7fe00000>;
 	};
 
 	chosen {
@@ -194,9 +194,10 @@
 	};
 
 	dummy_codec: dummy_codec {
-		#sound-dai-cells = <1>;
-		compatible = "linux,bt-sco";
+		#sound-dai-cells = <0>;
+		compatible = "thead,light-dummy-pcm";
 		status = "okay";
+		sound-name-prefix = "DUMMY";
 	};
 
 	reg_vref_1v8: regulator-adc-verf {
@@ -238,7 +239,8 @@
 
 	gpio-keys {
 		compatible = "gpio-keys";
-		pinctrl-0 = <&pinctrl_volume>;
+		pinctrl-0 = <&pinctrl_volume_up
+				&pinctrl_volume_down>;
 		pinctrl-names = "default";
 		key-volumedown {
 			label = "Volume Down Key";
@@ -592,18 +594,21 @@
                #sound-dai-cells = <0>;
                compatible = "everest,es8156";
                reg = <0x08>;
+               sound-name-prefix = "ES8156";
        };
 
         es7210_audio_codec: es7210@40 {
                 #sound-dai-cells = <0>;
                 compatible = "MicArray_0";
                 reg = <0x40>;
+                sound-name-prefix = "ES7210";
         };
 
-	audio_aw87519_pa@58 {
+	audio_aw87519_pa: amp@58 {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x58>;
 		reset-gpio = <&ao_gpio4_porta 9 0x1>;
+		sound-name-prefix = "AW87519";
 		status = "okay";
 	};
 };
@@ -797,6 +802,12 @@
 					FM_GPIO3_2	0x1	0x208	/* pwm0 */
 				>;
 			};
+
+			pinctrl_volume_up: volume_up_grp {
+				thead,pins = <
+					FM_GPIO2_25   0x0     0x238
+				>;
+			};
 		};
 };
 
@@ -842,9 +853,9 @@
 				>;
 			};
 
-			pinctrl_volume: volume_grp {
+			pinctrl_volume_down: volume_down_grp {
 				thead,pins = <
-					FM_CLK_OUT_2  0x3     0x208
+					FM_CLK_OUT_2  0x3     0x238
 				>;
 			};
 		};
@@ -2265,6 +2276,11 @@
 
 &lightsound {
         status = "okay";
+        simple-audio-card,widgets = "Speaker", "Speaker";
+        simple-audio-card,routing = 
+        	"Speaker", "AW87519 VO",
+        	"AW87519 IN", "ES8156 ROUT";
+        simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
                 format = "i2s";
@@ -2292,7 +2308,7 @@
                         sound-dai = <&light_i2s 1>;
                 };
                 codec {
-                        sound-dai = <&dummy_codec 2>;
+                        sound-dai = <&dummy_codec>;
                 };
         };
 };

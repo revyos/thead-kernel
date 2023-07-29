@@ -6,6 +6,7 @@
  * Copyright (C) 2011-2013 Freescale Semiconductor, Inc.
  * Copyright (C) 2010, Guennadi Liakhovetski <g.liakhovetski@gmx.de>
  */
+#include <linux/extcon-provider.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -103,6 +104,11 @@ static const u16 csc_coeff_rgb_full_to_rgb_limited[3][4] = {
 	{ 0x0000, 0x0000, 0x1b7c, 0x0020 }
 };
 
+static const unsigned int hdmi_extcon_cable[] = {
+	EXTCON_DISP_HDMI,
+	EXTCON_NONE,
+};
+
 struct hdmi_vmode {
 	bool mdataenablepolarity;
 
@@ -160,6 +166,7 @@ struct dw_hdmi {
 	struct clk *pix_clk;
 	struct clk *i2s_clk;
 	struct dw_hdmi_i2c *i2c;
+	struct extcon_dev *edev;
 
 	struct hdmi_data_info hdmi_data;
 	const struct dw_hdmi_plat_data *plat_data;
@@ -3117,6 +3124,10 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 		dev_dbg(hdmi->dev, "EVENT=%s\n",
 			status == connector_status_connected ?
 			"plugin" : "plugout");
+		if (status == connector_status_connected)
+			extcon_set_state_sync(hdmi->edev, EXTCON_DISP_HDMI, true);
+		else
+			extcon_set_state_sync(hdmi->edev, EXTCON_DISP_HDMI, false);
 
 		if (hdmi->bridge.dev) {
 			drm_helper_hpd_irq_event(hdmi->bridge.dev);
@@ -3422,6 +3433,19 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 		 hdmi->phy.name);
 
 	dw_hdmi_init_hw(hdmi);
+
+	hdmi->edev = devm_extcon_dev_allocate(dev, hdmi_extcon_cable);
+	if (IS_ERR(hdmi->edev)) {
+		dev_err(dev, "failed to allocate extcon device\n");
+		ret = -ENOMEM;
+		goto err_res;
+	}
+
+	ret = devm_extcon_dev_register(dev, hdmi->edev);
+	if (ret < 0) {
+		dev_err(dev, "failed to register extcon device\n");
+		goto err_res;
+	}
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {

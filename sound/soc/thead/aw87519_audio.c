@@ -35,6 +35,9 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <linux/hrtimer.h>
+#include <sound/soc.h>
+#include <sound/tlv.h>
+#include <linux/regmap.h>
 #include "aw87519_audio.h"
 
 /*******************************************************************************
@@ -140,7 +143,6 @@ unsigned char aw87519_audio_receiver(void)
 	unsigned int i;
 	unsigned int length;
 
-	pr_info("%s enter\n", __func__);
 	if (aw87519 == NULL)
 		return 2;
 
@@ -168,8 +170,6 @@ unsigned char aw87519_audio_speaker(void)
 {
 	unsigned int i;
 	unsigned int length;
-
-	pr_info("%s enter\n", __func__);
 
 	if (aw87519 == NULL)
 		return 2;
@@ -577,6 +577,79 @@ retry:
 	return -EINVAL;
 }
 
+static const DECLARE_TLV_DB_RANGE(aw87519_tlv,
+	8, 12, TLV_DB_SCALE_ITEM(1200,150, 0)
+);
+
+static const struct snd_kcontrol_new aw87519_controls[] = {
+	SOC_SINGLE_TLV("Speaker Playback Volume", REG_PAGR, 0, 12, 0, aw87519_tlv),
+};
+
+static int aw87519_component_probe(struct snd_soc_component* component)
+{
+	struct aw87519 *pa = snd_soc_component_get_drvdata(component);
+
+	return 0; // snd_soc_add_component_controls(component, aw87519_controls, ARRAY_SIZE(aw87519_controls));
+}
+
+static int  aw87519_power_event(struct snd_soc_dapm_widget *w,
+				 struct snd_kcontrol *kctrl, int event)
+{
+	struct snd_soc_component *c = snd_soc_dapm_to_component(w->dapm);
+	struct aw87519 *pa = snd_soc_component_get_drvdata(c);
+
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		/* Before widget power up: turn chip on, sync registers */
+		aw87519_audio_speaker();
+	} else {
+		/* After widget power down: turn chip off */
+		aw87519_audio_off();
+	}
+
+	return 0;
+}
+
+static const struct snd_soc_dapm_widget aw87519_dapm_widgets[] = {
+	SND_SOC_DAPM_INPUT("IN"),
+	SND_SOC_DAPM_OUTPUT("VO"),
+	SND_SOC_DAPM_PGA("PGA", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("Power", SND_SOC_NOPM, 0, 0, 
+		aw87519_power_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+};
+
+static const struct snd_soc_dapm_route aw87519_dapm_routes[] = {
+	{ "PGA", NULL, "IN"},
+	{ "VO", NULL, "PGA"},
+	{ "PGA", NULL, "Power"},
+};
+
+static const struct reg_default aw87519_reg_defaults[] = {
+	{0x69, 0x80}, {0x69, 0xB7}, {0x01, 0xF0}, {0x02, 0x09},
+	{0x03, 0xE8}, {0x04, 0x11}, {0x05, 0x10}, {0x06, 0x43},
+	{0x07, 0x4E}, {0x08, 0x03}, {0x09, 0x08}, {0x0A, 0x4A},
+	{0x60, 0x16}, {0x61, 0x20}, {0x62, 0x01}, {0x63, 0x0B},
+	{0x64, 0xC5}, {0x65, 0xA4}, {0x66, 0x78}, {0x67, 0xC4},
+	{0x68, 0XD0},
+};
+
+const struct regmap_config aw87519_regmap_config = {
+	.reg_bits	= 8,
+	.val_bits	= 8,
+	.max_register	= 0xff,
+	.cache_type	= REGCACHE_RBTREE,
+	.reg_defaults = aw87519_reg_defaults,
+	.num_reg_defaults = ARRAY_SIZE(aw87519_reg_defaults),
+};
+
+static const struct snd_soc_component_driver aw87519_component_driver = {
+	.name = "aw87519",
+	.probe = aw87519_component_probe,
+	.dapm_widgets = aw87519_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(aw87519_dapm_widgets),
+	.dapm_routes = aw87519_dapm_routes,
+	.num_dapm_routes = ARRAY_SIZE(aw87519_dapm_routes),
+};
+
 /*******************************************************************************
  * aw87519 i2c driver
  ******************************************************************************/
@@ -597,6 +670,13 @@ static int aw87519_i2c_probe(struct i2c_client *client,
 	if (aw87519 == NULL) {
 		ret = -ENOMEM;
 		goto exit_devm_kzalloc_failed;
+	}
+
+	aw87519->regmap = devm_regmap_init_i2c(client, &aw87519_regmap_config);
+	if (IS_ERR(aw87519->regmap)) {
+		ret = PTR_ERR(aw87519->regmap);
+		dev_err(&client->dev, "Failed to init regmap: %d\n", ret);
+		return ret;
 	}
 
 	aw87519->i2c_client = client;
@@ -650,7 +730,7 @@ static int aw87519_i2c_probe(struct i2c_client *client,
 	/* aw87519 hardware off */
 	aw87519_hw_off(aw87519);
 
-	return 0;
+	return devm_snd_soc_register_component(&client->dev, &aw87519_component_driver, NULL, 0);
 
 exit_i2c_check_id_failed:
 exit_gpio_request_failed:
@@ -711,7 +791,7 @@ static void __exit aw87519_pa_exit(void)
 	i2c_del_driver(&aw87519_i2c_driver);
 }
 
-late_initcall(aw87519_pa_init);
+module_init(aw87519_pa_init);
 module_exit(aw87519_pa_exit);
 
 MODULE_DESCRIPTION("AWINIC AW87519 PA driver");
