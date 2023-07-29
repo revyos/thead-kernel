@@ -17,6 +17,7 @@
 #include <linux/device.h>
 #include <linux/watchdog.h>
 #include <linux/firmware/thead/ipc.h>
+#include <linux/firmware/thead/light_event.h>
 
 #define DRV_NAME	"light-wdt"
 
@@ -189,6 +190,7 @@ static int light_wdt_restart(struct watchdog_device *wdd, unsigned long action, 
 
 	pr_debug("[%s,%d]: Inform aon to restart the whole system....\n", __func__, __LINE__);
 
+	light_event_set_rebootmode(LIGHT_EVENT_SW_REBOOT);
 	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, false);
 	if (ret)
 		return ret;

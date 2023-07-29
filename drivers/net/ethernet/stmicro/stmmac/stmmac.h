@@ -67,12 +67,18 @@ struct stmmac_rx_buffer {
 	dma_addr_t addr;
 	dma_addr_t sec_addr;
 };
-
+struct stmmac_rx_skbuffer {
+	struct sk_buff *rx_skbuff;
+	struct page *sec_page;
+	dma_addr_t addr;
+	dma_addr_t sec_addr;
+};
 struct stmmac_rx_queue {
 	u32 rx_count_frames;
 	u32 queue_index;
 	struct page_pool *page_pool;
 	struct stmmac_rx_buffer *buf_pool;
+	struct stmmac_rx_skbuffer *skbuf_pool;
 	struct stmmac_priv *priv_data;
 	struct dma_extended_desc *dma_erx;
 	struct dma_desc *dma_rx ____cacheline_aligned_in_smp;
@@ -210,6 +216,7 @@ struct stmmac_priv {
 	unsigned int mode;
 	unsigned int chain_mode;
 	int extend_desc;
+	bool extend_stat_need;
 	struct hwtstamp_config tstamp_config;
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_clock_ops;

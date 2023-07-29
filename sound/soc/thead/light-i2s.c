@@ -122,27 +122,11 @@ static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
 	} else {
 		dma_en &= ~DMACR_TDMAE_EN;
 		i2s_en &= ~IISEN_I2SEN;
-		i2s_status  = readl(chip->regs + I2S_SR);
-		while ((i2s_status & SR_TXBUSY_STATUS) || !(i2s_status & SR_TFNF_TX_FIFO_NOT_FULL)) {
-			i2s_status  = readl(chip->regs + I2S_SR);
-		}
-
 		i2s_imr  = readl(chip->regs + I2S_IMR);
-
 		i2s_imr &= ~(IMR_TXUIRM_INTR_MSK);
 		i2s_imr &= ~(IMR_TXEIM_INTR_MSK);
-
 		writel(i2s_imr, chip->regs + I2S_IMR);
-		i2s_imr  = readl(chip->regs + I2S_IMR);
-
 		writel(dma_en, chip->regs + I2S_DMACR);
-
-		i2s_status  = readl(chip->regs + I2S_SR);
-		while ((i2s_status & SR_TXBUSY_STATUS) || !(i2s_status & SR_TFE_TX_FIFO_EMPTY)) {
-			i2s_status  = readl(chip->regs + I2S_SR);
-		}
-
-		mdelay(10);
 		writel(i2s_en, chip->regs + I2S_IISEN);
 	}
 }
@@ -205,14 +189,15 @@ static int light_i2s_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 			light_snd_rxctrl(i2s_private, 1);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
-        case SNDRV_PCM_TRIGGER_SUSPEND:
-        case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		if (tx)
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		if (tx) {
+			dmaengine_terminate_async(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
 			light_snd_txctrl(i2s_private, 0);
-                break;
-
-        default:
-                return -EINVAL;
+		}
+		break;
+    default:
+        return -EINVAL;
 
 	}
 

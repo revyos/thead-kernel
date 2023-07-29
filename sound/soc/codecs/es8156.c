@@ -36,6 +36,7 @@
 #define GPIO_LOW  0
 #define GPIO_HIGH 1
 #define es8156_DEF_VOL			0xBF
+#define ES8156_VOL_MAX			0xBF
 /*
 * If your system doesn't have MCLK, define this to 0 or the
 * driver will crash.
@@ -115,7 +116,7 @@ static const struct snd_kcontrol_new es8156_snd_controls[] = {
 	4,0,15,0),
 	/* DAC Digital controls */
 	SOC_SINGLE_TLV("DAC Playback Volume", ES8156_VOLUME_CONTROL_REG14,
-			  0, 0xff, 0, dac_vol_tlv),
+			  0, ES8156_VOL_MAX, 0, dac_vol_tlv),
 	SOC_SINGLE("HP Switch",ES8156_ANALOG_SYS3_REG22,3,1,0),
 
 
@@ -123,7 +124,7 @@ static const struct snd_kcontrol_new es8156_snd_controls[] = {
 
 
 static const struct snd_soc_dapm_widget es8156_dapm_widgets[] = {
-	SND_SOC_DAPM_AIF_OUT("SDOUT", "I2S Capture", 0,
+	SND_SOC_DAPM_AIF_OUT("AIFSDOUT", "I2S Capture", 0,
 			     ES8156_P2S_CONTROL_REG0D, 2, 0),
 
 	SND_SOC_DAPM_AIF_IN("SDIN", "I2S Playback", 0,
@@ -279,7 +280,7 @@ static int es8156_set_bias_level(struct snd_soc_component *codec,
 							snd_soc_component_write(codec, ES8156_ANALOG_SYS4_REG23,0x00);
 						snd_soc_component_write(codec, ES8156_TIME_CONTROL1_REG0A,0x01);
 						snd_soc_component_write(codec, ES8156_TIME_CONTROL2_REG0B,0x01);	
-						snd_soc_component_write(codec, ES8156_VOLUME_CONTROL_REG14,0xBF);	
+						//snd_soc_component_write(codec, ES8156_VOLUME_CONTROL_REG14,0xBF);
 						snd_soc_component_write(codec, ES8156_MAINCLOCK_CTL_REG01,0x21); 
 						snd_soc_component_write(codec, ES8156_P2S_CONTROL_REG0D,0x14);
 						snd_soc_component_write(codec, ES8156_MISC_CONTROL3_REG18,0x00);
@@ -299,7 +300,7 @@ static int es8156_set_bias_level(struct snd_soc_component *codec,
 		break;
 
 	case SND_SOC_BIAS_OFF:
-		snd_soc_component_write(codec,  ES8156_VOLUME_CONTROL_REG14, 0x00);
+		//snd_soc_component_write(codec,  ES8156_VOLUME_CONTROL_REG14, 0x00);
 		snd_soc_component_write(codec,  ES8156_EQ_CONTROL1_REG19, 0x02);
 		snd_soc_component_write(codec,  ES8156_ANALOG_SYS2_REG21, 0x1F);
 		snd_soc_component_write(codec,  ES8156_ANALOG_SYS3_REG22, 0x02);
@@ -489,6 +490,7 @@ const struct regmap_config es8156_regmap_config = {
 };
 
 static struct snd_soc_component_driver soc_codec_dev_es8156 = {
+	.name = "es8156",
 	.probe =	es8156_probe,
 	.remove =	es8156_remove,
 	.suspend =	es8156_suspend,

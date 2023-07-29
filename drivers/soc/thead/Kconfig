@@ -16,6 +16,12 @@ config LIGHT_SUSPEND
 	help
 	 This driver supports system suspend low power feature in Light FM platform
 
+config LIGHT_REBOOTMODE
+	bool "Thead light rebootmode support"
+	default y
+	help
+	 This driver supports check rebootmode feature in Light FM platform
+
 endmenu
 
 endif

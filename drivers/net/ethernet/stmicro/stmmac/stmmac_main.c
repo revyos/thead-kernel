@@ -1324,7 +1324,7 @@ static void stmmac_clear_descriptors(struct stmmac_priv *priv)
 	for (queue = 0; queue < tx_queue_cnt; queue++)
 		stmmac_clear_tx_descriptors(priv, queue);
 }
-
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 /**
  * stmmac_init_rx_buffers - init the RX descriptor buffer.
  * @priv: driver private structure
@@ -1335,7 +1335,7 @@ static void stmmac_clear_descriptors(struct stmmac_priv *priv)
  * Description: this function is called to allocate a receive buffer, perform
  * the DMA mapping and init the descriptor.
  */
-static int stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
+static int __stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
 				  int i, gfp_t flags, u32 queue)
 {
 	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
@@ -1364,14 +1364,13 @@ static int stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
 
 	return 0;
 }
-
 /**
  * stmmac_free_rx_buffer - free RX dma buffers
  * @priv: private structure
  * @queue: RX queue index
  * @i: buffer index.
  */
-static void stmmac_free_rx_buffer(struct stmmac_priv *priv, u32 queue, int i)
+static void __stmmac_free_rx_buffer(struct stmmac_priv *priv, u32 queue, int i)
 {
 	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
 	struct stmmac_rx_buffer *buf = &rx_q->buf_pool[i];
@@ -1383,6 +1382,118 @@ static void stmmac_free_rx_buffer(struct stmmac_priv *priv, u32 queue, int i)
 	if (buf->sec_page)
 		page_pool_put_full_page(rx_q->page_pool, buf->sec_page, false);
 	buf->sec_page = NULL;
+}
+
+#else
+
+static inline unsigned int stmmac_get_rx_buf_frsize(struct stmmac_priv *priv)
+{
+	return priv->dma_buf_sz;
+}
+
+#define STMMAC_RX_ALIGN 0x3f
+static int
+stmmac_get_skb_dma_addr(struct stmmac_priv *priv,struct sk_buff *skb,dma_addr_t *dma_addr)
+{
+	int off;
+
+	off = ((unsigned long)skb->data) & STMMAC_RX_ALIGN;
+	if (off)
+		skb_reserve(skb, STMMAC_RX_ALIGN + 1 - off);
+	*dma_addr = dma_map_single(priv->device,skb->data,stmmac_get_rx_buf_frsize(priv) - off,DMA_FROM_DEVICE);
+	if (dma_mapping_error(priv->device, *dma_addr)) {
+		//if (net_ratelimit())
+			netdev_err(priv->dev, "Rx DMA memory map failed\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+/**
+ * stmmac_init_rx_skbuffers - init the RX descriptor buffer.
+ * @priv: driver private structure
+ * @p: descriptor pointer
+ * @i: descriptor index
+ * @flags: gfp flag
+ * @queue: RX queue index
+ * Description: this function is called to allocate a receive buffer, perform
+ * the DMA mapping and init the descriptor.
+ */
+static int __stmmac_init_rx_skbuffers(struct stmmac_priv *priv, struct dma_desc *p,
+				  int i, gfp_t flags, u32 queue)
+{
+	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
+	struct stmmac_rx_skbuffer *buf = &rx_q->skbuf_pool[i];
+	struct sk_buff *skb = NULL;
+	skb = netdev_alloc_skb(priv->dev, stmmac_get_rx_buf_frsize(priv));
+	if (!skb)
+		return -ENOMEM;
+
+	if(stmmac_get_skb_dma_addr(priv,skb,&buf->addr) < 0)
+		return -ENOMEM;
+	
+	if (priv->sph) {
+		buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+		if (!buf->sec_page)
+			return -ENOMEM;
+
+		buf->sec_addr = page_pool_get_dma_addr(buf->sec_page);
+		stmmac_set_desc_sec_addr(priv, p, buf->sec_addr, true);
+	} else {
+		buf->sec_page = NULL;
+		stmmac_set_desc_sec_addr(priv, p, buf->sec_addr, false);
+	}
+	stmmac_set_desc_addr(priv, p, buf->addr);
+	if (priv->dma_buf_sz == BUF_SIZE_16KiB)
+		stmmac_init_desc3(priv, p);
+	buf->rx_skbuff = skb;
+	return 0;
+}
+
+/**
+ * stmmac_free_rx_skbuffer - free RX dma buffers
+ * @priv: private structure
+ * @queue: RX queue index
+ * @i: buffer index.
+ */
+static void __stmmac_free_rx_skbuffer(struct stmmac_priv *priv, u32 queue, int i)
+{
+	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
+	struct stmmac_rx_skbuffer *buf = &rx_q->skbuf_pool[i];
+
+	if (buf->rx_skbuff){
+		dma_unmap_single(priv->device,
+			buf->addr,
+			stmmac_get_rx_buf_frsize(priv) - STMMAC_RX_ALIGN,
+			DMA_FROM_DEVICE);
+		dev_kfree_skb(buf->rx_skbuff);
+		buf->rx_skbuff = NULL;
+	}
+
+	if (buf->sec_page)
+		page_pool_put_full_page(rx_q->page_pool, buf->sec_page, false);
+	buf->sec_page = NULL;
+	
+}
+#endif
+
+static int stmmac_init_rx_buffers(struct stmmac_priv *priv, struct dma_desc *p,
+				  int i, gfp_t flags, u32 queue)
+{
+	#ifndef CONFIG_STMMAC_RX_ZERO_COPY
+	return __stmmac_init_rx_buffers(priv,p,i,flags,queue);
+	#else
+	return __stmmac_init_rx_skbuffers(priv,p,i,flags,queue);
+	#endif
+}
+
+static void stmmac_free_rx_buffer(struct stmmac_priv *priv, u32 queue, int i)
+{
+	#ifndef CONFIG_STMMAC_RX_ZERO_COPY
+	__stmmac_free_rx_buffer(priv,queue,i);
+	#else
+	__stmmac_free_rx_skbuffer(priv,queue,i);
+	#endif
 }
 
 /**
@@ -1644,8 +1755,11 @@ static void free_dma_rx_desc_resources(struct stmmac_priv *priv)
 			dma_free_coherent(priv->device, priv->dma_rx_size *
 					  sizeof(struct dma_extended_desc),
 					  rx_q->dma_erx, rx_q->dma_rx_phy);
-
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 		kfree(rx_q->buf_pool);
+#else
+		kfree(rx_q->skbuf_pool);
+#endif
 		if (rx_q->page_pool)
 			page_pool_destroy(rx_q->page_pool);
 	}
@@ -1711,7 +1825,6 @@ static int alloc_dma_rx_desc_resources(struct stmmac_priv *priv)
 
 		rx_q->queue_index = queue;
 		rx_q->priv_data = priv;
-
 		pp_params.flags = PP_FLAG_DMA_MAP;
 		pp_params.pool_size = priv->dma_rx_size;
 		num_pages = DIV_ROUND_UP(priv->dma_buf_sz, PAGE_SIZE);
@@ -1726,13 +1839,19 @@ static int alloc_dma_rx_desc_resources(struct stmmac_priv *priv)
 			rx_q->page_pool = NULL;
 			goto err_dma;
 		}
-
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 		rx_q->buf_pool = kcalloc(priv->dma_rx_size,
 					 sizeof(*rx_q->buf_pool),
 					 GFP_KERNEL);
 		if (!rx_q->buf_pool)
 			goto err_dma;
-
+#else
+		rx_q->skbuf_pool = kcalloc(priv->dma_rx_size,
+					 sizeof(*rx_q->skbuf_pool),
+					 GFP_KERNEL);
+		if (!rx_q->skbuf_pool)
+			goto err_dma;
+#endif
 		if (priv->extend_desc) {
 			rx_q->dma_erx = dma_alloc_coherent(priv->device,
 							   priv->dma_rx_size *
@@ -3664,18 +3783,24 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 	struct stmmac_rx_queue *rx_q = &priv->rx_queue[queue];
 	int len, dirty = stmmac_rx_dirty(priv, queue);
 	unsigned int entry = rx_q->dirty_rx;
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
+	struct stmmac_rx_buffer *buf;
+#else
+	struct stmmac_rx_skbuffer *buf ;
+	struct sk_buff *skb = NULL;
+#endif
 
 	len = DIV_ROUND_UP(priv->dma_buf_sz, PAGE_SIZE) * PAGE_SIZE;
 
 	while (dirty-- > 0) {
-		struct stmmac_rx_buffer *buf = &rx_q->buf_pool[entry];
 		struct dma_desc *p;
 		bool use_rx_wd;
-
 		if (priv->extend_desc)
 			p = (struct dma_desc *)(rx_q->dma_erx + entry);
 		else
 			p = rx_q->dma_rx + entry;
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
+		buf = &rx_q->buf_pool[entry];
 
 		if (!buf->page) {
 			buf->page = page_pool_dev_alloc_pages(rx_q->page_pool);
@@ -3695,12 +3820,47 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 		}
 
 		buf->addr = page_pool_get_dma_addr(buf->page);
+		/* Sync whole allocation to device. This will invalidate old
+		 * data.
+		 */
+		dma_sync_single_for_device(priv->device, buf->addr, len,
+					   DMA_FROM_DEVICE);
+#else
+		buf = &rx_q->skbuf_pool[entry];
+		
+		if(likely(!buf->rx_skbuff)){
+			len = stmmac_get_rx_buf_frsize(priv);
+			skb = netdev_alloc_skb(priv->dev, len);
+			if (!skb){
+				//priv->dev->stats.rx_dropped += (1ul<<32);
+				netdev_err(priv->dev, "%s: dalloc_skb failed,dirty ring %d :\n", __func__,dirty);
+				break;
+			}
+			if(stmmac_get_skb_dma_addr(priv,skb,&buf->addr) < 0){
+				//priv->dev->stats.rx_dropped += (1ul<<32);
+				break;
+			}
+			buf->rx_skbuff = skb;
+		}
 
 		/* Sync whole allocation to device. This will invalidate old
 		 * data.
 		 */
 		dma_sync_single_for_device(priv->device, buf->addr, len,
 					   DMA_FROM_DEVICE);
+		
+		if (priv->sph && !buf->sec_page) {
+			buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+			if (!buf->sec_page)
+				break;
+
+			buf->sec_addr = page_pool_get_dma_addr(buf->sec_page);
+
+			dma_sync_single_for_device(priv->device, buf->sec_addr,
+						   len, DMA_FROM_DEVICE);
+		} 
+
+#endif
 
 		stmmac_set_desc_addr(priv, p, buf->addr);
 		if (priv->sph)
@@ -3815,7 +3975,11 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit, u32 queue)
 	while (count < limit) {
 		unsigned int buf1_len = 0, buf2_len = 0;
 		enum pkt_hash_types hash_type;
+		#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 		struct stmmac_rx_buffer *buf;
+		#else
+		struct stmmac_rx_skbuffer *skbuf;
+		#endif
 		struct dma_desc *np, *p;
 		int entry;
 		u32 hash;
@@ -3838,8 +4002,11 @@ read_again:
 		buf1_len = 0;
 		buf2_len = 0;
 		entry = next_entry;
+		#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 		buf = &rx_q->buf_pool[entry];
-
+		#else
+		skbuf = &rx_q->skbuf_pool[entry];
+		#endif
 		if (priv->extend_desc)
 			p = (struct dma_desc *)(rx_q->dma_erx + entry);
 		else
@@ -3863,12 +4030,14 @@ read_again:
 
 		prefetch(np);
 
-		if (priv->extend_desc)
+		if (priv->extend_desc && priv->extend_stat_need)
 			stmmac_rx_extended_status(priv, &priv->dev->stats,
 					&priv->xstats, rx_q->dma_erx + entry);
 		if (unlikely(status == discard_frame)) {
+			#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 			page_pool_recycle_direct(rx_q->page_pool, buf->page);
 			buf->page = NULL;
+			#endif
 			error = 1;
 			if (!priv->hwts_rx_en)
 				priv->dev->stats.rx_errors++;
@@ -3884,11 +4053,14 @@ read_again:
 		}
 
 		/* Buffer is good. Go on. */
-
+#ifndef CONFIG_STMMAC_RX_ZERO_COPY
 		prefetch(page_address(buf->page));
 		if (buf->sec_page)
 			prefetch(page_address(buf->sec_page));
-
+#else
+		skb = skbuf->rx_skbuff;
+		prefetch(skb->data);
+#endif
 		buf1_len = stmmac_rx_buf1_len(priv, p, status, len);
 		len += buf1_len;
 		buf2_len = stmmac_rx_buf2_len(priv, p, status, len);
@@ -3911,7 +4083,30 @@ read_again:
 
 			len -= ETH_FCS_LEN;
 		}
+#ifdef CONFIG_STMMAC_RX_ZERO_COPY
+		skb = skbuf->rx_skbuff;
+		if (!skb) {
+			priv->dev->stats.rx_dropped++;
+			count++;
+			goto drain_data;
+		}
+		dma_sync_single_for_cpu(priv->device, skbuf->addr,
+			buf1_len, DMA_FROM_DEVICE);
+		skb_put(skb, buf1_len);
+		skbuf->rx_skbuff = NULL;
+					
+		if (buf2_len) {
+			dma_sync_single_for_cpu(priv->device, skbuf->sec_addr,
+						buf2_len, DMA_FROM_DEVICE);
+			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
+					skbuf->sec_page, 0, buf2_len,
+					priv->dma_buf_sz);
 
+			/* Data payload appended into SKB */
+			page_pool_release_page(rx_q->page_pool, skbuf->sec_page);
+			skbuf->sec_page = NULL;
+		}
+#else
 		if (!skb) {
 			skb = napi_alloc_skb(&ch->rx_napi, buf1_len);
 			if (!skb) {
@@ -3952,7 +4147,7 @@ read_again:
 			page_pool_release_page(rx_q->page_pool, buf->sec_page);
 			buf->sec_page = NULL;
 		}
-
+#endif
 drain_data:
 		if (likely(status & rx_not_ls))
 			goto read_again;
@@ -4104,8 +4299,12 @@ static int stmmac_change_mtu(struct net_device *dev, int new_mtu)
 	new_mtu = STMMAC_ALIGN(new_mtu);
 
 	/* If condition true, FIFO is too small or MTU too large */
-	if ((txfifosz < new_mtu) || (new_mtu > BUF_SIZE_16KiB))
+	if ((txfifosz && txfifosz < new_mtu) || (new_mtu > BUF_SIZE_16KiB)){
+		netdev_err(priv->dev,"FIFO is too small or MTU too large\n");
+		printk("new_mtu %d -- %d,%d,%d \n",new_mtu,txfifosz,priv->plat->tx_fifo_size,priv->dma_cap.tx_fifo_size);
 		return -EINVAL;
+	}
+
 
 	dev->mtu = mtu;
 

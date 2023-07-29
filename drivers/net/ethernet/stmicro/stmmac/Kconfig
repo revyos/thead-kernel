@@ -25,6 +25,16 @@ config STMMAC_SELFTESTS
 	  feature if you are facing problems with your HW and submit the test
 	  results to the netdev Mailing List.
 
+config STMMAC_RX_ZERO_COPY
+	bool "Support for STMMAC Zero Copy in Recv"
+	default n
+	help
+	  This adds support for STMMAC reduce memcpy packet ring_buffer data
+	  to skb data in stmmac_rx. Enable this feature will alloc skb in filling
+	  ring buffer, mapping skb->data to ring buffer DMA addr.
+
+	  If unsure, say N.
+
 config STMMAC_PLATFORM
 	tristate "STMMAC Platform bus support"
 	depends on STMMAC_ETH

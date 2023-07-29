@@ -193,8 +193,9 @@
 	};
 
 	dummy_codec: dummy_codec {
-		#sound-dai-cells = <1>;
-		compatible = "linux,bt-sco";
+		#sound-dai-cells = <0>;
+		compatible = "thead,light-dummy-pcm";
+		sound-name-prefix = "DUMMY";
 		status = "okay";
 	};
 
@@ -561,12 +562,27 @@
                #sound-dai-cells = <0>;
                compatible = "everest,es8156";
                reg = <0x08>;
+               sound-name-prefix = "ES8156";
        };
 
-        es7210_audio_codec: es7210@40 {
-                #sound-dai-cells = <0>;
-                compatible = "MicArray_0";
-                reg = <0x40>;
+        audio_aw87519_pa: amp@58 {
+                compatible = "awinic,aw87519_pa";
+                reg = <0x58>;
+                reset-gpio = <&pcal6408ahk_b 3 0x1>;
+                sound-name-prefix = "AW87519";
+                status = "okay";
+        };
+};
+
+&audio_i2c1 {
+        clock-frequency = <100000>;
+        status = "okay";
+
+        pcal6408ahk_b: gpio@20 {
+                compatible = "nxp,pcal9554b";
+                reg = <0x20>;
+                gpio-controller;
+                #gpio-cells = <2>;
         };
 };
 
@@ -848,8 +864,27 @@
 
 			pinctrl_volume: volume_grp {
 				thead,pins = <
-					FM_CPU_JTG_TDI  0x3     0x208
-					FM_CPU_JTG_TDO  0x3     0x208
+					FM_CPU_JTG_TDI  0x3     0x238
+					FM_CPU_JTG_TDO  0x3     0x238
+				>;
+			};
+	};
+};
+
+&padctrl_audiosys {
+
+	status = "okay";
+
+	light-audio-padctrl {
+			/*
+			 * Pin Configuration Node:
+			 * Format: <pin_id mux_node config>
+			 */
+
+			pinctrl_audio_i2c1: audio_i2c1_grp {
+				thead,pins = <
+					FM_AUDIO_IO_PA6	  0x2 0x008
+					FM_AUDIO_IO_PA7   0x2 0x008
 				>;
 			};
 	};
