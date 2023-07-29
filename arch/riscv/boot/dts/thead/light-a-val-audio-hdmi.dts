@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "light-a-val.dts"
+#include "light-a-val-audio.dts"
 
 / {
 	display-subsystem {
@@ -40,28 +40,6 @@
 
 &lightsound {
 	status = "okay";
-
-        simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
-                reg = <0>;
-                format = "i2s";
-                cpu {
-                        sound-dai = <&i2s0 0>;
-                };
-                codec {
-                        sound-dai = <&es8156_audio_codec>;
-                };
-        };
-
-        simple-audio-card,dai-link@1 {          /* I2S - AUDIO SYS CODEC 7210*/
-                reg = <1>;
-                format = "i2s";
-                cpu {
-                        sound-dai = <&i2s3 0>;
-                };
-                codec {
-                        sound-dai = <&es7210_audio_codec>;
-                };
-        };
 	
 	simple-audio-card,dai-link@2 {          /* I2S - HDMI */
 		reg = <2>;
@@ -78,12 +56,3 @@
 &light_i2s {
         status = "okay";
 };
-
-&i2s0 {
-        status = "okay";
-};
-
-&i2s3 {
-        status = "okay";
-};
-

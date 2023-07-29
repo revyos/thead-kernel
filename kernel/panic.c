@@ -32,6 +32,7 @@
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
 #include <asm/sections.h>
+#include <linux/firmware/thead/light_event.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -182,7 +183,11 @@ void panic(const char *fmt, ...)
 	int state = 0;
 	int old_cpu, this_cpu;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
+	enum light_rebootmode_index mode;
 
+	if (!light_event_get_rebootmode(&mode) &&
+		mode != LIGHT_EVENT_SW_WATCHDOG)
+		light_event_set_rebootmode(LIGHT_EVENT_SW_PANIC);
 	/*
 	 * Disable local interrupts. This will prevent panic_smp_self_stop
 	 * from deadlocking the first cpu that invokes the panic, since

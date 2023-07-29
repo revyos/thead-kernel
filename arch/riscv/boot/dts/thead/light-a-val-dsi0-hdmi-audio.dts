@@ -5,41 +5,9 @@
 
 /dts-v1/;
 
-#include "light-a-val.dts"
-
-/ {
-	display-subsystem {
-		status = "okay";
-	};
-};
-
-&dpu_enc1 {
-	ports {
-		/delete-node/ port@0;
-	};
-};
-
-&disp1_out {
-	remote-endpoint = <&hdmi_tx_in>;
-};
-
-&dpu {
-	status = "okay";
-};
-
-&hdmi_tx {
-	status = "okay";
-
-	port@0 {
-		/* input */
-		hdmi_tx_in: endpoint {
-			remote-endpoint = <&disp1_out>;
-		};
-	};
-};
+#include "light-a-val-dsi0-hdmi.dts"
 
 &audio_i2c0 {
-        clock-frequency = <100000>;
         status = "okay";
 
         es7210_audio_codec: es7210@40 {
@@ -51,8 +19,12 @@
 };
 
 &lightsound {
-	status = "okay";
-
+        status = "okay";
+        simple-audio-card,widgets = "Speaker", "Speaker";
+        simple-audio-card,routing = 
+        	"Speaker", "AW87519 VO",
+        	"AW87519 IN", "ES8156 ROUT";
+        simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
                 format = "i2s";
@@ -63,7 +35,6 @@
                         sound-dai = <&es8156_audio_codec>;
                 };
         };
-
         simple-audio-card,dai-link@1 {          /* I2S - AUDIO SYS CODEC 7210*/
                 reg = <1>;
                 format = "i2s";
@@ -74,11 +45,20 @@
                         sound-dai = <&es7210_audio_codec>;
                 };
         };
+        simple-audio-card,dai-link@2 {          /* I2S - HDMI */
+                reg = <2>;
+                format = "i2s";
+                cpu {
+                        sound-dai = <&light_i2s 1>;
+                };
+                codec {
+                        sound-dai = <&dummy_codec>;
+                };
+        };
 };
 
-
 &light_i2s {
-	status = "okay";
+        status = "okay";
 };
 
 &i2s0 {
@@ -89,14 +69,3 @@
         status = "okay";
 };
 
-&sdhci1 {
-	status = "okay";
-};
-
-&wcn_bt {
-	status = "okay";
-};
-
-&wcn_wifi {
-	status = "okay";
-};

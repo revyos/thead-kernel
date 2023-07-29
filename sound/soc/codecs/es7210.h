@@ -69,5 +69,19 @@
 #define ES7210_MIC4_LP_REG4A		0x4A
 #define ES7210_MIC12_PDN_REG4B		0x4B
 #define ES7210_MIC34_PDN_REG4C		0x4C
-    
+
+/* codec private data */
+struct es7210_priv {
+        struct regmap *regmap;
+        struct i2c_client *i2c_client;
+        unsigned int dmic_enable;
+        unsigned int sysclk;
+        struct clk *mclk;
+        struct snd_pcm_hw_constraint_list *sysclk_constraints;
+        unsigned int tdm_mode;
+        struct delayed_work pcm_pop_work;
+        int mclk_lrck_ratio;
+        int pcm_format;
+};
+
 #endif	/* _ES7210_H_ */

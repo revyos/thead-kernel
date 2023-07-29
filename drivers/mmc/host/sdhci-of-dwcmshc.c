@@ -28,7 +28,6 @@
 
 struct dwcmshc_priv {
 	struct clk	*bus_clk;
-	void __iomem *soc_base;
 	bool is_emmc_card;
 	bool pull_up_en;
 	bool io_fixed_1v8;
@@ -289,12 +288,6 @@ static void snps_sdhci_reset(struct sdhci_host *host, u8 mask)
 	pltfm_host = sdhci_priv(host);
 	priv = sdhci_pltfm_priv(pltfm_host);
 
-	/*soc reset, fix host reset error*/
-	//soc_reg = readl( priv->soc_base);
-	//soc_reg &= ~1;
-	//writel(soc_reg, priv->soc_base);
-	//soc_reg |= 1;
-	//writel(soc_reg, priv->soc_base);
 
 	/*host reset*/
 	sdhci_reset(host, mask);
@@ -603,9 +596,6 @@ static int dwcmshc_probe(struct platform_device *pdev)
 
 	pltfm_host = sdhci_priv(host);
 	priv = sdhci_pltfm_priv(pltfm_host);
-
-	/*used fix sdhci reset error*/
-	priv->soc_base = devm_platform_ioremap_resource(pdev, 1);
 
 	if (device_property_present(&pdev->dev, "is_emmc")) {
 		priv->is_emmc_card = 1;

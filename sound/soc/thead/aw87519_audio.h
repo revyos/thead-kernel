@@ -72,6 +72,9 @@ unsigned char aw87519_rcv_cfg_default[] = {
 #define REG_PAGC2PR		0x09
 #define REG_PAGC1PR		0x0A
 
+#define AW87519_EN_SW_SHIFT 	7
+#define AW87519_EN_PA_SHIFT		4
+
 #define AW87519_CHIPID		0x59
 #define AW87519_REG_MAX		11
 
@@ -90,6 +93,7 @@ struct aw87519 {
 	struct mutex cfg_lock;
 	struct work_struct cfg_work;
 	struct delayed_work ram_work;
+	struct regmap *regmap;
 };
 
 /*******************************************************************************

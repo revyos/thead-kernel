@@ -36,6 +36,7 @@ enum light_aon_misc_func {
 	LIGHT_AON_MISC_FUNC_WDG_POWER_OFF = 9,
 	LIGHT_AON_MISC_FUNC_AON_WDT_ON  = 10,
 	LIGHT_AON_MISC_FUNC_AON_WDT_OFF = 11,
+	LIGHT_AON_MISC_FUNC_AON_RESERVE_MEM = 12,
 };
 
 enum light_aon_pm_func {
