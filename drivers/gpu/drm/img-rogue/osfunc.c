@@ -570,7 +570,9 @@ static PVRSRV_ERROR _NativeSyncInit(void)
 
 static void _NativeSyncDeinit(void)
 {
-	destroy_workqueue(gpFenceStatusWq);
+	if (gpFenceStatusWq) {
+		destroy_workqueue(gpFenceStatusWq);
+	}
 }
 
 struct workqueue_struct *NativeSyncGetFenceStatusWq(void)

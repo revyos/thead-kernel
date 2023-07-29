@@ -206,7 +206,7 @@ PVRSRV_DATA *PVRSRVGetPVRSRVData(void);
 
 #define PVRSRV_KM_ERRORS                     (PVRSRVGetPVRSRVData()->ui32DPFErrorCount)
 #define PVRSRV_ERROR_LIMIT_REACHED                (PVRSRV_KM_ERRORS == IMG_UINT32_MAX)
-#define PVRSRV_REPORT_ERROR()                do { if (!(PVRSRV_ERROR_LIMIT_REACHED)) { PVRSRVGetPVRSRVData()->ui32DPFErrorCount++; } } while (0)
+#define PVRSRV_REPORT_ERROR()                do { if (PVRSRVGetPVRSRVData()) { if (!(PVRSRV_ERROR_LIMIT_REACHED)) { PVRSRVGetPVRSRVData()->ui32DPFErrorCount++; } } } while (0)
 
 #define PVRSRV_VZ_MODE_IS(_expr)              (DRIVER_MODE_##_expr == PVRSRVGetPVRSRVData()->eDriverMode)
 #define PVRSRV_VZ_RETN_IF_MODE(_expr)         do { if (  PVRSRV_VZ_MODE_IS(_expr)) { return; } } while (0)
