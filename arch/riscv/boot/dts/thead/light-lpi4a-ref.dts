@@ -1395,11 +1395,6 @@
 
 &lightsound {
         status = "okay";
-        simple-audio-card,widgets = "Speaker", "Speaker";
-        simple-audio-card,routing = 
-        	"Speaker", "AW87519 VO",
-        	"AW87519 IN", "ES8156 ROUT";
-        simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
                 format = "i2s";
