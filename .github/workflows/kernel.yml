@@ -89,7 +89,7 @@ jobs:
                 sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
-                sudo cp -v arch/riscv/boot/dts/thead/light-lpi4a.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+                sudo cp -v arch/riscv/boot/dts/thead/{light-lpi4a.dtb,light-lpi4a-16gb.dtb} ${GITHUB_WORKSPACE}/rootfs/boot/
               popd
 
       - name: compress
