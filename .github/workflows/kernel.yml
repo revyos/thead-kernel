@@ -11,13 +11,14 @@ env:
   xuetie_toolchain: https://occ-oss-prod.oss-cn-hangzhou.aliyuncs.com/resource//1663142514282
   toolchain_file_name: Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1-20220906.tar.gz
   ARCH: riscv
-  board: lpi4a
 
 jobs:
   kernel:
     strategy:
       fail-fast: false
       matrix:
+        name: [thead-gcc, gcc-12]
+        board: [lpi4a, ahead]
         include:
           - name: thead-gcc
             toolchain_tripe: riscv64-unknown-linux-gnu-
@@ -59,14 +60,19 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd kernel
-                make revyos_defconfig
+                # make revyos_defconfig
+                if [ x"${{ matrix.board }}" = x"lpi4a" ]; then
+                  make revyos_defconfig
+                elif [ x"${{ matrix.board }}" = x"ahead" ]; then
+                  make beaglev_defconfig
+                fi
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 if [ x"${{ matrix.name }}" = x"gcc-12" ]; then
                   echo "CONFIG_THEAD_ISA=n" >> .config
                 elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
                   echo "CONFIG_THEAD_ISA=y" >> .config
                 fi
-                make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
+                make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
                 make -j$(nproc) dtbs
                 # if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
                 #   sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
@@ -89,7 +95,7 @@ jobs:
                 sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
-                sudo cp -v arch/riscv/boot/dts/thead/{light-lpi4a.dtb,light-lpi4a-16gb.dtb} ${GITHUB_WORKSPACE}/rootfs/boot/
+                sudo cp -v arch/riscv/boot/dts/thead/{light-lpi4a.dtb,light-lpi4a-16gb.dtb,light-beagle.dtb} ${GITHUB_WORKSPACE}/rootfs/boot/
               popd
 
       - name: compress
