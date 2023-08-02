@@ -96,14 +96,16 @@ jobs:
 
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/{light-lpi4a.dtb,light-lpi4a-16gb.dtb,light-beagle.dtb} ${GITHUB_WORKSPACE}/rootfs/boot/
+
+                ls -al ${GITHUB_WORKSPACE}/rootfs/
               popd
 
-      - name: compress
-        run: tar -zcvf thead-kernel-${{ matrix.name }}.tar.gz rootfs
+      # - name: compress
+      #   run: tar -zcvf thead-kernel-${{ matrix.name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: thead-kernel-${{ matrix.name }}.tar.gz
-          path: thead-kernel-${{ matrix.name }}.tar.gz
+          name: thead-kernel-${{ matrix.name }}
+          path: rootfs/*
           retention-days: 30
