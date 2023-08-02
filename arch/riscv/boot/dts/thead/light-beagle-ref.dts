@@ -15,11 +15,6 @@
 	model = "BeagleBoard.org BeagleV-Ahead";
 	compatible = "beagle,light", "thead,light-val", "thead,light";
 
-	memory@0 {
-		device_type = "memory";
-		reg = <0x0 0x200000 0x0 0x7fe00000>;
-	};
-
 	chosen {
 		bootargs = "console=ttyS0,115200 crashkernel=256M-:128M earlycon clk_ignore_unused sram=0xffe0000000,0x180000";
 		stdout-path = "serial0:115200n8";
@@ -227,10 +222,9 @@
 	};
 
 	dummy_codec: dummy_codec {
-		#sound-dai-cells = <0>;
-		compatible = "thead,light-dummy-pcm";
+		#sound-dai-cells = <1>;
+		compatible = "linux,bt-sco";
 		status = "okay";
-		sound-name-prefix = "DUMMY";
 	};
 
 	reg_vref_1v8: regulator-adc-verf {
@@ -2086,11 +2080,6 @@
 
 &lightsound {
         status = "okay";
-        simple-audio-card,widgets = "Speaker", "Speaker";
-        simple-audio-card,routing = 
-        	"Speaker", "AW87519 VO",
-        	"AW87519 IN", "ES8156 ROUT";
-        simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
                 format = "i2s";
@@ -2118,7 +2107,7 @@
                         sound-dai = <&light_i2s 1>;
                 };
                 codec {
-                        sound-dai = <&dummy_codec>;
+                        sound-dai = <&dummy_codec 2>;
                 };
         };
 };
