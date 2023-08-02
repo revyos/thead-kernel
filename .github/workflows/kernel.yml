@@ -72,6 +72,7 @@ jobs:
                 elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
                   echo "CONFIG_THEAD_ISA=y" >> .config
                 fi
+                sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
                 make -j$(nproc) dtbs
                 # if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
