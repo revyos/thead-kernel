@@ -51,6 +51,7 @@
 #include <linux/io.h>
 #include <linux/lockdep.h>
 #include <linux/kthread.h>
+#include <linux/security.h>
 
 #include <asm/processor.h>
 #include <asm/ioctl.h>
