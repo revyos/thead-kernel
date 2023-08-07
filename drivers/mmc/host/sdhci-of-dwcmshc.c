@@ -33,11 +33,15 @@ struct dwcmshc_priv {
 	bool io_fixed_1v8;
 	bool wprtn_ignore;
 	long reset_cnt;
+	uint32_t delay_line[MMC_TIMING_MMC_HS400+1];
+	uint32_t clk_delay_set;
+	bool rxclk_sw_tune_en;
+	uint32_t rxclk_delay_set;
 };
 
 #define HS400_DELAY_LINE 24
 
-static uint32_t delay_line = 50;
+//static uint32_t delay_line = 50;
 
 static void sdhci_phy_1_8v_init_no_pull(struct sdhci_host *host)
 {
@@ -113,12 +117,13 @@ static void snps_phy_1_8v_init(struct sdhci_host *host)
 	//disable delay lane
 	sdhci_writeb(host, 1 << UPDATE_DC, PHY_SDCLKDL_CNFG_R);
 	//set delay lane
-	sdhci_writeb(host, delay_line, PHY_SDCLKDL_DC_R);
+	sdhci_writeb(host, priv->clk_delay_set, PHY_SDCLKDL_DC_R);
 	sdhci_writeb(host, 0xa, PHY_DLL_CNFG2_R);
 	//enable delay lane
 	val = sdhci_readb(host, PHY_SDCLKDL_CNFG_R);
 	val &= ~(1 << UPDATE_DC);
 	sdhci_writeb(host, val, PHY_SDCLKDL_CNFG_R);
+	pr_debug("%s: snps_phy_1_8v_init clk delay %d\n",host->hw_name,priv->clk_delay_set);
 
 	val = (1 << RXSEL) | (1 << WEAKPULL_EN) | (3 << TXSLEW_CTRL_P) | (3 << TXSLEW_CTRL_N);
 	sdhci_writew(host, val, PHY_CMDPAD_CNFG_R);
@@ -155,12 +160,13 @@ static void snps_phy_3_3v_init(struct sdhci_host *host)
 	//disable delay lane
 	sdhci_writeb(host, 1 << UPDATE_DC, PHY_SDCLKDL_CNFG_R);
 	//set delay lane
-	sdhci_writeb(host, delay_line, PHY_SDCLKDL_DC_R);
+	sdhci_writeb(host, priv->clk_delay_set, PHY_SDCLKDL_DC_R);
 	sdhci_writeb(host, 0xa, PHY_DLL_CNFG2_R);
 	//enable delay lane
 	val = sdhci_readb(host, PHY_SDCLKDL_CNFG_R);
 	val &= ~(1 << UPDATE_DC);
 	sdhci_writeb(host, val, PHY_SDCLKDL_CNFG_R);
+	pr_debug("%s: snps_phy_3_3v_init clk delay %d\n",host->hw_name,priv->clk_delay_set);
 
 	val = (2 << RXSEL) | (1 << WEAKPULL_EN) | (3 << TXSLEW_CTRL_P) | (3 << TXSLEW_CTRL_N);
 	sdhci_writew(host, val, PHY_CMDPAD_CNFG_R);
@@ -253,6 +259,61 @@ static int snps_execute_tuning(struct sdhci_host *host, u32 opcode)
 	sdhci_end_tuning(host);
 
 	return 0;
+}
+static int snps_rxclk_sw_tuned_sample_delay_set(struct sdhci_host *host, u32 sample_delay,u32 timeout)
+{
+	struct sdhci_pltfm_host *pltfm_host;
+	struct dwcmshc_priv *priv;
+	u32 reg_val;
+	u32 tune_clk_set;
+	u16 ctrl_2;
+	u32 i=0;
+	pltfm_host = sdhci_priv(host);
+	priv = sdhci_pltfm_priv(pltfm_host);
+	/*0x320：SMPLDL_CNFG
+	0x540：AT_CTRL
+	0x544：AT_STAT  */
+	reg_val = sdhci_readb(host, PHY_SMPLDL_CNFG_R);
+	if(sample_delay >= 0x80){	
+		/*if larger than 128,DelayLine works with extended delay range setting*/
+		reg_val |= (1 << SMPLDL_CNFG_EXTDLY_EN);
+	}else{
+		reg_val &= ~(1 << SMPLDL_CNFG_EXTDLY_EN);
+	}
+	sdhci_writeb(host, reg_val, PHY_SMPLDL_CNFG_R);
+
+	reg_val = sdhci_readl(host, AT_CTRL_R);
+	reg_val |= (1 << TUNE_CLK_STOP_EN);
+	reg_val |= (1 << SW_TUNE_EN);
+	sdhci_writel(host, reg_val, AT_CTRL_R);
+	
+	if(sample_delay >= 0x80){	
+		tune_clk_set = (sample_delay - 0x80) & 0xff;
+	}
+	else {
+		tune_clk_set = sample_delay ;
+	}
+	reg_val = sdhci_readl(host, AT_STAT_R);
+	reg_val &= ~(0xff<<AT_STAT_CENTER_PH_CODE);
+	reg_val |= tune_clk_set;
+	sdhci_writel(host,reg_val, AT_STAT_R);
+
+	for(i = 0; i < timeout; i += 10){
+		ctrl_2 = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+		if(ctrl_2 & SDHCI_CTRL_TUNED_CLK)
+			return 0;
+		udelay(10);
+	}
+	pr_warn("%s: _rxclk_sw_tuned_sample_delay_set timeout %d\n",host->hw_name,timeout);
+	return -1;
+}
+
+void snps_rxclk_sw_tuned_sample_delay_dump(struct sdhci_host *host)
+{
+	pr_info("PHY_SMPLDL_CNFG_R = %x\n",sdhci_readb(host, PHY_SMPLDL_CNFG_R));
+	pr_info("AT_CTRL_R = %x\n", sdhci_readl(host, AT_CTRL_R));
+	pr_info("AT_STAT_R = %x\n", sdhci_readl(host, AT_STAT_R));
+	pr_info("SDHCI_HOST_CONTROL2 = %x\n",sdhci_readw(host, SDHCI_HOST_CONTROL2));
 }
 
 static void snps_sdhci_set_phy(struct sdhci_host *host)
@@ -383,7 +444,7 @@ static void dwcmshc_set_uhs_signaling(struct sdhci_host *host,
 		ctrl_2 |= SDHCI_CTRL_VDD_180;
 	
 	sdhci_writew(host, ctrl_2, SDHCI_HOST_CONTROL2);
-
+	pr_debug("%s: %s timing %d\n",host->hw_name,__func__,timing);
 	if (timing == MMC_TIMING_MMC_HS400) {
 		// //disable delay lane
 		// sdhci_writeb(host, 1 << UPDATE_DC, PHY_SDCLKDL_CNFG_R);
@@ -399,10 +460,18 @@ static void dwcmshc_set_uhs_signaling(struct sdhci_host *host,
 		reg &= ~1;
 		sdhci_writel(host, reg, AT_CTRL_R);
 
-		delay_line = HS400_DELAY_LINE;
+		priv->clk_delay_set = priv->delay_line[MMC_TIMING_MMC_HS400];
 		snps_sdhci_set_phy(host);	/* update tx delay*/
-	} else {
+	} else if(timing == MMC_TIMING_UHS_SDR104){
+		priv->clk_delay_set = priv->delay_line[MMC_TIMING_UHS_SDR104];
+		snps_sdhci_set_phy(host);	/* update tx delay*/
 		sdhci_writeb(host, 0, PHY_DLLDL_CNFG_R);
+	}else {
+		sdhci_writeb(host, 0, PHY_DLLDL_CNFG_R);
+		if(priv->rxclk_sw_tune_en && (timing == MMC_TIMING_SD_HS)){
+			snps_rxclk_sw_tuned_sample_delay_set(host,priv->rxclk_delay_set,10000);
+			//snps_rxclk_sw_tuned_sample_delay_dump(host);
+		}
 	}
 }
 
@@ -464,7 +533,8 @@ static void dwcmshc_set_power_noreg(struct sdhci_host *host, unsigned char mode,
 			   unsigned short vdd)
 {
 	u8 pwr = 0;
-
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct dwcmshc_priv *priv = sdhci_pltfm_priv(pltfm_host);
 	if (mode != MMC_POWER_OFF) {
 		switch (1 << vdd) {
 		case MMC_VDD_165_195:
@@ -502,6 +572,8 @@ static void dwcmshc_set_power_noreg(struct sdhci_host *host, unsigned char mode,
 		return;
 
 	host->pwr = pwr;
+	pr_debug("%s: %s set pwr %d\n",host->hw_name,__func__,pwr);
+	priv->clk_delay_set = priv->delay_line[0];
 	snps_sdhci_set_phy(host);
 
 	if (pwr == 0) {
@@ -572,6 +644,20 @@ static const struct sdhci_pltfm_data sdhci_dwcmshc_pdata = {
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
 };
 
+static int device_property_get_clk_delay(struct device *dev,
+					   const char *propname, u32 *val)
+{
+	int ret = device_property_read_u32(dev, propname, val);
+	if(ret < 0){
+		return ret;
+	}
+	if(*val > 0xff){
+		pr_info("Note: invalid  clk delay  property :%s, val: %u\n",propname,*val);
+		return -1;
+	}
+	return ret;
+}
+
 static int dwcmshc_probe(struct platform_device *pdev)
 {
 	struct sdhci_pltfm_host *pltfm_host;
@@ -599,8 +685,29 @@ static int dwcmshc_probe(struct platform_device *pdev)
 
 	if (device_property_present(&pdev->dev, "is_emmc")) {
 		priv->is_emmc_card = 1;
+
+		if(device_property_get_clk_delay(&pdev->dev, "clk-delay-default", &(priv->delay_line[0]) ) < 0 )
+			priv->delay_line[0] = 50;
+		if(device_property_get_clk_delay(&pdev->dev, "clk-delay-mmc-hs400", &(priv->delay_line[MMC_TIMING_MMC_HS400]) ) < 0 )
+			priv->delay_line[MMC_TIMING_MMC_HS400] = HS400_DELAY_LINE;
 	} else {
 		priv->is_emmc_card = 0;
+
+		if(device_property_get_clk_delay(&pdev->dev, "clk-delay-default", &(priv->delay_line[0]) ) < 0 )
+			priv->delay_line[0] = 0x7d;
+		if(device_property_get_clk_delay(&pdev->dev, "clk-delay-uhs-sdr104", &(priv->delay_line[MMC_TIMING_UHS_SDR104]) ) < 0 )
+			priv->delay_line[MMC_TIMING_UHS_SDR104] = 0x32;
+		
+
+		if(device_property_get_clk_delay(&pdev->dev, "rxclk-sample-delay", &(priv->rxclk_delay_set) ) == 0 ){
+			priv->rxclk_sw_tune_en = 1;
+			dev_info(&pdev->dev,"rxclk-sample-delay get val = 0x%x\n",priv->rxclk_delay_set);
+
+		}
+		else {
+			priv->rxclk_sw_tune_en = 0;
+			priv->rxclk_delay_set = 0;
+		}
 	}
 
 	if (device_property_present(&pdev->dev, "pull_up")) {

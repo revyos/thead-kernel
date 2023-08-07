@@ -74,6 +74,26 @@
 	};
 };
 
+&padctrl_audiosys {
+	status = "okay";
+
+	light-audio-padctrl {
+			/*
+			 * Pin Configuration Node:
+			 * Format: <pin_id mux_node config>
+			 */
+
+			pinctrl_audio_i2s_8ch: audio_i2s_8ch_grp {
+				thead,pins = <
+					FM_AUDIO_IO_PA0	  0x2 0x008
+					FM_AUDIO_IO_PA2	  0x2 0x008
+					FM_AUDIO_IO_PA3   0x2 0x008
+					FM_AUDIO_IO_PA8   0x2 0x008
+				>;
+			};
+	};
+};
+
 &lightsound {
 	status = "okay";
 
@@ -92,14 +112,13 @@
                 reg = <1>;
                 format = "i2s";
                 cpu {
-                        sound-dai = <&i2s3 0>;
+                        sound-dai = <&i2s_8ch_sd2 2>;
                 };
                 codec {
-                        sound-dai = <&es7210_audio_codec>;
+                        sound-dai = <&es7210_audio_codec_adc0>;
                 };
         };
 };
-
 
 &light_i2s {
 	status = "okay";
@@ -109,7 +128,11 @@
         status = "okay";
 };
 
-&i2s3 {
+&i2s_8ch_sd2 {
+        status = "okay";
+};
+
+&es7210_audio_codec_adc0 {
         status = "okay";
 };
 

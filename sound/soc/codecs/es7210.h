@@ -78,10 +78,16 @@ struct es7210_priv {
         unsigned int sysclk;
         struct clk *mclk;
         struct snd_pcm_hw_constraint_list *sysclk_constraints;
+        struct regulator *mvdd;
+        struct regulator *avdd;
+        struct regulator *dvdd;
+        struct regulator *pvdd;
         unsigned int tdm_mode;
         struct delayed_work pcm_pop_work;
         int mclk_lrck_ratio;
         int pcm_format;
+        int mclk_sclk_ratio; // mclk_sclk_ratio=1 is when mclk hardwired to sclk.
+        int sclk_lrck_ratio;
 };
 
 #endif	/* _ES7210_H_ */

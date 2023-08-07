@@ -46,7 +46,13 @@ static int light_tdm_dai_probe(struct snd_soc_dai *dai)
 static int light_tdm_dai_startup(struct snd_pcm_substream *substream,
 			   struct snd_soc_dai *dai)
 {
-	return 0;
+    struct light_tdm_priv *priv = snd_soc_dai_get_drvdata(dai);
+
+    if (priv->slot_num != 1) {
+        return 0;
+    }
+    
+    return pm_runtime_get_sync(dai->dev);
 }
 
 static void light_tdm_snd_rxctrl(struct light_tdm_priv *priv, char on)
@@ -72,10 +78,15 @@ static void light_tdm_dai_shutdown(struct snd_pcm_substream *substream,
 {
 	struct light_tdm_priv *priv = snd_soc_dai_get_drvdata(dai);
 
-       if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+    if (priv->slot_num != 1) {
+        return;
+    }
+
+    if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		light_tdm_snd_rxctrl(priv, 0);
 
-	clk_disable_unprepare(priv->clk);
+	pm_runtime_put(dai->dev);
+    return;
 }
 
 static int light_tdm_dai_trigger(struct snd_pcm_substream *substream, int cmd, struct snd_soc_dai *dai)
@@ -110,7 +121,6 @@ static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
         return 0;
     }
     
-    printk("%s fmt=%d\n", __func__, fmt);
     switch(fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
         case SND_SOC_DAIFMT_DSP_B:
             break;
@@ -131,8 +141,7 @@ static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
     u32 dmadl;
     regmap_read(priv->regmap, TDM_TDMCTL, &tdmctl);
     regmap_read(priv->regmap, TDM_DMADL, &dmadl);
-    printk("%s TDM_TDMCTL=0x%x TDM_DMADL=0x%x\n", __func__, tdmctl, dmadl);
-    printk("%s %d\n", __func__, __LINE__);
+
     return 0;
 }
 
@@ -253,95 +262,15 @@ static const struct snd_soc_dai_ops light_tdm_dai_ops = {
     .hw_params = light_tdm_dai_hw_params,
 };
 
-static struct snd_soc_dai_driver light_tdm_soc_dai[] = {
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot1",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
+static struct snd_soc_dai_driver light_tdm_soc_dai = {
+    .probe = light_tdm_dai_probe,
+    .capture = {
+        .rates = LIGHT_RATES,
+        .formats = LIGHT_FMTS,
+        .channels_min = 1,
+        .channels_max = 1,
     },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot2",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot3",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot4",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot5",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot6",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot7",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    },
-    {
-        .probe = light_tdm_dai_probe,
-        .name = "light-tdm-dai-slot8",
-        .capture = {
-            .rates = LIGHT_RATES,
-            .formats = LIGHT_FMTS,
-            .channels_min = 1,
-            .channels_max = 1,
-        },
-        .ops = &light_tdm_dai_ops,
-    }, 
+    .ops = &light_tdm_dai_ops,
 };
 
 static const struct snd_soc_component_driver light_tdm_soc_component = {
@@ -482,11 +411,13 @@ static int light_tdm_probe(struct platform_device *pdev)
 
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-    tdm_priv->clk = devm_clk_get(&pdev->dev, "pclk");
-    if (IS_ERR(tdm_priv->clk))
-                return PTR_ERR(tdm_priv->clk);
+
 
     if (tdm_priv->slot_num == 1) {
+        tdm_priv->clk = devm_clk_get(&pdev->dev, "pclk");
+        if (IS_ERR(tdm_priv->clk))
+                    return PTR_ERR(tdm_priv->clk);
+
         tdm_priv->regs = devm_ioremap_resource(dev, res);
         if (IS_ERR(tdm_priv->regs)) {
             return PTR_ERR(tdm_priv->regs);
@@ -504,7 +435,7 @@ static int light_tdm_probe(struct platform_device *pdev)
             dev_err(dev, "cannot find regmap for audio system register\n");
             return -EINVAL;
         } else {
-            light_tdm_pinctrl(tdm_priv);
+            //light_tdm_pinctrl(tdm_priv);
         }
 
         tdm_priv->audio_cpr_regmap = syscon_regmap_lookup_by_phandle(np, "audio-cpr-regmap");
@@ -518,22 +449,10 @@ static int light_tdm_probe(struct platform_device *pdev)
         //AUDIO_DIV0 set to 1/6. 294.912MHz / 6 = 49.152MHz
         regmap_update_bits(tdm_priv->audio_cpr_regmap,
                                 CPR_PERI_DIV_SEL_REG, CPR_AUDIO_DIV0_SEL_MSK, CPR_AUDIO_DIV0_SEL(5));
-        //enable clock gate
-        regmap_update_bits(tdm_priv->audio_cpr_regmap,
-                                CPR_IP_CG_REG, CPR_TDM_CG_SEL_MSK, CPR_TDM_CG_SEL(1));
 
         pm_runtime_enable(&pdev->dev);
-        if (!pm_runtime_enabled(&pdev->dev)) {
-                ret = light_tdm_runtime_resume(&pdev->dev);
-                if (ret) {
-                    pm_runtime_disable(&pdev->dev);
-                    return -EIO;
-                }
-        }
-
-        ret = clk_prepare_enable(tdm_priv->clk);
-            if (ret < 0)
-                    return ret;
+        pm_runtime_resume_and_get(&pdev->dev); // clk gate is enabled by hardware as default register value
+        pm_runtime_put_sync(&pdev->dev);
 
         tdm_priv->irq = platform_get_irq(pdev, 0);
         if (tdm_priv->irq== 0) {
@@ -590,7 +509,7 @@ static int light_tdm_probe(struct platform_device *pdev)
 	}
 
     ret = devm_snd_soc_register_component(dev, &light_tdm_soc_component,
-                        light_tdm_soc_dai, ARRAY_SIZE(light_tdm_soc_dai));
+                        &light_tdm_soc_dai, 1);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "cannot snd component register\n");
 	}

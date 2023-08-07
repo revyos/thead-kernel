@@ -7,11 +7,13 @@
 #include <dt-bindings/pinctrl/light-fm-right-pinctrl.h>
 #include <dt-bindings/pinctrl/light-fm-aon-pinctrl.h>
 #include <dt-bindings/pinctrl/light-fm-audio-pinctrl.h>
+#include <dt-bindings/pinctrl/light-fm-pinctrl-def.h>
 #include <dt-bindings/clock/light-fm-ap-clock.h>
 #include <dt-bindings/clock/light-vpsys.h>
 #include <dt-bindings/clock/light-vosys.h>
 #include <dt-bindings/clock/light-visys.h>
 #include <dt-bindings/clock/light-dspsys.h>
+#include <dt-bindings/clock/light-audiosys.h>
 #include <dt-bindings/firmware/thead/rsrc.h>
 #include <dt-bindings/soc/thead,light-iopmp.h>
 #include <dt-bindings/thermal/thermal.h>
@@ -35,7 +37,7 @@
 		i2c3 = &i2c3;
 		i2c4 = &i2c4;
 		audio_i2c0 = &audio_i2c0;
-		audio_i2c1 = &audio_i2c1;
+        audio_i2c1 = &audio_i2c1;
 		mmc0 = &emmc;
 		mmc1 = &sdhci0;
 		serial0 = &uart0;
@@ -56,6 +58,7 @@
 		vivcam4 = &vvcam_sensor4;
 		vivcam5 = &vvcam_sensor5;
         vivcam6 = &vvcam_sensor6;
+        vivcam7 = &vvcam_sensor7;
 
         viv_video0 =  &video0;
         viv_video1 =  &video1;
@@ -95,11 +98,10 @@
 		};
 	};
 
-	aon_iram: aon-iram@ffffef8000 {
-		compatible = "syscon";
-		reg = <0xff 0xffef8000 0x0 0x10000>;
-	};
-
+    aon_iram: aon-iram@ffffef8000 {
+            compatible = "syscon";
+            reg = <0xff 0xffef8000 0x0 0x10000>;
+    };
 
 	thermal-zones {
 		cpu-thermal-zone {
@@ -638,6 +640,12 @@
 		audio_cpr: audio_cpr@ffcb000000 {
 			compatible = "thead,light-audio-cpr-reg", "syscon";
 			reg = <0xff 0xcb000000 0x0 0x1000>;
+			status = "okay";
+		};
+
+		audio_mbox: audio_mbox@0xffefc48000 {
+			compatible = "thead,light-audio-mbox-reg", "syscon";
+			reg = <0xff 0xefc48000 0x0 0x1000>;
 			status = "okay";
 		};
 
@@ -1261,6 +1269,13 @@
 			status = "okay";
 		};
 
+		vpsys_rst: vpsys-reset-controller@ffecc30000 {
+			compatible = "thead,light-vpsys-reset-src","syscon";
+			reg = <0xff 0xecc30000 0x0 0x1000>;
+			#reset-cells = <1>;
+			status = "okay";
+		};
+
 		sys_reg: sys_reg@ffef010100 {
 			compatible = "thead,light_sys_reg";
 			reg = <0xff 0xef010100 0x0 0x100>;
@@ -1413,7 +1428,8 @@
 			clock-names = "pclk", "aclk";
 			vha_clk_rate = <1000000000>;
 			ldo_vha-supply = <&npu>;
-			dma-mask = <0xf 0xffffffff>;
+			dma-mask = <0xff 0xffffffff>;
+			resets = <&rst LIGHT_RESET_NPU>;
 			status = "disabled";
 		};
 
@@ -1442,6 +1458,7 @@
 			clocks = <&vpsys_clk_gate LIGHT_VPSYS_FCE_ACLK>,
 				<&vpsys_clk_gate LIGHT_VPSYS_FCE_PCLK>;
 			clock-names = "aclk", "pclk";
+			resets = <&vpsys_rst LIGHT_RESET_FCE>;
 			dma-mask = <0xf 0xffffffff>;
 			status = "disabled";
 		};
@@ -1491,7 +1508,7 @@
 			compatible = "light,light-i2s";
 			reg = <0xff 0xe7034000 0x0 0x4000>;
 			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_audio_i2s0>;
+			pinctrl-0 = <&pinctrl_light_i2s0>;
 			light,mode = "i2s-master";
 			light,sel = "ap_i2s";
 			interrupt-parent = <&intc>;
@@ -1516,7 +1533,7 @@
 			light,sel = "i2s0";
 			interrupt-parent = <&intc>;
 			interrupts = <174>;
-			dmas = <&dmac2 9>, <&dmac2 16>;
+			dmas = <&dmac2 9>, <&dmac2 8>;
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
@@ -1565,16 +1582,74 @@
 			status = "disabled";
 		};
 
-		i2s3: audio_i2s3@0xffcb017000 {
+		i2s_8ch_sd0: audio_i2s_8ch_sd0@0xffcb017000 {
 			#sound-dai-cells = <1>;
-			compatible = "light,light-i2s";
+			compatible = "light,light-i2s-8ch";
 			reg = <0xff 0xcb017000 0x0 0x1000>;
+			audio-cpr-regmap = <&audio_cpr>;
 			pinctrl-names = "default";
 			light,mode = "i2s-master";
-			light,sel = "i2s3";
+			light,sel = "i2s_8ch_sd0";
 			interrupt-parent = <&intc>;
 			interrupts = <177>;
-			dmas = <&dmac2 14>, <&dmac2 16>;
+			dmas = <&dmac2 36>, <&dmac2 14>;
+			dma-names = "tx", "rx";
+			light,dma_maxburst = <4>;
+			#dma-cells = <1>;
+			clocks = <&dummy_clock_apb>;
+			clock-names = "pclk";
+			status = "disabled";
+		};
+
+		i2s_8ch_sd1: audio_i2s_8ch_sd1@0xffcb017000 {
+			#sound-dai-cells = <1>;
+			compatible = "light,light-i2s-8ch";
+			reg = <0xff 0xcb017000 0x0 0x1000>;
+			audio-cpr-regmap = <&audio_cpr>;
+			pinctrl-names = "default";
+			light,mode = "i2s-master";
+			light,sel = "i2s_8ch_sd1";
+			interrupt-parent = <&intc>;
+			interrupts = <177>;
+			dmas = <&dmac2 37>, <&dmac2 15>;
+			dma-names = "tx", "rx";
+			light,dma_maxburst = <4>;
+			#dma-cells = <1>;
+			clocks = <&dummy_clock_apb>;
+			clock-names = "pclk";
+			status = "disabled";
+		};
+
+		i2s_8ch_sd2: audio_i2s_8ch_sd2@0xffcb017000 {
+			#sound-dai-cells = <1>;
+			compatible = "light,light-i2s-8ch";
+			reg = <0xff 0xcb017000 0x0 0x1000>;
+			audio-cpr-regmap = <&audio_cpr>;
+			pinctrl-names = "default";
+			light,mode = "i2s-master";
+			light,sel = "i2s_8ch_sd2";
+			interrupt-parent = <&intc>;
+			interrupts = <177>;
+			dmas = <&dmac2 38>, <&dmac2 16>;
+			dma-names = "tx", "rx";
+			light,dma_maxburst = <4>;
+			#dma-cells = <1>;
+			clocks = <&dummy_clock_apb>;
+			clock-names = "pclk";
+			status = "disabled";
+		};
+
+		i2s_8ch_sd3: audio_i2s_8ch_sd3@0xffcb017000 {
+			#sound-dai-cells = <1>;
+			compatible = "light,light-i2s-8ch";
+			reg = <0xff 0xcb017000 0x0 0x1000>;
+			audio-cpr-regmap = <&audio_cpr>;
+			pinctrl-names = "default";
+			light,mode = "i2s-master";
+			light,sel = "i2s_8ch_sd3";
+			interrupt-parent = <&intc>;
+			interrupts = <177>;
+			dmas = <&dmac2 39>, <&dmac2 17>;
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
@@ -1584,7 +1659,7 @@
 		};
 
 		tdm_slot1: audio_tdm_slot1@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1599,13 +1674,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot2: audio_tdm_slot2@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1620,13 +1695,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot3: audio_tdm_slot3@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1641,13 +1716,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot4: audio_tdm_slot4@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1662,13 +1737,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot5: audio_tdm_slot5@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1683,13 +1758,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot6: audio_tdm_slot6@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1704,13 +1779,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot7: audio_tdm_slot7@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1725,13 +1800,13 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
 
 		tdm_slot8: audio_tdm_slot8@0xffcb012000 {
-			#sound-dai-cells = <1>;
+			#sound-dai-cells = <0>;
 			compatible = "light,light-tdm";
 			reg = <0xff 0xcb012000 0x0 0x1000>;
 			audio-pin-regmap = <&audio_ioctrl>;
@@ -1746,7 +1821,43 @@
 			dma-names = "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_TDM>;
+			clock-names = "pclk";
+			status = "disabled";
+		};
+
+		spdif0: audio_spdif0@0xffcb018000 {
+			#sound-dai-cells = <0>;
+			compatible = "light,light-spdif";
+			reg = <0xff 0xcb018000 0x0 0x1000>;
+			audio-pin-regmap = <&audio_ioctrl>;
+			audio-cpr-regmap = <&audio_cpr>;
+			pinctrl-names = "default";
+			interrupt-parent = <&intc>;
+			interrupts = <179>;
+			dmas = <&dmac2 25>, <&dmac2 24>;
+			dma-names = "tx", "rx";
+			light,dma_maxburst = <4>;
+			#dma-cells = <1>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_SPDIF0>;
+			clock-names = "pclk";
+			status = "disabled";
+		};
+
+		spdif1: audio_spdif1@0xffcb019000 {
+			#sound-dai-cells = <0>;
+			compatible = "light,light-spdif";
+			reg = <0xff 0xcb019000 0x0 0x1000>;
+			audio-pin-regmap = <&audio_ioctrl>;
+			audio-cpr-regmap = <&audio_cpr>;
+			pinctrl-names = "default";
+			interrupt-parent = <&intc>;
+			interrupts = <180>;
+			dmas = <&dmac2 27>, <&dmac2 26>;
+			dma-names = "tx", "rx";
+			light,dma_maxburst = <4>;
+			#dma-cells = <1>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_SPDIF1>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1770,6 +1881,10 @@
 			interrupts = <44>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac0 12>, <&dmac0 13>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x104>;
 			ss_lcnt = /bits/ 16 <0xec>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1789,6 +1904,10 @@
 			interrupts = <45>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac0 14>, <&dmac0 15>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x104>;
 			ss_lcnt = /bits/ 16 <0xec>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1808,6 +1927,10 @@
 			interrupts = <46>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac0 16>, <&dmac0 17>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x104>;
 			ss_lcnt = /bits/ 16 <0xec>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1829,6 +1952,10 @@
 			interrupts = <47>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac0 18>, <&dmac0 19>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x104>;
 			ss_lcnt = /bits/ 16 <0xec>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1850,6 +1977,10 @@
 			interrupts = <48>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac0 20>, <&dmac0 21>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x104>;
 			ss_lcnt = /bits/ 16 <0xec>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1871,6 +2002,10 @@
 			interrupts = <182>;
 			clocks = <&dummy_clock_apb>;
 			clock-frequency = <100000>;
+            i2c_mode = "dma";
+			dmas = <&dmac2 21>, <&dmac2 20>;
+			dma-names = "tx", "rx";
+			#dma-cells = <1>;
 			ss_hcnt = /bits/ 16 <0x82>;
 			ss_lcnt = /bits/ 16 <0x78>;
 			fs_hcnt = /bits/ 16 <0x37>;
@@ -1883,26 +2018,30 @@
 			#size-cells = <0>;
 		};
 
-		audio_i2c1: i2c@0xffcb01b000 {
-			compatible = "snps,designware-i2c";
-			reg = <0xff 0xcb01b000 0x0 0x1000>;
-			interrupt-parent = <&intc>;
-			interrupts = <183>;
-			clocks = <&dummy_clock_apb>;
-			clock-frequency = <100000>;
-			ss_hcnt = /bits/ 16 <0x82>;
-			ss_lcnt = /bits/ 16 <0x78>;
-			fs_hcnt = /bits/ 16 <0x37>;
-			fs_lcnt = /bits/ 16 <0x42>;
-			fp_hcnt = /bits/ 16 <0x14>;
-			fp_lcnt = /bits/ 16 <0x1a>;
-			hs_hcnt = /bits/ 16 <0x5>;
-			hs_lcnt = /bits/ 16 <0x15>;
-			status = "disabled";
+        audio_i2c1: i2c@0xffcb01b000 {
+                compatible = "snps,designware-i2c";
+                reg = <0xff 0xcb01b000 0x0 0x1000>;
+                interrupt-parent = <&intc>;
+                interrupts = <183>;
+                clocks = <&dummy_clock_apb>;
+                clock-frequency = <100000>;
+                i2c_mode = "dma";
+			    dmas = <&dmac2 23>, <&dmac2 22>;
+			    dma-names = "tx", "rx";
+			    #dma-cells = <1>;
+                ss_hcnt = /bits/ 16 <0x82>;
+                ss_lcnt = /bits/ 16 <0x78>;
+                fs_hcnt = /bits/ 16 <0x37>;
+                fs_lcnt = /bits/ 16 <0x42>;
+                fp_hcnt = /bits/ 16 <0x14>;
+                fp_lcnt = /bits/ 16 <0x1a>;
+                hs_hcnt = /bits/ 16 <0x5>;
+                hs_lcnt = /bits/ 16 <0x15>;
+                status = "disabled";
 
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
+                #address-cells = <1>;
+                #size-cells = <0>;
+        };
 
 		isp0: isp@ffe4100000 {
 			compatible = "thead,light-isp";
@@ -2183,6 +2322,11 @@
 			status = "disabled";
 		};
 
+		vvcam_sensor7: vvcam_sensor@7 {
+			compatible = "thead,light-vvcam-sensor";
+			status = "disabled";
+		};
+
 		xtensa_dsp: dsp@01{
 			compatible = "thead,dsp-hw-common";
 			reg = <0xff 0xef040000 0x0 0x001000 >;   /*DSP_SYSREG(0x0000-0xFFF) */
@@ -2332,11 +2476,11 @@
 			interrupts = <215>; /* TEE INT SRC_7 */
 		};
 
-		light_event: light-event {
-			compatible = "thead,light-event";
-			aon-iram-regmap = <&aon_iram>;
-			status = "okay";
-		};
+        light_event: light-event {
+                compatible = "thead,light-event";
+                aon-iram-regmap = <&aon_iram>;
+                status = "okay";
+        };
 
 		visys_clk_gate: visys-clk-gate { /* VI_SYSREG_R */
 			compatible = "thead,visys-gate-controller";
@@ -2362,6 +2506,13 @@
 		dspsys_clk_gate: dspsys-clk-gate {
 			compatible = "thead,dspsys-gate-controller";
 			dspsys-regmap = <&dspsys_reg>;
+			#clock-cells = <1>;
+			status = "okay";
+		};
+
+		audiosys_clk_gate: audiosys-clk-gate {
+			compatible = "thead,audiosys-gate-controller";
+			audiosys-regmap = <&audio_cpr>;
 			#clock-cells = <1>;
 			status = "okay";
 		};

@@ -28,6 +28,7 @@
 #include <sound/tlv.h>
 #include <sound/initval.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include "es7210.h"
 
 
@@ -279,18 +280,47 @@ static int es7210_set_dai_fmt(struct snd_soc_dai *codec_dai,
 }
 static void es7210_tdm_init_ratio(struct es7210_priv *priv)
 {
-        int cnt, channel, i;
+        int cnt, channel, i, width;
 
-        if (priv->tdm_mode == ES7210_TDM_1LRCK_DSPB) {
-                if (priv->pcm_format == SNDRV_PCM_FORMAT_S16_LE) {
+        channel = ES7210_CHANNELS_MAX;
+
+        switch(priv->tdm_mode) {
+                case ES7210_TDM_1LRCK_DSPB:
+                        switch(priv->pcm_format) {
+                                case SNDRV_PCM_FORMAT_S16_LE:
+                                        width = 16;
+                                        break;
+                                case SNDRV_PCM_FORMAT_S32_LE:
+                                        width = 32;
+                        }
+                        break;
+                case ES7210_NORMAL_I2S:
+                        width = 32;
+                        if (channel > 2) // i2s 8ch has 2 channels in actual.
+                                channel = 2;
+                        break;
+                default:
+                        break;
+        }
+        
+        priv->sclk_lrck_ratio = channel * width ;
+
+        switch(priv->sclk_lrck_ratio * priv->mclk_sclk_ratio) {
+                case 64:
+                        priv->mclk_lrck_ratio = RATIO_64;
+                        break;
+                case 128:
                         priv->mclk_lrck_ratio = RATIO_128;
-                } else if (priv->pcm_format == SNDRV_PCM_FORMAT_S32_LE) {
+                        break;
+                case 256:
                         priv->mclk_lrck_ratio = RATIO_256;
-                } else {
-                        pr_err("unsupported format in es7210 tdm mode!");
-                }
-        } else { // ratio remain default for i2s
-                priv->mclk_lrck_ratio = RATIO_768;
+                        break;
+                case 768:
+                        priv->mclk_lrck_ratio = RATIO_768;
+                        break;
+                default:
+                        pr_err("%s Unable to calculate proper mclk_lrck_ratio with sclk_lrck_ratio=%d!\n", __func__, priv->sclk_lrck_ratio);
+                        break;
         }
 
         switch (priv->tdm_mode) {
@@ -898,15 +928,24 @@ static int es7210_probe(struct snd_soc_component *component)
         int ret = 0;
         resume_es7210 = es7210;
 
-        if (ret < 0) {
-                dev_err(component->dev, "Failed to set cache I/O: %d\n", ret);
+        /* power up the controller */
+        if (es7210->mvdd)
+                ret |= regulator_enable(es7210->mvdd);
+        if (es7210->avdd)
+                ret |= regulator_enable(es7210->avdd);
+        if (es7210->dvdd)
+                ret |= regulator_enable(es7210->dvdd);
+        if (es7210->pvdd)
+                ret |= regulator_enable(es7210->pvdd);
+        if (ret) {
+                pr_err("Failed to enable VDD regulator: %d\n", ret);
                 return ret;
         }
 
         tron_codec1[es7210_codec_num++] = component;
 
         INIT_DELAYED_WORK(&es7210->pcm_pop_work, pcm_pop_work_events);
-        
+
         for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
                 /* es7210 chip id */
                 ret = es7210_read(0x3D, &val, i2c_clt1[cnt]);
@@ -923,7 +962,20 @@ exit_i2c_check_id_failed:
         return 0;
 }
 
+static void es7210_remove(struct snd_soc_component *component)
+{
+        struct es7210_priv *es7210 = snd_soc_component_get_drvdata(component);
 
+        /* power down the controller */
+        if (es7210->pvdd)
+                regulator_disable(es7210->pvdd);
+        if (es7210->dvdd)
+                regulator_disable(es7210->dvdd);
+        if (es7210->avdd)
+                regulator_disable(es7210->avdd);
+        if (es7210->mvdd)
+                regulator_disable(es7210->mvdd);
+}
 
 static int es7210_set_bias_level(struct snd_soc_component *component,
                                  enum snd_soc_bias_level level)
@@ -1654,6 +1706,7 @@ static const struct snd_kcontrol_new es7210_snd_controls[] = {
 static struct snd_soc_component_driver soc_codec_dev_es7210 = {
         .name = "es7210",
         .probe = es7210_probe,
+        .remove = es7210_remove,
         .suspend = es7210_suspend,
         .resume = es7210_resume,
         .set_bias_level = es7210_set_bias_level,
@@ -1733,7 +1786,6 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
         struct es7210_priv *es7210;
         struct device_node *np = i2c_client->dev.of_node;
         char* property;
-        
         int ret;
 
         es7210 = devm_kzalloc(&i2c_client->dev, sizeof(struct es7210_priv),
@@ -1776,6 +1828,35 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
                 ADC_DEV_MAXNUM =  1;
         }
         //printk("%s es7210->tdm_mode=%d channels-max=%d ADC_DEV_MAXNUM=%d\n", __func__, es7210->tdm_mode, ES7210_CHANNELS_MAX, ADC_DEV_MAXNUM);
+
+        es7210->mvdd = devm_regulator_get(&i2c_client->dev, "MVDD");
+        if (IS_ERR(es7210->mvdd)) {
+                ret = PTR_ERR(es7210->mvdd);
+                dev_warn(&i2c_client->dev, "Failed to get MVDD regulator: %d\n", ret);
+                es7210->mvdd = NULL;
+        }
+        es7210->avdd = devm_regulator_get(&i2c_client->dev, "AVDD");
+        if (IS_ERR(es7210->avdd)) {
+                ret = PTR_ERR(es7210->avdd);
+                dev_warn(&i2c_client->dev, "Failed to get AVDD regulator: %d\n", ret);
+                es7210->avdd = NULL;
+        }
+        es7210->dvdd = devm_regulator_get(&i2c_client->dev, "DVDD");
+        if (IS_ERR(es7210->dvdd)) {
+                ret = PTR_ERR(es7210->dvdd);
+                dev_warn(&i2c_client->dev, "Failed to get DVDD regulator: %d\n", ret);
+                es7210->dvdd = NULL;
+        }
+        es7210->pvdd = devm_regulator_get(&i2c_client->dev, "PVDD");
+        if (IS_ERR(es7210->pvdd)) {
+                ret = PTR_ERR(es7210->pvdd);
+                dev_warn(&i2c_client->dev, "Failed to get PVDD regulator: %d\n", ret);
+                es7210->pvdd = NULL;
+        }
+
+        if (of_property_read_u32(np, "mclk-sclk-ratio", &es7210->mclk_sclk_ratio) != 0) {
+                es7210->mclk_sclk_ratio = 1;
+        }
 
         i2c_set_clientdata(i2c_client, es7210);
         if (i2c_id->driver_data < ADC_DEV_MAXNUM) {

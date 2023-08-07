@@ -199,6 +199,12 @@
 			csi_idx = <0xff>;
 			path_type = "SENSOR_VGA_RAW10_LINER";
 		};
+		sensor2 {
+			subdev_name = "vivcam";
+			idx = <0xff>; // invalid
+			csi_idx = <0xff>;
+			path_type = "SENSOR_VGA_RAW10_LINER";
+		};
 		dma {
 			subdev_name = "vipre";
 			idx = <0>;

@@ -22,6 +22,7 @@
 #include <linux/reset.h>
 
 #include "i2c-designware-core.h"
+#include "i2c-designware-master_dma.h"
 
 static void i2c_dw_configure_fifo_master(struct dw_i2c_dev *dev)
 {
@@ -257,7 +258,13 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 
 	/* Clear and enable interrupts */
 	regmap_read(dev->map, DW_IC_CLR_INTR, &dummy);
-	regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK);
+
+	if (dev->dw_i2c_enable_dma) {
+		i2c_dw_xfer_dma_init(dev);
+		regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK & (~DW_IC_INTR_TX_EMPTY));
+	} else {
+		regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK);
+	}
 }
 
 /*
@@ -289,9 +296,9 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 		 * adapter when we are done with this transfer.
 		 */
 		if (msgs[dev->msg_write_idx].addr != addr) {
-			dev_err(dev->dev,
-				"%s: invalid target address\n", __func__);
 			dev->msg_err = -EINVAL;
+            dev_err(dev->dev,
+				"%s: invalid target address\n", __func__);
 			break;
 		}
 
@@ -476,6 +483,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	dev->msg_read_idx = 0;
 	dev->msg_err = 0;
 	dev->status = STATUS_IDLE;
+	dev->tx_status = STATUS_IDLE;
 	dev->abort_source = 0;
 	dev->rx_outstanding = 0;
 
@@ -491,6 +499,16 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	i2c_dw_xfer_init(dev);
 
 	/* Wait for tx to complete */
+    if (dev->dw_i2c_enable_dma) {
+        if(i2c_dw_dma_tx_transfer(dev, adap->timeout) != 0) {
+    		dev_err(dev->dev, "i2c dw dma transfer error\n");
+    		i2c_recover_bus(&dev->adapter);
+    		i2c_dw_init_master(dev);
+    		ret = -ETIMEDOUT;
+    		goto done;
+        }
+    }
+
 	if (!wait_for_completion_timeout(&dev->cmd_complete, adap->timeout)) {
 		dev_err(dev->dev, "controller timed out\n");
 		/* i2c_dw_init implicitly disables the adapter */
@@ -527,15 +545,21 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		goto done;
 	}
 
-	if (dev->status)
-		dev_err(dev->dev,
-			"transfer terminated early - interrupt latency too high?\n");
+	if (dev->status || dev->tx_status) {
+		dev_err(dev->dev, "transfer terminated early - interrupt latency too high? sta 0x%x\n", dev->status);
+
+		dev_err(dev->dev, "laststa 0x%x, laststatus 0x%x\n", dev->laststat, dev->laststatus);
+		dev_err(dev->dev, "dev->tx_status 0x%x\n", dev->tx_status);
+		dev_err(dev->dev, "dev->rx_outstanding %d\n", dev->rx_outstanding);
+    }
 
 	ret = -EIO;
 
 done:
+	if (dev->dw_i2c_enable_dma) {
+		i2c_dw_xfer_dma_deinit(dev);
+	}
 	i2c_dw_release_lock(dev);
-
 done_nolock:
 	pm_runtime_mark_last_busy(dev->dev);
 	pm_runtime_put_autosuspend(dev->dev);
@@ -631,8 +655,9 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 	if (stat & DW_IC_INTR_RX_FULL)
 		i2c_dw_read(dev);
 
-	if (stat & DW_IC_INTR_TX_EMPTY)
+	if (stat & DW_IC_INTR_TX_EMPTY) {
 		i2c_dw_xfer_msg(dev);
+    }
 
 	/*
 	 * No need to modify or disable the interrupt mask here.
@@ -645,9 +670,11 @@ tx_aborted:
 	if ((stat & DW_IC_INTR_TX_ABRT) || dev->msg_err ||
 			((status & DW_IC_STATUS_TFE) &&
 			 (!(status & DW_IC_STATUS_RFNE)) &&
-			 (!(status & DW_IC_STATUS_MASTER_ACTIVITY))))
+			 (!(status & DW_IC_STATUS_MASTER_ACTIVITY)))) {
 		complete(&dev->cmd_complete);
-	else if (unlikely(dev->flags & ACCESS_INTR_MASK)) {
+        dev->laststat = stat;
+        dev->laststatus = status;
+    } else if (unlikely(dev->flags & ACCESS_INTR_MASK)) {
 		/* Workaround to trigger pending interrupt */
 		regmap_read(dev->map, DW_IC_INTR_MASK, &stat);
 		i2c_dw_disable_int(dev);
@@ -747,9 +774,25 @@ int i2c_dw_probe_master(struct dw_i2c_dev *dev)
 {
 	struct i2c_adapter *adap = &dev->adapter;
 	unsigned long irq_flags;
+    struct device_node *np;
 	int ret;
+    const char *i2c_mode;
+
+	//default used interrupt mode
+	dev->dw_i2c_enable_dma = 0;
+
+	np = dev->dev->of_node;
+	ret = of_property_read_string(np, "i2c_mode", &i2c_mode);
+	if (ret == 0) {
+		if (strcmp(i2c_mode, "dma") == 0) {
+			dev->dw_i2c_enable_dma = 1;
+		}
+	}
 
 	init_completion(&dev->cmd_complete);
+    if (dev->dw_i2c_enable_dma) {
+    	init_completion(&dev->dma.dma_complete);
+    }
 
 	dev->init = i2c_dw_init_master;
 	dev->disable = i2c_dw_disable;
@@ -787,10 +830,10 @@ int i2c_dw_probe_master(struct dw_i2c_dev *dev)
 
 	i2c_dw_disable_int(dev);
 	ret = devm_request_irq(dev->dev, dev->irq, i2c_dw_isr, irq_flags,
-			       dev_name(dev->dev), dev);
+              	   dev_name(dev->dev), dev);
 	if (ret) {
 		dev_err(dev->dev, "failure requesting irq %i: %d\n",
-			dev->irq, ret);
+    			dev->irq, ret);
 		return ret;
 	}
 

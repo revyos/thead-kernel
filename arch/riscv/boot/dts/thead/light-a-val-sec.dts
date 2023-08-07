@@ -5,9 +5,13 @@
 
 /dts-v1/;
 
-#include "light-a-val-dsi0-hdmi-audio.dts"
+#include "light-a-val-audio-hdmi.dts"
 
 
 &light_iopmp {
         status = "disabled";
 };
+&qspi1 {
+        status = "disabled";
+};
+

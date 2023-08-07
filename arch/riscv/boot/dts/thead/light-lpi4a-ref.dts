@@ -172,7 +172,8 @@
 		compatible = "thead,light-mbox-client";
 		mbox-names = "906";
 		mboxes = <&mbox_910t 2 0>;
-		status = "disabled";
+		audio-mbox-regmap = <&audio_mbox>;
+		status = "okay";
 	};
 
 	lightsound: lightsound@1 {
@@ -183,6 +184,20 @@
 		#size-cells = <0>;
 
 		status = "disabled";
+	};
+
+	light_rpmsg: light_rpmsg {
+		compatible = "light,rpmsg-bus", "simple-bus";
+		memory-region = <&rpmsgmem>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		rpmsg: rpmsg{
+			vdev-nums = <1>;
+            reg = <0x0 0x1E000000 0 0x10000>;
+			compatible = "light,light-rpmsg";
+			status = "okay";
+		};
 	};
 
 	dummy_codec: dummy_codec {
@@ -289,7 +304,6 @@
 			regulator-name = "soc_aud_3v3_en";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
-			gpio = <&pcal6408ahk_a 1 1>;
 			enable-active-high;
 			regulator-always-on;
 		};
@@ -299,7 +313,6 @@
 			regulator-name = "soc_aud_1v8_en";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-			gpio = <&pcal6408ahk_a 0 1>;
 			enable-active-high;
 			regulator-always-on;
 		};
@@ -369,6 +382,7 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			gpio = <&pcal6408ahk_b 1 1>;
+			regulator-always-on;
 			enable-active-high;
 		};
 
@@ -378,6 +392,7 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			gpio = <&pcal6408ahk_b 2 1>;
+			regulator-always-on;
 			enable-active-high;
 		};
 
@@ -387,6 +402,7 @@
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			gpio = <&pcal6408ahk_b 0 1>;
+			regulator-always-on;
 			enable-active-high;
 		};
 
@@ -644,6 +660,14 @@
 		reg = <0x0 0x17000000 0 0x02000000>;
 		no-map;
 	};
+    audio_mem: memory@32000000 {
+		reg = <0x0 0x32000000 0x0 0x6400000>;
+		no-map;
+    };
+	rpmsgmem: memory@1E000000 {
+		reg = <0x0 0x1E000000 0x0 0x10000>;
+		no-map;
+	};
 
 };
 
@@ -656,12 +680,19 @@
 &audio_i2c0 {
 	clock-frequency = <100000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audiopa29>,
+				<&pinctrl_audiopa30>,
+				<&pinctrl_audio_i2c0>;
 
 	es8156_audio_codec: es8156@8 {
 		#sound-dai-cells = <0>;
 		compatible = "everest,es8156";
 		reg = <0x08>;
 		sound-name-prefix = "ES8156";
+		AVDD-supply = <&soc_aud_3v3_en_reg>;
+		DVDD-supply = <&soc_aud_1v8_en_reg>;
+		PVDD-supply = <&soc_aud_1v8_en_reg>;
 	};
 
 	es7210_audio_codec: es7210@40 {
@@ -669,34 +700,33 @@
 		compatible = "MicArray_0";
 		reg = <0x40>;
 		sound-name-prefix = "ES7210";
+		MVDD-supply = <&soc_aud_3v3_en_reg>;
+		AVDD-supply = <&soc_aud_3v3_en_reg>;
+		DVDD-supply = <&soc_aud_1v8_en_reg>;
+		PVDD-supply = <&soc_aud_1v8_en_reg>;
 	};
 
 	audio_aw87519_pa: amp@58 {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x58>;
-		reset-gpio = <&pcal6408ahk_a 2 0x1>;
 		sound-name-prefix = "AW87519";
-		status = "okay";
+		status = "disabled";
 	};
 
 	audio_aw87519_pa1@5b {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x5b>;
-		reset-gpio = <&pcal6408ahk_a 3 0x1>;
 		status = "disabled";
 	};
 
-	pcal6408ahk_a: gpio@20 {
-		compatible = "nxp,pca9557";
-		reg = <0x18>;
-		gpio-controller;
-		#gpio-cells = <2>;
-	};
 };
 
 &audio_i2c1 {
 	clock-frequency = <100000>;
 	status = "okay";
+	pinctrl-0 = <&pinctrl_audiopa6>,
+				<&pinctrl_audiopa7>,
+				<&pinctrl_audio_i2c1>;
 
 	es8156_audio_codec_1: es8156@8 {
 		#sound-dai-cells = <0>;
@@ -715,14 +745,12 @@
 	audio_aw87519_pa2@58 {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x58>;
-		reset-gpio = <&pcal6408ahk_a 4 0x1>;
 		status = "disabled";
 	};
 
 	audio_aw87519_pa3@5b {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x5b>;
-		reset-gpio = <&pcal6408ahk_a 5 0x1>;
 		status = "disabled";
 	};
 };
@@ -759,7 +787,7 @@
 	num-cs = <1>;
 	cs-gpios = <&gpio2_porta 3 0>;
 	rx-sample-dly = <4>;
-	status = "okay";
+	status = "disabled";
 
 	spi-flash@0 {
 		#address-cells = <1>;
@@ -894,7 +922,7 @@
 				>;
 			};
 
-			pinctrl_audio_i2s0: i2s0grp {
+			pinctrl_light_i2s0: i2s0grp {
 				thead,pins = <
 					FM_QSPI0_SCLK    0x2    0x208
 					FM_QSPI0_CSN0    0x2    0x238
@@ -982,7 +1010,84 @@
 					FM_AUDIO_PA2	0x0	0x72
 				>;
 			};
+			pinctrl_audiopa6: audiopa6 {
+				thead,pins = < FM_AUDIO_PA6 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa7: audiopa7 {
+				thead,pins = < FM_AUDIO_PA7 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa14: audiopa14 {
+				thead,pins = < FM_AUDIO_PA14 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa15: audiopa15 {
+				thead,pins = < FM_AUDIO_PA15 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa16: audiopa16 {
+				thead,pins = < FM_AUDIO_PA16 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa17: audiopa17 {
+				thead,pins = < FM_AUDIO_PA17 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa18: audiopa18 {
+				thead,pins = < FM_AOGPIO_7 LIGHT_PIN_FUNC_1 0x000 >;
+			};
+			pinctrl_audiopa19: audiopa19 {
+				thead,pins = < FM_AOGPIO_8 LIGHT_PIN_FUNC_1 0x000 >;
+			};
+			pinctrl_audiopa21: audiopa21 {
+				thead,pins = < FM_AOGPIO_10 LIGHT_PIN_FUNC_1 0x000 >;
+			};
+			pinctrl_audiopa22: audiopa22 {
+				thead,pins = < FM_AOGPIO_11 LIGHT_PIN_FUNC_1 0x000 >;
+			};
+			pinctrl_audiopa29: audiopa29 {
+				thead,pins = < FM_AUDIO_PA29 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+			pinctrl_audiopa30: audiopa30 {
+				thead,pins = < FM_AUDIO_PA30 LIGHT_PIN_FUNC_0 0x000 >;
+			};
 
+	};
+};
+
+&padctrl_audiosys {
+
+	status = "okay";
+
+	light-audio-padctrl {
+		/*
+		 * Pin Configuration Node:
+		 * Format: <pin_id mux_node config>
+		 */
+
+		pinctrl_audio_i2c0: audio_i2c0_grp {
+			thead,pins = <
+				FM_AUDIO_IO_PA29     LIGHT_PIN_FUNC_2 0x004
+				FM_AUDIO_IO_PA30     LIGHT_PIN_FUNC_2 0x004
+			>;
+		};
+		pinctrl_audio_i2c1: audio_i2c1_grp {
+			thead,pins = <
+				FM_AUDIO_IO_PA6     LIGHT_PIN_FUNC_2 0x004
+				FM_AUDIO_IO_PA7     LIGHT_PIN_FUNC_2 0x004
+			>;
+		};
+		pinctrl_audio_i2s1: audio_i2s1_grp {
+			thead,pins = <
+				FM_AUDIO_IO_PA14   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA15   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA16   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA17   LIGHT_PIN_FUNC_0 0x008
+			>;
+		};
+		pinctrl_audio_i2s2: audio_i2s2_grp {
+			thead,pins = <
+				FM_AUDIO_IO_PA18   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA19   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA21   LIGHT_PIN_FUNC_0 0x008
+				FM_AUDIO_IO_PA22   LIGHT_PIN_FUNC_0 0x008
+			>;
+		};
 	};
 };
 
@@ -1146,6 +1251,24 @@
     status = "okay";
 };
 
+&vvcam_sensor3 {//cam3 csi0 modified
+	sensor_name = "OV5693";
+	sensor_regulators = "soc_dovdd18_rgb", "soc_dvdd12_rgb", "soc_avdd28_rgb";
+	sensor_regulator_voltage_uV = <1800000 1200000 2800000>;
+	sensor_regulator_timing_us = <70 50 20>;
+	sensor_pdn = <&gpio1_porta 28 0>; //powerdown pin / shutdown pin 
+	sensor_rst 	= <&pcal6408ahk_c 1 0>;
+	sensor_pdn_delay_us = <4000>; //powerdown pin / shutdown pin actived till I2C ready
+	DOVDD18_RGB-supply = <&soc_dovdd18_rgb_reg>;
+	DVDD12_RGB-supply = <&soc_dvdd12_rgb_reg>;
+	AVDD28_RGB-supply = <&soc_avdd28_rgb_reg>;
+	i2c_reg_width = /bits/ 8 <2>;
+	i2c_data_width = /bits/ 8 <1>;
+	i2c_addr = /bits/ 8 <0x36>;
+	i2c_bus = /bits/ 8 <0>;
+	status = "okay";
+};
+
 &video2 {
     vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	status = "okay";
@@ -1154,10 +1277,17 @@
 		status = "okay";
 		sensor0 {
 			subdev_name = "vivcam";
-			idx = <0>; 
+			idx = <0>;
 			csi_idx = <0>;
 			mode_idx = <0>;
 			path_type = "SENSOR_VGA_RAW12_LINER";
+		};
+		sensor1 {
+			subdev_name = "vivcam";
+			idx = <3>;
+			csi_idx = <0>;
+			mode_idx = <1>;
+			path_type = "SENSOR_2592x1944_LINER";
 		};
 		dma {
 			subdev_name = "vipre";
@@ -1169,8 +1299,8 @@
 			idx = <1>;
 			path_type = "ISP_MI_PATH_MP";
             output {
-				max_width = <1920>;
-				max_height = <1088>;
+				max_width = <2600>;
+				max_height = <2000>;
 				bit_per_pixel = <12>;
 				frame_count = <3>;
 			};
@@ -1190,6 +1320,13 @@
 			mode_idx = <0>;
 			path_type = "SENSOR_VGA_RAW12_LINER";
 
+		};
+		sensor1 {
+			subdev_name = "vivcam";
+			idx = <3>;
+			csi_idx = <0>;
+			mode_idx = <1>;
+			path_type = "SENSOR_2592x1944_LINER";
 		};
         dma {
             subdev_name = "vipre";
@@ -1328,15 +1465,22 @@
         status = "okay";
 		sensor0 {
 			subdev_name = "vivcam";
-			idx = <2>;
-			csi_idx = <1>; //csi_b
+			idx = <0>;
+			csi_idx = <0>;
 			mode_idx = <0>;
-			path_type = "SENSOR_1080X1280_30FPS_RAW10_LINER";
+			path_type = "SENSOR_VGA_RAW12_LINER";
+		};
+		sensor1 {
+			subdev_name = "vivcam";
+			idx = <3>;
+			csi_idx = <0>;
+			mode_idx = <1>;
+			path_type = "SENSOR_2592x1944_LINER";
 		};
 		dma {
 			subdev_name = "vipre";
 			idx = <0>;
-            path_type = "VIPRE_CSI1_DDR";
+			path_type = "VIPRE_CSI0_DDR";
 		};
     };
 };
@@ -1464,11 +1608,6 @@
 
 &lightsound {
         status = "okay";
-        simple-audio-card,widgets = "Speaker", "Speaker";
-        simple-audio-card,routing = 
-        	"Speaker", "AW87519 VO",
-        	"AW87519 IN", "ES8156 ROUT";
-        simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
                 format = "i2s";
@@ -1483,10 +1622,20 @@
                 reg = <1>;
                 format = "i2s";
                 cpu {
-                        sound-dai = <&i2s1 1>;
+                        sound-dai = <&i2s1 0>;
                 };
                 codec {
                         sound-dai = <&es7210_audio_codec>;
+                };
+        };
+        simple-audio-card,dai-link@2 {          /* I2S - HDMI*/
+                reg = <2>;
+                format = "i2s";
+                cpu {
+                        sound-dai = <&light_i2s 1>;
+                };
+                codec {
+                        sound-dai = <&dummy_codec>;
                 };
         };
 };
@@ -1502,14 +1651,22 @@
 &i2s1 {
         status = "okay";
         dmas = <&dmac2 11>, <&dmac2 10>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audiopa14>,
+                    <&pinctrl_audiopa15>,
+                    <&pinctrl_audiopa16>,
+                    <&pinctrl_audiopa17>,
+                    <&pinctrl_audio_i2s1>;
 };
 
 &i2s2 {
         status = "okay";
-};
-
-&i2s3 {
-        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audiopa18>,
+                    <&pinctrl_audiopa19>,
+                    <&pinctrl_audiopa21>,
+                    <&pinctrl_audiopa22>,
+                    <&pinctrl_audio_i2s2>;
 };
 
 &usb_1 {

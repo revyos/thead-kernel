@@ -10,5 +10,10 @@
 
 #define LIGHT_RESET_WDT0    0
 #define LIGHT_RESET_WDT1    1
+#define LIGHT_RESET_NPU    	2
+
+// vpsys reset
+#define LIGHT_RESET_FCE    	100
+
 #endif
 

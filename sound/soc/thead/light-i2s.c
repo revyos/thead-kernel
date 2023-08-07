@@ -18,6 +18,7 @@
 #include <sound/sh_fsi.h>
 #include "light-i2s.h"
 #include "light-pcm.h"
+#include "light-audio-cpr.h"
 #include <linux/dmaengine.h>
 #include <linux/regmap.h>
 #include <sound/core.h>
@@ -54,6 +55,10 @@ static u32 light_special_sample_rates[] = { 11025, 22050, 44100, 88200 };
 static int light_audio_cpr_set(struct light_i2s_priv *chip, unsigned int cpr_off,
                                unsigned int mask, unsigned int val)
 {
+       if(!chip->audio_cpr_regmap) {
+               return 0;
+       }
+
        return regmap_update_bits(chip->audio_cpr_regmap,
                                cpr_off, mask, val);
 }
@@ -62,6 +67,7 @@ static void light_i2s_set_div_sclk(struct light_i2s_priv *chip, u32 sample_rate,
 {
 	u32 div;
 	u32 div0;
+	u32 cpr_div = (IIS_SRC_CLK/AUDIO_IIS_SRC0_CLK)-1;
 	int i;
 	u32 i2s_src_clk = 0;
 
@@ -105,6 +111,7 @@ static void light_i2s_set_div_sclk(struct light_i2s_priv *chip, u32 sample_rate,
 
 	div0 = (div + div % sample_rate) / sample_rate / div_val;
 	writel(div0, chip->regs + I2S_DIV0_LEVEL);
+	light_audio_cpr_set(chip, CPR_PERI_DIV_SEL_REG, CPR_AUDIO_DIV0_SEL_MSK, CPR_AUDIO_DIV0_SEL(cpr_div));
 }
 
 static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
@@ -159,7 +166,8 @@ static void light_i2s_dai_shutdown(struct snd_pcm_substream *substream,
 {
 	struct light_i2s_priv *i2s_private = snd_soc_dai_get_drvdata(dai);
 
-       if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		light_snd_rxctrl(i2s_private, 0);
 
 	clk_disable_unprepare(i2s_private->clk);
@@ -275,7 +283,7 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 		len = 32;
 		break;
 	default:
-		pr_err("Unknown data format\n");
+		pr_err("Unknown data format: %d\n", params_format(params));
 		return -EINVAL;
 	}
 
@@ -371,7 +379,7 @@ static int light_hdmi_dai_hw_params(struct snd_pcm_substream *substream, struct 
 			len = 24;
 			break;
 		default:
-			pr_err("Unknown data format\n");
+			pr_err("Unknown data format: %d\n", params_format(params));
 			return -EINVAL;
 	}
 
@@ -459,7 +467,7 @@ static struct snd_soc_dai_driver light_i2s_soc_dai[] = {
 		.name			= "light-hdmi-dai",
 		.playback = {
 			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
+			.formats	= SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min	= 1,
 			.channels_max	= 2,
 		},
@@ -669,6 +677,9 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "cannot find regmap for audio cpr register\n");
 		} else
 			light_audio_cpr_set(i2s_priv, CPR_PERI_DIV_SEL_REG, CPR_AUDIO_DIV1_SEL_MSK, CPR_AUDIO_DIV1_SEL(5));
+
+		// enable i2s sync
+		light_audio_cpr_set(i2s_priv, CPR_PERI_CTRL_REG, CPR_I2S_SYNC_MSK, CPR_I2S_SYNC_EN);
 	}
 
 	pm_runtime_enable(&pdev->dev);

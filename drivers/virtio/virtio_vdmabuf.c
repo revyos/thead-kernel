@@ -1226,6 +1226,12 @@ static int virtio_vdmabuf_create_dmabuf(struct virtio_vdmabuf *vdmabuf,
 	exp_info.flags = O_RDWR;
 	exp_info.priv = exp_buf;
 
+	unsigned int gfp = GFP_KERNEL;
+	if(attr->flags & VIRTIO_VDAMBUF_DMA32)
+	{
+		gfp |= __GFP_DMA32;
+	}
+
 	switch (heap_type) {
 	case VIRTIO_VDMABUF_HEAP_TYPE_USER:
 		return -EINVAL; /* Not support currently */
@@ -1235,7 +1241,7 @@ static int virtio_vdmabuf_create_dmabuf(struct virtio_vdmabuf *vdmabuf,
 		exp_buf->bp_num = npages;
 
 		for (i = 0; i < npages; i++) {
-			page = alloc_page(GFP_KERNEL);
+			page = alloc_page(gfp);
 			if (!page) {
 				ret = -ENOMEM;
 				goto err_alloc;
@@ -1253,7 +1259,7 @@ static int virtio_vdmabuf_create_dmabuf(struct virtio_vdmabuf *vdmabuf,
 		/* only need 1 bp to record Compound Page */
 		exp_buf->bp_num = 1;
 
-		page = alloc_pages(GFP_KERNEL, get_order(exp_buf->size));
+		page = alloc_pages(gfp, get_order(exp_buf->size));
 		if (!page) {
 			ret = -ENOMEM;
 			goto err_exp;

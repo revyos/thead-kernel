@@ -687,6 +687,7 @@
 	no-mmc;
 	non-removable;
 	io_fixed_1v8;
+	rxclk-sample-delay = <80>;
 	post-power-on-delay-ms = <50>;
 	wprtn_ignore;
 	cap-sd-highspeed;
@@ -729,7 +730,7 @@
 				>;
 			};
 
-			pinctrl_audio_i2s0: i2s0grp {
+			pinctrl_light_i2s0: i2s0grp {
 				thead,pins = <
 					FM_QSPI0_SCLK    0x2    0x208
 					FM_QSPI0_CSN0    0x2    0x238

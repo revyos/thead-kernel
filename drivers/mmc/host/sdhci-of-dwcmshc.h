@@ -36,6 +36,8 @@
 
 #define PHY_SDCLKDL_DC_R    (DWC_MSHC_PTR_PHY_R + 0x1e)
 #define PHY_SMPLDL_CNFG_R   (DWC_MSHC_PTR_PHY_R + 0x20)
+#define SMPLDL_CNFG_EXTDLY_EN 0x0 //1bit
+
 #define PHY_ATDL_CNFG_R     (DWC_MSHC_PTR_PHY_R + 0x21)
 #define INPSEL_CNFG  2 //2bit
 
@@ -72,4 +74,6 @@
 #define POST_CHANGE_DLY 0x13  //2bit
 #define SWIN_TH_VAL 0x18      //9bit
 
+#define AT_STAT_R   (P_VENDOR_SPECIFIC_AREA + 0x44) // 32bit
+#define AT_STAT_CENTER_PH_CODE 0x0 //0-7bit
 #endif /* _SDHCI_OF_DWCMSHC_H_*/

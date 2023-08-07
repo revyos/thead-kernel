@@ -343,6 +343,7 @@
                compatible = "everest,es8156";
                reg = <0x08>;
                sound-name-prefix = "ES8156";
+               status = "disabled";
        };
 
         es7210_audio_codec: es7210@40 {
@@ -350,6 +351,7 @@
                 compatible = "MicArray_0";
                 reg = <0x40>;
                 sound-name-prefix = "ES7210";
+                status = "disabled";
         };
 
 	audio_aw87519_pa: amp@58 {
@@ -492,6 +494,7 @@
 	no-mmc;
 	non-removable;
 	io_fixed_1v8;
+	rxclk-sample-delay = <80>;
 	post-power-on-delay-ms = <50>;
 	wprtn_ignore;
 	cap-sd-highspeed;
@@ -534,7 +537,7 @@
 				>;
 			};
 
-			pinctrl_audio_i2s0: i2s0grp {
+			pinctrl_light_i2s0: i2s0grp {
 				thead,pins = <
 					FM_QSPI0_SCLK    0x2    0x208
 					FM_QSPI0_CSN0    0x2    0x238
@@ -864,22 +867,6 @@
 
 &lightsound {
         status = "disabled";
-};
-
-&light_i2s {
-        status = "okay";
-};
-
-&i2s0 {
-        status = "okay";
-};
-
-&i2s1 {
-        status = "okay";
-};
-
-&i2s3 {
-        status = "okay";
 };
 
 &khvhost {
