@@ -133,7 +133,7 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 #define __io_br()	do {} while (0)
 #define __io_ar(v)	__asm__ __volatile__ ("fence i,r" : : : "memory")
 #define __io_bw()	__asm__ __volatile__ ("fence w,o" : : : "memory")
-#define __io_aw()	mmiowb_set_pending()
+#define __io_aw()	__asm__ __volatile__ ("fence o,w" : : : "memory")
 
 #define readb(c)	({ u8  __v; __io_br(); __v = readb_cpu(c); __io_ar(__v); __v; })
 #define readw(c)	({ u16 __v; __io_br(); __v = readw_cpu(c); __io_ar(__v); __v; })

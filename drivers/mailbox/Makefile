@@ -56,7 +56,7 @@ obj-$(CONFIG_SPRD_MBOX)		+= sprd-mailbox.o
 obj-$(CONFIG_QCOM_IPCC)		+= qcom-ipcc.o
 
 obj-$(CONFIG_THEAD_LIGHT_MBOX)	+= light-mailbox.o
-obj-$(CONFIG_THEAD_LIGHT_MBOX)	+= light-mailbox-client.o
+#obj-$(CONFIG_THEAD_LIGHT_MBOX)	+= light-mailbox-client.o
 
 obj-$(CONFIG_VIRTIO_MAILBOX)	+= virtio-mailbox.o
 obj-$(CONFIG_VIRTIO_MAILBOX_TEST)	+= virtio-mailbox-test.o

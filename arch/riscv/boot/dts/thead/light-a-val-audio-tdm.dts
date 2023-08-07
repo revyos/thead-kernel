@@ -6,6 +6,8 @@
 #include "light-a-val.dts"
 
 &tdm_slot1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audio_tdm>;
 	status = "okay";
 };
 
@@ -45,19 +47,26 @@
                 #sound-dai-cells = <0>;
                 compatible = "MicArray_0";
                 reg = <0x42>;
-		work-mode = "ES7210_TDM_1LRCK_DSPB";
+                work-mode = "ES7210_TDM_1LRCK_DSPB";
                 channels-max = <8>;
                 sound-name-prefix = "ES7210_ADC2";
+                MVDD-supply = <&soc_aud_adc_3v3_en_reg>;
+                AVDD-supply = <&soc_aud_adc_3v3_en_reg>;
+                DVDD-supply = <&soc_dvdd18_aon_reg>;
+                PVDD-supply = <&soc_dvdd18_aon_reg>;
         };
 
         es7210_adc3: es7210@43 {
                 #sound-dai-cells = <0>;
                 compatible = "MicArray_1";
                 reg = <0x43>;
-		work-mode = "ES7210_TDM_1LRCK_DSPB";
+                work-mode = "ES7210_TDM_1LRCK_DSPB";
                 channels-max = <8>;
                 sound-name-prefix = "ES7210_ADC3";
-		status = "okay";
+                MVDD-supply = <&soc_aud_adc_3v3_en_reg>;
+                AVDD-supply = <&soc_aud_adc_3v3_en_reg>;
+                DVDD-supply = <&soc_dvdd18_aon_reg>;
+                PVDD-supply = <&soc_dvdd18_aon_reg>;
         };
 };
 
@@ -65,8 +74,8 @@
         status = "okay";
         simple-audio-card,widgets = "Speaker", "Speaker";
         simple-audio-card,routing = 
-        	"Speaker", "AW87519 VO",
-        	"AW87519 IN", "ES8156 ROUT";
+        	"AW87519 IN", "ES8156 ROUT",
+        	"Speaker", "AW87519 VO";
         simple-audio-card,aux-devs = <&audio_aw87519_pa>;
         simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
                 reg = <0>;
@@ -82,29 +91,85 @@
         simple-audio-card,dai-link@1 {          /* TDM - AUDIO SYS CODEC 7210*/
                 reg = <1>;
                 format = "dsp_b";
-                cpu@0 {
-                        sound-dai = <&tdm_slot1 0>;
+                cpu {
+                        sound-dai = <&tdm_slot1>;
                 };
-                cpu@1 {
-                        sound-dai = <&tdm_slot2 1>;
+                codec {
+                        sound-dai = <&es7210_adc2>;
                 };
-                cpu@2 {
-                        sound-dai = <&tdm_slot3 2>;
+        };
+
+        simple-audio-card,dai-link@2 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot2>;
                 };
-                cpu@3 {
-                        sound-dai = <&tdm_slot4 3>;
+                codec {
+                        sound-dai = <&es7210_adc2>;
                 };
-                cpu@4 {
-                        sound-dai = <&tdm_slot5 4>;
+        };
+
+        simple-audio-card,dai-link@3 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot3>;
                 };
-                cpu@5 {
-                        sound-dai = <&tdm_slot6 5>;
+                codec {
+                        sound-dai = <&es7210_adc2>;
                 };
-                cpu@6 {
-                        sound-dai = <&tdm_slot7 6>;
+        };
+
+        simple-audio-card,dai-link@4 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot4>;
                 };
-                cpu@7 {
-                        sound-dai = <&tdm_slot8 7>;
+                codec {
+                        sound-dai = <&es7210_adc2>;
+                };
+        };
+
+        simple-audio-card,dai-link@5 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot5>;
+                };
+                codec {
+                        sound-dai = <&es7210_adc2>;
+                };
+        };
+
+        simple-audio-card,dai-link@6 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot6>;
+                };
+                codec {
+                        sound-dai = <&es7210_adc2>;
+                };
+        };
+
+        simple-audio-card,dai-link@7 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot7>;
+                };
+                codec {
+                        sound-dai = <&es7210_adc2>;
+                };
+        };
+
+        simple-audio-card,dai-link@8 {
+                reg = <1>;
+                format = "dsp_b";
+                cpu {
+                        sound-dai = <&tdm_slot8>;
                 };
                 codec {
                         sound-dai = <&es7210_adc2>;
@@ -112,14 +177,6 @@
         };
 };
 
-&light_i2s {
-	status = "okay";
-};
-
 &i2s0 {
-        status = "okay";
-};
-
-&i2s3 {
         status = "okay";
 };

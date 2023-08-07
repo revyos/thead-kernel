@@ -11,3 +11,8 @@
 &light_iopmp {
         status = "disabled";
 };
+
+&qspi1 {
+        status = "disabled";
+};
+

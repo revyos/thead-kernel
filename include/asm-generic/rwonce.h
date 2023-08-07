@@ -53,6 +53,7 @@
 #define __WRITE_ONCE(x, val)						\
 do {									\
 	*(volatile typeof(x) *)&(x) = (val);				\
+	smp_mb();							\
 } while (0)
 
 #define WRITE_ONCE(x, val)						\

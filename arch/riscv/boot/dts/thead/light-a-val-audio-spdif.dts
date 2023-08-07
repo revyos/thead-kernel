@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2021 Alibaba Group Holding Limited.
+ */
+
+#include "light-a-val.dts"
+
+&spdif0 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audio_spdif0>;
+	status = "okay";
+};
+
+&spdif1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audio_spdif1>;
+	status = "okay";
+};
+
+&lightsound {
+        status = "okay";
+        simple-audio-card,dai-link@0 {          /* SPDIF0 */
+                reg = <1>;
+                format = "i2s";
+                cpu {
+                        sound-dai = <&spdif0>;
+                };
+                codec {
+                        sound-dai = <&dummy_codec>;
+                };
+        };
+        simple-audio-card,dai-link@1 {          /* SPDIF1 */
+                reg = <1>;
+                format = "i2s";
+                cpu {
+                        sound-dai = <&spdif1>;
+                };
+                codec {
+                        sound-dai = <&dummy_codec>;
+                };
+        };
+};

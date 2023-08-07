@@ -1299,7 +1299,7 @@
 			compatible = "light,light-i2s";
 			reg = <0xff 0xe7034000 0x0 0x4000>;
 			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_audio_i2s0>;
+			pinctrl-0 = <&pinctrl_light_i2s0>;
 			light,mode = "i2s-master";
 			interrupt-parent = <&intc>;
 			interrupts = <70>;

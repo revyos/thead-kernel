@@ -523,7 +523,7 @@
 				>;
 			};
 
-			pinctrl_audio_i2s0: i2s0grp {
+			pinctrl_light_i2s0: i2s0grp {
 				thead,pins = <
 					FM_QSPI0_SCLK    0x2    0x208
 					FM_QSPI0_CSN0    0x2    0x238

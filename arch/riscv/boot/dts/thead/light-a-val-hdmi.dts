@@ -48,7 +48,7 @@
 			sound-dai = <&light_i2s 1>;
 		};
 		codec {
-			sound-dai = <&dummy_codec 2>;
+			sound-dai = <&dummy_codec>;
 		};
 	};
 };

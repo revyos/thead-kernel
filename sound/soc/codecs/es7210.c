@@ -28,6 +28,7 @@
 #include <sound/tlv.h>
 #include <sound/initval.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include "es7210.h"
 
 
@@ -912,7 +913,20 @@ exit_i2c_check_id_failed:
         return 0;
 }
 
+static void es7210_remove(struct snd_soc_component *component)
+{
+        struct es7210_priv *es7210 = snd_soc_component_get_drvdata(component);
 
+        /* power down the controller */
+        if (es7210->pvdd)
+                regulator_disable(es7210->pvdd);
+        if (es7210->dvdd)
+                regulator_disable(es7210->dvdd);
+        if (es7210->avdd)
+                regulator_disable(es7210->avdd);
+        if (es7210->mvdd)
+                regulator_disable(es7210->mvdd);
+}
 
 static int es7210_set_bias_level(struct snd_soc_component *component,
                                  enum snd_soc_bias_level level)

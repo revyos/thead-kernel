@@ -17,7 +17,8 @@ _IOC(_IOC_NONE, 'G', 2, sizeof(struct virtio_vdmabuf_alloc))
 _IOC(_IOC_NONE, 'G', 3, sizeof(struct virtio_vdmabuf_import))
 
 /* dmabuf flag */
-#define VIRTIO_VDAMBUF_NONCACHED	0x1
+#define VIRTIO_VDAMBUF_NONCACHED			0x1
+#define VIRTIO_VDAMBUF_DMA32				0x4
 
 /*
  * Max single alloc size is (768 * PAGE_SIZE) only for

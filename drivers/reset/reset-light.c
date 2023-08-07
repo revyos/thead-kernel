@@ -34,6 +34,11 @@ struct light_src {
 enum light_src_registers {
 	SRC_WDT0		= 0x0034,
 	SRC_WDT1		= 0x0038,
+	SRC_NPU			= 0x01b0,
+};
+
+enum light_vpsys_src_registers {
+	SRC_FCE			= 0x0004,
 };
 
 static int light_reset_update(struct light_src *lightsrc,
@@ -48,6 +53,11 @@ static int light_reset_update(struct light_src *lightsrc,
 static const struct light_src_signal light_src_signals[] = {
 	[LIGHT_RESET_WDT0] = { SRC_WDT0, BIT(0) },
 	[LIGHT_RESET_WDT1] = { SRC_WDT1, BIT(0) },
+	[LIGHT_RESET_NPU] = { SRC_NPU, BIT(0) },
+};
+
+static const struct light_src_signal light_vpsys_src_signals[] = {
+	[LIGHT_RESET_FCE] = { SRC_FCE, BIT(0)|BIT(1)|BIT(4)|BIT(5) },
 };
 
 static struct light_src *to_light_src(struct reset_controller_dev *rcdev)
@@ -94,6 +104,15 @@ static const struct light_src_variant variant_light = {
 	},
 };
 
+static const struct light_src_variant variant_light_vpsys = {
+	.signals = light_vpsys_src_signals,
+	.signals_num = ARRAY_SIZE(light_vpsys_src_signals),
+	.ops = {
+		.assert   = light_reset_assert,
+		.deassert = light_reset_deassert,
+	},
+};
+
 static int light_reset_probe(struct platform_device *pdev)
 {
 	struct light_src *lightsrc;
@@ -123,6 +142,7 @@ static int light_reset_probe(struct platform_device *pdev)
 
 static const struct of_device_id light_reset_dt_ids[] = {
 	{ .compatible = "thead,light-reset-src", .data = &variant_light },
+	{ .compatible = "thead,light-vpsys-reset-src", .data = &variant_light_vpsys },
 };
 MODULE_DEVICE_TABLE(of, light_reset_dt_ids);
 

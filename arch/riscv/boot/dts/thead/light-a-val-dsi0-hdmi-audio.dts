@@ -7,17 +7,6 @@
 
 #include "light-a-val-dsi0-hdmi.dts"
 
-&audio_i2c0 {
-        status = "okay";
-
-        es7210_audio_codec: es7210@40 {
-                #sound-dai-cells = <0>;
-                compatible = "MicArray_0";
-                reg = <0x40>;
-                sound-name-prefix = "ES7210";
-        };
-};
-
 &lightsound {
         status = "okay";
         simple-audio-card,widgets = "Speaker", "Speaker";
@@ -35,14 +24,15 @@
                         sound-dai = <&es8156_audio_codec>;
                 };
         };
+
         simple-audio-card,dai-link@1 {          /* I2S - AUDIO SYS CODEC 7210*/
                 reg = <1>;
                 format = "i2s";
                 cpu {
-                        sound-dai = <&i2s3 0>;
+                        sound-dai = <&i2s_8ch_sd2 2>;
                 };
                 codec {
-                        sound-dai = <&es7210_audio_codec>;
+                        sound-dai = <&es7210_audio_codec_adc0>;
                 };
         };
         simple-audio-card,dai-link@2 {          /* I2S - HDMI */
@@ -58,14 +48,17 @@
 };
 
 &light_i2s {
-        status = "okay";
+	status = "okay";
 };
 
 &i2s0 {
         status = "okay";
 };
 
-&i2s3 {
+&i2s_8ch_sd2 {
         status = "okay";
 };
 
+&es7210_audio_codec_adc0 {
+        status = "okay";
+};
