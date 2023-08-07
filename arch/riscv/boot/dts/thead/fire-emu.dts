@@ -338,16 +338,18 @@
         clock-frequency = <100000>;
         status = "disabled";
 
-       es8156_audio_codec: es8156@8 {
+        es8156_audio_codec: es8156@8 {
                #sound-dai-cells = <0>;
                compatible = "everest,es8156";
                reg = <0x08>;
-       };
+               status = "disabled";
+        };
 
         es7210_audio_codec: es7210@40 {
                 #sound-dai-cells = <0>;
                 compatible = "MicArray_0";
                 reg = <0x40>;
+                status = "disabled";
         };
 };
 
@@ -488,7 +490,7 @@
 				>;
 			};
 
-			pinctrl_audio_i2s0: i2s0grp {
+			pinctrl_light_i2s0: i2s0grp {
 				thead,pins = <
 					FM_QSPI0_SCLK    0x2    0x208
 					FM_QSPI0_CSN0    0x2    0x238

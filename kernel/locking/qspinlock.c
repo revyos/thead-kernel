@@ -94,7 +94,7 @@ struct qnode {
  * progress.
  */
 #ifndef _Q_PENDING_LOOPS
-#define _Q_PENDING_LOOPS	1
+#define _Q_PENDING_LOOPS	9
 #endif
 
 /*

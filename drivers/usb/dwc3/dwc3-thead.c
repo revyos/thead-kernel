@@ -73,6 +73,14 @@
 #define USB3_DRD_PRST		BIT(0)
 #define USB3_DRD_MASK		GENMASK(2, 0)
 
+/* USB as host or device*/
+#define USB_AS_HOST         (true)
+#define USB_AS_DEVICE       (false)
+
+static bool usb_role = USB_AS_HOST;
+module_param(usb_role, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(usb_role, "USB role");
+
 struct dwc3_thead {
 	struct device		*dev;
 	struct platform_device	*dwc3;
@@ -255,9 +263,10 @@ static int dwc3_thead_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, thead);
 	thead->dev = &pdev->dev;
 
-	thead->hubswitch = devm_gpiod_get(dev, "hubswitch", GPIOD_OUT_HIGH);
+	thead->hubswitch = devm_gpiod_get(dev, "hubswitch", (usb_role == USB_AS_DEVICE) ? GPIOD_OUT_LOW : GPIOD_OUT_HIGH);
 	if (IS_ERR(thead->hubswitch))
 		dev_dbg(dev, "no need to get hubswitch GPIO\n");
+	dev_info(dev, "hubswitch usb_role = %d\n", usb_role);
 
 	thead->vbus = devm_regulator_get(dev, "vbus");
 	if (IS_ERR(thead->vbus))

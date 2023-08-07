@@ -145,19 +145,16 @@ EXPORT_SYMBOL_GPL(asoc_simple_parse_card_name);
 
 static int asoc_simple_clk_enable(struct asoc_simple_dai *dai)
 {
-	if (dai) {
-		if (!IS_ERR_OR_NULL(dai->clk))
-			return clk_prepare_enable(dai->clk);
-	}
+	if (dai)
+		return clk_prepare_enable(dai->clk);
+
 	return 0;
 }
 
 static void asoc_simple_clk_disable(struct asoc_simple_dai *dai)
 {
-	if (dai) {
-		if (!IS_ERR_OR_NULL(dai->clk))
-			clk_disable_unprepare(dai->clk);
-	}
+	if (dai)
+		clk_disable_unprepare(dai->clk);
 }
 
 int asoc_simple_parse_clk(struct device *dev,
@@ -185,7 +182,6 @@ int asoc_simple_parse_clk(struct device *dev,
 		clk = devm_get_clk_from_child(dev, dlc->of_node, NULL);
 		if (!IS_ERR(clk))
 			simple_dai->sysclk = clk_get_rate(clk);
-		simple_dai->clk = NULL; // avoid invalid clk pointer like 0x00000000d
 	}
 
 	if (of_property_read_bool(node, "system-clock-direction-out"))
@@ -246,11 +242,7 @@ static int asoc_simple_set_clk_rate(struct asoc_simple_dai *simple_dai,
 	if (clk_get_rate(simple_dai->clk) == rate)
 		return 0;
 
-	if (!IS_ERR_OR_NULL(simple_dai->clk)) {
-		return clk_set_rate(simple_dai->clk, rate);
-	} else {
-		return 0;
-	}
+	return clk_set_rate(simple_dai->clk, rate);
 }
 
 int asoc_simple_hw_params(struct snd_pcm_substream *substream,

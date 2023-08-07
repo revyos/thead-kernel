@@ -521,7 +521,16 @@ static void rpmsg_chrdev_remove(struct rpmsg_device *rpdev)
 	put_device(&ctrldev->dev);
 }
 
+static struct rpmsg_device_id rpmsg_driver_char_id_table[] = {
+        { .name = "rpmsg-virtual-char-channel-1" },
+        { },
+};
+
+
+MODULE_DEVICE_TABLE(rpmsg, rpmsg_driver_char_id_table);
+
 static struct rpmsg_driver rpmsg_chrdev_driver = {
+	.id_table       = rpmsg_driver_char_id_table,
 	.probe = rpmsg_chrdev_probe,
 	.remove = rpmsg_chrdev_remove,
 	.drv = {
