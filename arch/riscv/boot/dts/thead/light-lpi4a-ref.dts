@@ -219,7 +219,7 @@
 			regulator-name = "vref-1v8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-	status = "okay";
+			status = "okay";
 	};
 
         reg_tp_pwr_en: regulator-pwr-en {
@@ -700,13 +700,17 @@
 		compatible = "MicArray_0";
 		reg = <0x40>;
 		sound-name-prefix = "ES7210";
+		MVDD-supply = <&soc_aud_3v3_en_reg>;
+		AVDD-supply = <&soc_aud_3v3_en_reg>;
+		DVDD-supply = <&soc_aud_1v8_en_reg>;
+		PVDD-supply = <&soc_aud_1v8_en_reg>;
 	};
 
 	audio_aw87519_pa: amp@58 {
 		compatible = "awinic,aw87519_pa";
 		reg = <0x58>;
 		sound-name-prefix = "AW87519";
-		status = "okay";
+		status = "disabled";
 	};
 
 	audio_aw87519_pa1@5b {
@@ -720,6 +724,9 @@
 &audio_i2c1 {
 	clock-frequency = <100000>;
 	status = "okay";
+	pinctrl-0 = <&pinctrl_audiopa6>,
+				<&pinctrl_audiopa7>,
+				<&pinctrl_audio_i2c1>;
 
 	es8156_audio_codec_1: es8156@8 {
 		#sound-dai-cells = <0>;
@@ -1564,14 +1571,14 @@
                         sound-dai = <&es7210_audio_codec>;
                 };
         };
-        simple-audio-card,dai-link@2 {          /* I2S - HDMI */
+        simple-audio-card,dai-link@2 {          /* I2S - HDMI*/
                 reg = <2>;
                 format = "i2s";
                 cpu {
                         sound-dai = <&light_i2s 1>;
                 };
                 codec {
-                        sound-dai = <&dummy_codec 2>;
+                        sound-dai = <&dummy_codec>;
                 };
         };
 };
@@ -1619,14 +1626,14 @@
 			300000	650000
 			800000	700000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
 			800000	800000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_1: cpu@1 {
@@ -1635,14 +1642,14 @@
 			300000	650000
 			800000	700000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
 			800000	800000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_2: cpu@2 {
@@ -1652,14 +1659,14 @@
 			300000	650000
 			800000	700000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
 			800000	800000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_3: cpu@3 {
@@ -1669,14 +1676,14 @@
 			300000	650000
 			800000	700000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
 			800000	800000
 			1500000	800000
-			1848000	1000000
+			1848000 1000000
 		>;
 	};
 };
