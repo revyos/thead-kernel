@@ -28,7 +28,6 @@
 #include <sound/tlv.h>
 #include <sound/initval.h>
 #include <linux/regmap.h>
-#include <linux/regulator/consumer.h>
 #include "es7210.h"
 
 
@@ -47,11 +46,8 @@
 #define MIC_CHN_2   2
 
 #define ES7210_TDM_ENABLE   ENABLE
-//#define ES7210_CHANNELS_MAX MIC_CHN_8
+#define ES7210_CHANNELS_MAX MIC_CHN_2
 
-static int ADC_DEV_MAXNUM = 1;
-static int ES7210_CHANNELS_MAX = 1;
-#if 0
 #if ES7210_CHANNELS_MAX == MIC_CHN_2
         #define ADC_DEV_MAXNUM  1
 #endif
@@ -76,7 +72,6 @@ static int ES7210_CHANNELS_MAX = 1;
 #if ES7210_CHANNELS_MAX == MIC_CHN_16
         #define ADC_DEV_MAXNUM  4
 #endif
-#endif
 
 #define ES7210_TDM_1LRCK_DSPA                 0
 #define ES7210_TDM_1LRCK_DSPB                 1
@@ -88,7 +83,7 @@ static int ES7210_CHANNELS_MAX = 1;
 #define ES7210_TDM_NLRCK_LJ                   7
 #define ES7210_NORMAL_I2S                     8
 
-#define ES7210_WORK_MODE    ES7210_TDM_1LRCK_DSPB
+#define ES7210_WORK_MODE    ES7210_NORMAL_I2S
 
 
 #define ES7210_I2C_BUS_NUM      1
@@ -105,16 +100,26 @@ static int ES7210_CHANNELS_MAX = 1;
 #define RATIO_128  0x01
 #define RATIO_64  0x41 /* mclk from bclk pin */
 
-#define ES7210_MCLK_LRCK_RATIO   RATIO_256 // mclk=sclk. mclk/lrck = sclk / lrck = 16bit*4slot=RATIO_64.    32bit*4slot=16bit*8slot=RATIO_128  32bit*8slot=RATIO_256
+#define ES7210_MCLK_LRCK_RATIO   RATIO_64
 
-struct i2c_client *i2c_clt1[4] = {0};
+struct i2c_client *i2c_clt1[ADC_DEV_MAXNUM];
 
 struct es7210_priv *resume_es7210 = NULL;
 
-struct snd_soc_component *tron_codec1[4];
+/* codec private data */
+struct es7210_priv {
+        struct regmap *regmap;
+        struct i2c_client *i2c_client;
+        unsigned int dmic_enable;
+        unsigned int sysclk;
+        struct clk *mclk;
+        struct snd_pcm_hw_constraint_list *sysclk_constraints;
+        unsigned int tdm_mode;
+        struct delayed_work pcm_pop_work;
+};
+struct snd_soc_component *tron_codec1[ADC_DEV_MAXNUM];
 
 int es7210_init_reg = 0;
-int es7210_hw_param_reg = 0;
 static int es7210_codec_num = 0;
 
 static const struct regmap_config es7210_regmap_config = {
@@ -157,6 +162,9 @@ static const struct es7210_reg_config es7210_tdm_reg_fmt_cfg[] = {
 };
 static const struct es7210_reg_config es7210_tdm_reg_common_cfg2[] = {
         { 0x40, 0xC3 },
+        { 0x14, 0x3C },
+        { 0x15, 0x3C },
+        { 0x17, 0x00 },
         { 0x41, 0x70 },
         { 0x42, 0x70 },
         { 0x43, 0x1E },
@@ -278,179 +286,6 @@ static int es7210_set_dai_fmt(struct snd_soc_dai *codec_dai,
 {
         return 0;
 }
-static void es7210_tdm_init_ratio(struct es7210_priv *priv)
-{
-        int cnt, channel, i, width;
-
-        channel = ES7210_CHANNELS_MAX;
-
-        switch(priv->tdm_mode) {
-                case ES7210_TDM_1LRCK_DSPB:
-                        switch(priv->pcm_format) {
-                                case SNDRV_PCM_FORMAT_S16_LE:
-                                        width = 16;
-                                        break;
-                                case SNDRV_PCM_FORMAT_S32_LE:
-                                        width = 32;
-                        }
-                        break;
-                case ES7210_NORMAL_I2S:
-                        width = 32;
-                        if (channel > 2) // i2s 8ch has 2 channels in actual.
-                                channel = 2;
-                        break;
-                default:
-                        break;
-        }
-        
-        priv->sclk_lrck_ratio = channel * width ;
-
-        switch(priv->sclk_lrck_ratio * priv->mclk_sclk_ratio) {
-                case 64:
-                        priv->mclk_lrck_ratio = RATIO_64;
-                        break;
-                case 128:
-                        priv->mclk_lrck_ratio = RATIO_128;
-                        break;
-                case 256:
-                        priv->mclk_lrck_ratio = RATIO_256;
-                        break;
-                case 768:
-                        priv->mclk_lrck_ratio = RATIO_768;
-                        break;
-                default:
-                        pr_err("%s Unable to calculate proper mclk_lrck_ratio with sclk_lrck_ratio=%d!\n", __func__, priv->sclk_lrck_ratio);
-                        break;
-        }
-
-        switch (priv->tdm_mode) {
-        case ES7210_TDM_1LRCK_DSPA:
-        case ES7210_TDM_1LRCK_DSPB:
-        case ES7210_TDM_1LRCK_I2S:
-        case ES7210_TDM_1LRCK_LJ:
-        case ES7210_NORMAL_I2S:
-                /*
-                * to set internal mclk
-                * here, we assume that cpu/soc always provides
-                * 256FS i2s clock
-                * to es7210.
-                * dll bypassed, use clock doubler to get double
-                * frequency for
-                * internal modem which need
-                * 512FS clock. the clk divider ratio is 1.
-                * user must modify the setting of register0x02
-                * according to FS
-                * ratio provided by CPU/SOC.
-                */
-
-                for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
-                        es7210_write(ES7210_MCLK_CTL_REG02,
-                                     priv->mclk_lrck_ratio, i2c_clt1[cnt]);
-                }
-                // es7210_multi_chips_write(ES7210_MCLK_CTL_REG02,
-                // 0xc1);
-                break;
-        case ES7210_TDM_NLRCK_DSPA:
-        case ES7210_TDM_NLRCK_DSPB:
-        case ES7210_TDM_NLRCK_I2S:
-        case ES7210_TDM_NLRCK_LJ:
-                /*
-                * Here to set TDM format for DSP-A with
-                * multiple LRCK TDM mode
-                */
-                channel = ES7210_CHANNELS_MAX;
-                /*
-                * Set the microphone numbers in array
-                */
-                switch (channel) {
-                case 2:
-                        /* ES7210_CHANNELS_MAX=2 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x10);
-                        break;
-                case 4:
-                        /* ES7210_CHANNELS_MAX=4 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x20);
-                        break;
-                case 6:
-                        /* ES7210_CHANNELS_MAX=6 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x30);
-                        break;
-                case 8:
-                        /* ES7210_CHANNELS_MAX=8 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x40);
-                        break;
-                case 10:
-                        /* ES7210_CHANNELS_MAX=10 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x50);
-                        break;
-                case 12:
-                        /* ES7210_CHANNELS_MAX=12 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x60);
-                        break;
-                case 14:
-                        /* ES7210_CHANNELS_MAX=14 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x70);
-                        break;
-                case 16:
-                        /* ES7210_CHANNELS_MAX=16 */
-                        es7210_multi_chips_write(
-                                ES7210_MODE_CFG_REG08, 0x80);
-                        break;
-                default:
-                        break;
-                }
-                /*
-                * to set internal mclk
-                * here, we assume that cpu/soc always provides
-                * 256FS i2s clock
-                * to es7210 and there is four
-                    * es7210 devices in tdm link. so the
-                * internal FS in es7210
-                * is only FS/4;
-                * dll bypassed, clock doubler bypassed. the clk
-                * divider ratio is
-                * 2. so the clock of internal
-                    * modem equals to (256FS / (FS/4) / 2) * FS
-                * = 512FS
-                * user must modify the setting of register0x02
-                * according to FS
-                * ratio provided by CPU/SOC.
-                */
-
-                es7210_multi_chips_write(ES7210_MCLK_CTL_REG02,
-                                         priv->mclk_lrck_ratio);// NFS MODE:RATIO_768 ,12.288M/48K(16K 6 CH),12.288M/64K(16K 8 CH)
-                break;
-        default:
-                /*
-                * to set internal mclk for normal mode
-                * here, we assume that cpu/soc always provides
-                * 256FS i2s clock
-                * to es7210.
-                * dll bypassed, use clock doubler to get double
-                * frequency for
-                * internal modem which need
-                * 512FS clock. the clk divider ratio is 1.
-                * user must modify the setting of register0x02
-                * according to FS
-                * ratio provided by CPU/SOC.
-                */
-                for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
-                        es7210_write(ES7210_MCLK_CTL_REG02,
-                                     priv->mclk_lrck_ratio, i2c_clt1[cnt]);
-                }
-
-                break;
-        }
-        return;
-}
-
 /*
 * to initialize es7210 for tdm mode
 */
@@ -467,7 +302,9 @@ static void es7210_tdm_init_codec(u8 mode)
                         es7210_tdm_reg_common_cfg1[cnt].reg_v);
         }
         if(DOUBLESPEED)
-                es7210_multi_chips_update_bits(ES7210_MODE_CFG_REG08, 0x02, 0x02);
+                es7210_multi_chips_write(ES7210_MODE_CFG_REG08, 0x16);
+        else
+                es7210_multi_chips_write(ES7210_MODE_CFG_REG08, 0x14);
 
         switch (mode) {
         case ES7210_TDM_1LRCK_DSPA:
@@ -487,7 +324,7 @@ static void es7210_tdm_init_codec(u8 mode)
                 */
                 for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
                         es7210_write(ES7210_SDP_CFG1_REG11,
-                                     0x73, i2c_clt1[cnt]);
+                                     0x83, i2c_clt1[cnt]);
                         es7210_write(ES7210_SDP_CFG2_REG12,
                                      0x01, i2c_clt1[cnt]);
                 }
@@ -548,7 +385,7 @@ static void es7210_tdm_init_codec(u8 mode)
                 */
                 for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
                         es7210_write(ES7210_SDP_CFG1_REG11,
-                                     0x73, i2c_clt1[cnt]);
+                                     0x83, i2c_clt1[cnt]);
                 }
                 for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
                         if (cnt == 0) {
@@ -654,7 +491,134 @@ static void es7210_tdm_init_codec(u8 mode)
                         es7210_tdm_reg_common_cfg2[cnt].reg_addr,
                         es7210_tdm_reg_common_cfg2[cnt].reg_v);
         }
+        es7210_multi_chips_write(0x4, 0x00);
+        es7210_multi_chips_write(0x5, 0x40);
 
+        switch (mode) {
+        case ES7210_TDM_1LRCK_DSPA:
+        case ES7210_TDM_1LRCK_DSPB:
+        case ES7210_TDM_1LRCK_I2S:
+        case ES7210_TDM_1LRCK_LJ:
+        case ES7210_NORMAL_I2S:
+                /*
+                * to set internal mclk
+                * here, we assume that cpu/soc always provides
+                * 256FS i2s clock
+                * to es7210.
+                * dll bypassed, use clock doubler to get double
+                * frequency for
+                * internal modem which need
+                * 512FS clock. the clk divider ratio is 1.
+                * user must modify the setting of register0x02
+                * according to FS
+                * ratio provided by CPU/SOC.
+                */
+
+                for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
+                        es7210_write(ES7210_MCLK_CTL_REG02,
+                                     ES7210_MCLK_LRCK_RATIO, i2c_clt1[cnt]);
+                }
+                // es7210_multi_chips_write(ES7210_MCLK_CTL_REG02,
+                // 0xc1);
+                break;
+        case ES7210_TDM_NLRCK_DSPA:
+        case ES7210_TDM_NLRCK_DSPB:
+        case ES7210_TDM_NLRCK_I2S:
+        case ES7210_TDM_NLRCK_LJ:
+                /*
+                * Here to set TDM format for DSP-A with
+                * multiple LRCK TDM mode
+                */
+                channel = ES7210_CHANNELS_MAX;
+                /*
+                * Set the microphone numbers in array
+                */
+                switch (channel) {
+                case 2:
+                        /* ES7210_CHANNELS_MAX=2 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x10);
+                        break;
+                case 4:
+                        /* ES7210_CHANNELS_MAX=4 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x20);
+                        break;
+                case 6:
+                        /* ES7210_CHANNELS_MAX=6 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x30);
+                        break;
+                case 8:
+                        /* ES7210_CHANNELS_MAX=8 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x40);
+                        break;
+                case 10:
+                        /* ES7210_CHANNELS_MAX=10 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x50);
+                        break;
+                case 12:
+                        /* ES7210_CHANNELS_MAX=12 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x60);
+                        break;
+                case 14:
+                        /* ES7210_CHANNELS_MAX=14 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x70);
+                        break;
+                case 16:
+                        /* ES7210_CHANNELS_MAX=16 */
+                        es7210_multi_chips_write(
+                                ES7210_MODE_CFG_REG08, 0x80);
+                        break;
+                default:
+                        break;
+                }
+                /*
+                * to set internal mclk
+                * here, we assume that cpu/soc always provides
+                * 256FS i2s clock
+                * to es7210 and there is four
+                    * es7210 devices in tdm link. so the
+                * internal FS in es7210
+                * is only FS/4;
+                * dll bypassed, clock doubler bypassed. the clk
+                * divider ratio is
+                * 2. so the clock of internal
+                    * modem equals to (256FS / (FS/4) / 2) * FS
+                * = 512FS
+                * user must modify the setting of register0x02
+                * according to FS
+                * ratio provided by CPU/SOC.
+                */
+
+                es7210_multi_chips_write(ES7210_MCLK_CTL_REG02,
+                                         ES7210_MCLK_LRCK_RATIO);// NFS MODE:RATIO_768 ,12.288M/48K(16K 6 CH),12.288M/64K(16K 8 CH)
+                break;
+        default:
+                /*
+                * to set internal mclk for normal mode
+                * here, we assume that cpu/soc always provides
+                * 256FS i2s clock
+                * to es7210.
+                * dll bypassed, use clock doubler to get double
+                * frequency for
+                * internal modem which need
+                * 512FS clock. the clk divider ratio is 1.
+                * user must modify the setting of register0x02
+                * according to FS
+                * ratio provided by CPU/SOC.
+                */
+                for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
+                        es7210_write(ES7210_MCLK_CTL_REG02,
+                                     ES7210_MCLK_LRCK_RATIO, i2c_clt1[cnt]);
+                }
+
+                break;
+        }
         for (cnt = 0;
              cnt < sizeof(es7210_tdm_reg_common_cfg3) /
              sizeof(es7210_tdm_reg_common_cfg3[0]);
@@ -687,53 +651,52 @@ static void es7210_tdm_init_codec(u8 mode)
                 }
                 if (i == 1) {
                         /* set second es7210 PGA GAIN */
-                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
                 }
                 if (i == 2) {
                         /* set third es7210 PGA GAIN */
-                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
                 }
 
                 if (i == 3) {
                         /* set third es7210 PGA GAIN */
-                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC1_GAIN_REG43, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC2_GAIN_REG44, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC3_GAIN_REG45, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
-                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_MIC_GAIN,
+                        es7210_write(ES7210_MIC4_GAIN_REG46, ES7210_AEC_GAIN,
                                      i2c_clt1[i]);
                 }
         }
 }
 static void es7210_unmute(void)
 {
+        printk("enter into %s\n", __func__);
         es7210_multi_chips_update_bits(ES7210_ADC34_MUTE_REG14, 0x03, 0x00);
         es7210_multi_chips_update_bits(ES7210_ADC12_MUTE_REG15, 0x03, 0x00);
-        es7210_multi_chips_update_bits(ES7210_MIC1_GAIN_REG43, 0x1f, ES7210_MIC_GAIN);
-        es7210_multi_chips_update_bits(ES7210_MIC2_GAIN_REG44, 0x1f, ES7210_MIC_GAIN);
-        es7210_multi_chips_update_bits(ES7210_MIC3_GAIN_REG45, 0x1f, ES7210_MIC_GAIN);
-        es7210_multi_chips_update_bits(ES7210_MIC4_GAIN_REG46, 0x1f, ES7210_MIC_GAIN);
 }
 
 static void pcm_pop_work_events(struct work_struct *work)
 {
+        printk("enter into %s\n", __func__);
         es7210_unmute();
+        es7210_init_reg = 1;
 }
 
 static int es7210_pcm_startup(struct snd_pcm_substream *substream,
@@ -743,7 +706,6 @@ static int es7210_pcm_startup(struct snd_pcm_substream *substream,
         struct es7210_priv *es7210 = snd_soc_component_get_drvdata(component);
 
         if (es7210_init_reg == 0) {
-                es7210_init_reg = 1;
                 schedule_delayed_work(&es7210->pcm_pop_work, msecs_to_jiffies(100));
         }
         return 0;
@@ -752,22 +714,13 @@ static int es7210_pcm_hw_params(struct snd_pcm_substream *substream,
                                 struct snd_pcm_hw_params *params,
                                 struct snd_soc_dai *dai)
 {
-        struct snd_soc_component *component = dai->component;
-        struct es7210_priv *priv = snd_soc_component_get_drvdata(component);	
+	
         int i;
-
-        if (es7210_hw_param_reg == 1 && params_format(params) == priv->pcm_format) {
-                return 0;
-        }
-
-        es7210_hw_param_reg = 1;
-        priv->pcm_format = params_format(params);
-        es7210_tdm_init_ratio(priv);
 
         es7210_multi_chips_update_bits(ES7210_RESET_CTL_REG00, 0x30, 0x30);
         for (i = 0; i < ADC_DEV_MAXNUM; i++) {
                 /* set es7210 bit size */
-                switch (priv->pcm_format) {
+                switch (params_format(params)) {
                 case SNDRV_PCM_FORMAT_S16_LE:
                         es7210_update_bits(0x11, 0xE0, 0x60,
                                            i2c_clt1[i]);
@@ -800,7 +753,6 @@ static int es7210_pcm_hw_params(struct snd_pcm_substream *substream,
         default:
                 break;
         }
-
         return 0;
 }
 
@@ -815,7 +767,7 @@ static struct snd_soc_dai_ops es7210_ops = {
         .set_fmt = es7210_set_dai_fmt,
         .set_sysclk = es7210_set_dai_sysclk,
 };
-
+#if ES7210_CHANNELS_MAX > 0
 static struct snd_soc_dai_driver es7210_dai0 = {
 	.name = "ES7210 ADC 0",
 	.capture = {
@@ -828,8 +780,8 @@ static struct snd_soc_dai_driver es7210_dai0 = {
         .ops = &es7210_ops,
         .symmetric_rates = 1,
 };
-
-
+#endif
+#if ES7210_CHANNELS_MAX > 4
 static struct snd_soc_dai_driver es7210_dai1 = {
         .name = "ES7210 4CH ADC 1",
         .capture = {
@@ -842,7 +794,8 @@ static struct snd_soc_dai_driver es7210_dai1 = {
         .ops = &es7210_ops,
         .symmetric_rates = 1,
 };
-
+#endif
+#if ES7210_CHANNELS_MAX > 8
 static struct snd_soc_dai_driver es7210_dai2 = {
         .name = "ES7210 4CH ADC 2",
         .capture = {
@@ -855,7 +808,8 @@ static struct snd_soc_dai_driver es7210_dai2 = {
         .ops = &es7210_ops,
         .symmetric_rates = 1,
 };
-
+#endif
+#if ES7210_CHANNELS_MAX > 12
 static struct snd_soc_dai_driver es7210_dai3 = {
         .name = "ES7210 4CH ADC 3",
         .capture = {
@@ -868,12 +822,20 @@ static struct snd_soc_dai_driver es7210_dai3 = {
         .ops = &es7210_ops,
         .symmetric_rates = 1,
 };
-
+#endif
 static struct snd_soc_dai_driver *es7210_dai[] = {
+#if ES7210_CHANNELS_MAX > 0
         &es7210_dai0,
+#endif
+#if ES7210_CHANNELS_MAX > 4
         &es7210_dai1,
+#endif
+#if ES7210_CHANNELS_MAX > 8
         &es7210_dai2,
+#endif
+#if ES7210_CHANNELS_MAX > 12
         &es7210_dai3,
+#endif
 };
 
 static int es7210_suspend(struct snd_soc_component *component)
@@ -924,37 +886,25 @@ static int es7210_resume(struct snd_soc_component *component)
 static int es7210_probe(struct snd_soc_component *component)
 {
         struct es7210_priv *es7210 = snd_soc_component_get_drvdata(component);
-        u8 val, val1, cnt;
+        u8 val, val1;
         int ret = 0;
         resume_es7210 = es7210;
 
-        /* power up the controller */
-        if (es7210->mvdd)
-                ret |= regulator_enable(es7210->mvdd);
-        if (es7210->avdd)
-                ret |= regulator_enable(es7210->avdd);
-        if (es7210->dvdd)
-                ret |= regulator_enable(es7210->dvdd);
-        if (es7210->pvdd)
-                ret |= regulator_enable(es7210->pvdd);
-        if (ret) {
-                pr_err("Failed to enable VDD regulator: %d\n", ret);
+        if (ret < 0) {
+                dev_err(component->dev, "Failed to set cache I/O: %d\n", ret);
                 return ret;
         }
 
         tron_codec1[es7210_codec_num++] = component;
-
         INIT_DELAYED_WORK(&es7210->pcm_pop_work, pcm_pop_work_events);
 
-        for (cnt = 0; cnt < ADC_DEV_MAXNUM; cnt++) {
-                /* es7210 chip id */
-                ret = es7210_read(0x3D, &val, i2c_clt1[cnt]);
-                ret = es7210_read(0x3E, &val1, i2c_clt1[cnt]);
-                if (ret < 0) {
-                        pr_err("%s: read chipid failed %d\n", __func__, ret);
-                        goto exit_i2c_check_id_failed;
-                }
-        }
+	/* es7210 chip id */
+	ret = es7210_read(0x3D, &val, i2c_clt1[0]);
+	ret = es7210_read(0x3E, &val1, i2c_clt1[0]);
+	if (ret < 0) {
+		pr_err("%s: read chipid failed %d\n", __func__, ret);
+		goto exit_i2c_check_id_failed;
+	}
 
         es7210_tdm_init_codec(es7210->tdm_mode);
 
@@ -962,20 +912,7 @@ exit_i2c_check_id_failed:
         return 0;
 }
 
-static void es7210_remove(struct snd_soc_component *component)
-{
-        struct es7210_priv *es7210 = snd_soc_component_get_drvdata(component);
 
-        /* power down the controller */
-        if (es7210->pvdd)
-                regulator_disable(es7210->pvdd);
-        if (es7210->dvdd)
-                regulator_disable(es7210->dvdd);
-        if (es7210->avdd)
-                regulator_disable(es7210->avdd);
-        if (es7210->mvdd)
-                regulator_disable(es7210->mvdd);
-}
 
 static int es7210_set_bias_level(struct snd_soc_component *component,
                                  enum snd_soc_bias_level level)
@@ -997,6 +934,7 @@ static int es7210_set_bias_level(struct snd_soc_component *component,
 
 static const DECLARE_TLV_DB_SCALE(mic_boost_tlv, 0, 300, 0);
 
+#if ES7210_CHANNELS_MAX > 0
 static int es7210_micboost1_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
@@ -1127,11 +1065,12 @@ static int es7210_adc4_mute_get(struct snd_kcontrol *kcontrol,
         return 0;
 }
 
+#endif
+
+#if ES7210_CHANNELS_MAX > 4
 static int es7210_micboost5_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(0x43, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[1]);
         return 0;
 }
@@ -1140,8 +1079,6 @@ static int es7210_micboost5_setting_get(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(0x43, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1149,8 +1086,6 @@ static int es7210_micboost5_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost6_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(0x44, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[1]);
         return 0;
 }
@@ -1159,8 +1094,6 @@ static int es7210_micboost6_setting_get(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(0x44, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1168,8 +1101,6 @@ static int es7210_micboost6_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost7_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(0x45, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[1]);
         return 0;
 }
@@ -1178,8 +1109,6 @@ static int es7210_micboost7_setting_get(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(0x45, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1187,8 +1116,6 @@ static int es7210_micboost7_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost8_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(0x46, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[1]);
         return 0;
 }
@@ -1197,8 +1124,6 @@ static int es7210_micboost8_setting_get(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(0x46, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1206,10 +1131,8 @@ static int es7210_micboost8_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc5_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x01,
-        ucontrol->value.integer.value[0]&0x01, i2c_clt1[1]);
+    ucontrol->value.integer.value[0]&0x01, i2c_clt1[1]);
         return 0;
 }
 
@@ -1217,8 +1140,6 @@ static int es7210_adc5_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1227,8 +1148,6 @@ static int es7210_adc5_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc6_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x02,
                          (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[1]);
         return 0;
@@ -1238,8 +1157,6 @@ static int es7210_adc6_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
@@ -1248,8 +1165,6 @@ static int es7210_adc6_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc7_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x01,
                            ucontrol->value.integer.value[0]&0x01, i2c_clt1[1]);
         return 0;
@@ -1259,8 +1174,6 @@ static int es7210_adc7_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1268,8 +1181,6 @@ static int es7210_adc7_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc8_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x02,
                            (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[1]);
         return 0;
@@ -1279,18 +1190,16 @@ static int es7210_adc8_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[1] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[1]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
 }
 
+#endif
+#if ES7210_CHANNELS_MAX > 8
 static int es7210_micboost9_setting_set(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(0x43, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[2]);
         return 0;
 }
@@ -1299,8 +1208,6 @@ static int es7210_micboost9_setting_get(struct snd_kcontrol *kcontrol,
                                         struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(0x43, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1308,8 +1215,6 @@ static int es7210_micboost9_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost10_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(0x44, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[2]);
         return 0;
 }
@@ -1318,8 +1223,6 @@ static int es7210_micboost10_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(0x44, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1327,8 +1230,6 @@ static int es7210_micboost10_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost11_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(0x45, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[2]);
         return 0;
 }
@@ -1337,8 +1238,6 @@ static int es7210_micboost11_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(0x45, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1346,8 +1245,6 @@ static int es7210_micboost11_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost12_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(0x46, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[2]);
         return 0;
 }
@@ -1356,8 +1253,6 @@ static int es7210_micboost12_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(0x46, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1365,10 +1260,8 @@ static int es7210_micboost12_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc9_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x01,
-        ucontrol->value.integer.value[0]&0x01, i2c_clt1[2]);
+    ucontrol->value.integer.value[0]&0x01, i2c_clt1[2]);
         return 0;
 }
 
@@ -1376,8 +1269,6 @@ static int es7210_adc9_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1386,8 +1277,6 @@ static int es7210_adc9_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc10_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x02,
                          (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[2]);
         return 0;
@@ -1397,8 +1286,6 @@ static int es7210_adc10_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
@@ -1407,8 +1294,6 @@ static int es7210_adc10_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc11_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x01,
                            ucontrol->value.integer.value[0]&0x01, i2c_clt1[2]);
         return 0;
@@ -1418,8 +1303,6 @@ static int es7210_adc11_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1427,8 +1310,6 @@ static int es7210_adc11_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc12_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x02,
                            (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[2]);
         return 0;
@@ -1438,18 +1319,16 @@ static int es7210_adc12_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[2] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[2]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
 }
 
+#endif
+#if ES7210_CHANNELS_MAX > 12
 static int es7210_micboost13_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(0x43, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[3]);
         return 0;
 }
@@ -1458,8 +1337,6 @@ static int es7210_micboost13_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(0x43, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1467,8 +1344,6 @@ static int es7210_micboost13_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost14_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(0x44, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[3]);
         return 0;
 }
@@ -1477,8 +1352,6 @@ static int es7210_micboost14_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(0x44, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1486,8 +1359,6 @@ static int es7210_micboost14_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost15_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(0x45, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[3]);
         return 0;
 }
@@ -1496,8 +1367,6 @@ static int es7210_micboost15_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(0x45, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1505,8 +1374,6 @@ static int es7210_micboost15_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_micboost16_setting_set(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(0x46, 0x0F, ucontrol->value.integer.value[0], i2c_clt1[3]);
         return 0;
 }
@@ -1515,8 +1382,6 @@ static int es7210_micboost16_setting_get(struct snd_kcontrol *kcontrol,
                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(0x46, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val;
         return 0;
@@ -1524,10 +1389,8 @@ static int es7210_micboost16_setting_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc13_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x01,
-        ucontrol->value.integer.value[0]&0x01, i2c_clt1[3]);
+    ucontrol->value.integer.value[0]&0x01, i2c_clt1[3]);
         return 0;
 }
 
@@ -1535,8 +1398,6 @@ static int es7210_adc13_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1545,8 +1406,6 @@ static int es7210_adc13_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc14_mute_set(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC12_MUTE_REG15, 0x02,
                          (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[3]);
         return 0;
@@ -1556,8 +1415,6 @@ static int es7210_adc14_mute_get(struct snd_kcontrol *kcontrol,
                                struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(ES7210_ADC12_MUTE_REG15, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
@@ -1566,8 +1423,6 @@ static int es7210_adc14_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc15_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x01,
                            ucontrol->value.integer.value[0]&0x01, i2c_clt1[3]);
         return 0;
@@ -1577,8 +1432,6 @@ static int es7210_adc15_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = val & 0x01;
         return 0;
@@ -1586,8 +1439,6 @@ static int es7210_adc15_mute_get(struct snd_kcontrol *kcontrol,
 static int es7210_adc16_mute_set(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_update_bits(ES7210_ADC34_MUTE_REG14, 0x02,
                            (ucontrol->value.integer.value[0] & 0x01) << 1, i2c_clt1[3]);
         return 0;
@@ -1597,14 +1448,14 @@ static int es7210_adc16_mute_get(struct snd_kcontrol *kcontrol,
                                 struct snd_ctl_elem_value *ucontrol)
 {
         u8 val;
-        if (i2c_clt1[3] == NULL)
-                return 0;
         es7210_read(ES7210_ADC34_MUTE_REG14, &val, i2c_clt1[3]);
         ucontrol->value.integer.value[0] = (val & 0x02) >> 1;
         return 0;
 }
 
+#endif
 static const struct snd_kcontrol_new es7210_snd_controls[] = {
+#if ES7210_CHANNELS_MAX > 0
         SOC_SINGLE_EXT_TLV("PGA1_setting",
         0x43, 0, 0x0E, 0,
         es7210_micboost1_setting_get, es7210_micboost1_setting_set,
@@ -1629,6 +1480,8 @@ static const struct snd_kcontrol_new es7210_snd_controls[] = {
         es7210_adc3_mute_get, es7210_adc3_mute_set),
         SOC_SINGLE_EXT("ADC4_MUTE", ES7210_ADC34_MUTE_REG14, 1, 1, 0,
         es7210_adc4_mute_get, es7210_adc4_mute_set),
+#endif
+#if ES7210_CHANNELS_MAX > 4
         SOC_SINGLE_EXT_TLV("PGA5_setting",
         0x43, 0, 0x0E, 0,
         es7210_micboost5_setting_get, es7210_micboost5_setting_set,
@@ -1653,6 +1506,9 @@ static const struct snd_kcontrol_new es7210_snd_controls[] = {
         es7210_adc7_mute_get, es7210_adc7_mute_set),
         SOC_SINGLE_EXT("ADC8_MUTE", ES7210_ADC34_MUTE_REG14, 1, 1, 0,
         es7210_adc8_mute_get, es7210_adc8_mute_set),
+
+#endif
+#if ES7210_CHANNELS_MAX > 8
         SOC_SINGLE_EXT_TLV("PGA9_setting",
         0x43, 0, 0x0E, 0,
         es7210_micboost9_setting_get, es7210_micboost9_setting_set,
@@ -1677,6 +1533,9 @@ static const struct snd_kcontrol_new es7210_snd_controls[] = {
         es7210_adc11_mute_get, es7210_adc11_mute_set),
         SOC_SINGLE_EXT("ADC12_MUTE", ES7210_ADC34_MUTE_REG14, 1, 1, 0,
         es7210_adc12_mute_get, es7210_adc12_mute_set),
+
+#endif
+#if ES7210_CHANNELS_MAX > 12
         SOC_SINGLE_EXT_TLV("PGA13_setting",
         0x43, 0, 0x0E, 0,
         es7210_micboost13_setting_get, es7210_micboost13_setting_set,
@@ -1701,12 +1560,13 @@ static const struct snd_kcontrol_new es7210_snd_controls[] = {
         es7210_adc15_mute_get, es7210_adc15_mute_set),
         SOC_SINGLE_EXT("ADC16_MUTE", ES7210_ADC34_MUTE_REG14, 1, 1, 0,
         es7210_adc16_mute_get, es7210_adc16_mute_set),
+
+#endif
+
 };
 
 static struct snd_soc_component_driver soc_codec_dev_es7210 = {
-        .name = "es7210",
         .probe = es7210_probe,
-        .remove = es7210_remove,
         .suspend = es7210_suspend,
         .resume = es7210_resume,
         .set_bias_level = es7210_set_bias_level,
@@ -1755,12 +1615,6 @@ static ssize_t es7210_show(struct device *dev, struct device_attribute *attr, ch
         printk("echo flag|reg|val > es7210\n");
         printk("eg read star address=0x06,count 0x10:echo 0610 >es7210\n");
         printk("eg write star address=0x90,value=0x3c,count=4:echo 4903c >es7210\n");
-        struct es7210_priv *es7210 = dev_get_drvdata(dev);
-        u8 value, i;
-        for (i = 0; i < 0x4d; i++) {
-                es7210_read(i, &value, es7210->i2c_client);
-                printk("reg[0x%x]=0x%x\n", i, value);
-        }
         return 0;
 }
 
@@ -1784,8 +1638,6 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
                             const struct i2c_device_id *i2c_id)
 {
         struct es7210_priv *es7210;
-        struct device_node *np = i2c_client->dev.of_node;
-        char* property;
         int ret;
 
         es7210 = devm_kzalloc(&i2c_client->dev, sizeof(struct es7210_priv),
@@ -1793,71 +1645,7 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
         if (es7210 == NULL)
                 return -ENOMEM;
         es7210->i2c_client = i2c_client;
-
-        property = of_get_property(np, "work-mode", NULL);
-        if (property) {
-                if (!strcmp(property, "ES7210_TDM_1LRCK_DSPB")) {
-                        es7210->tdm_mode =  ES7210_TDM_1LRCK_DSPB;
-                } else if (!strcmp(property, "ES7210_NORMAL_I2S")) {
-                        es7210->tdm_mode =  ES7210_NORMAL_I2S;
-                } else {
-                        pr_err("unsupported work mode\n");
-                        return -EINVAL;
-                }
-        } else {
-                pr_warn("es7210 work-mode not defined.using ES7210_NORMAL_I2S by default\n");
-                es7210->tdm_mode =  ES7210_NORMAL_I2S;
-        }
-
-        if (of_property_read_u32(np, "channels-max", &ES7210_CHANNELS_MAX) == 0) {
-                if (ES7210_CHANNELS_MAX == MIC_CHN_2 || ES7210_CHANNELS_MAX == MIC_CHN_4) {
-                        ADC_DEV_MAXNUM =  1;
-                } else if (ES7210_CHANNELS_MAX == MIC_CHN_6 || ES7210_CHANNELS_MAX == MIC_CHN_8) {
-                        ADC_DEV_MAXNUM =  2;
-                } else if (ES7210_CHANNELS_MAX == MIC_CHN_10 || ES7210_CHANNELS_MAX == MIC_CHN_12) {
-                        ADC_DEV_MAXNUM =  3;
-                } else if (ES7210_CHANNELS_MAX == MIC_CHN_14 || ES7210_CHANNELS_MAX == MIC_CHN_16) {
-                        ADC_DEV_MAXNUM =  4;
-                } else {
-                        pr_err("es7210 unsupported channels-max\n");
-                        return -EINVAL;
-                }
-        } else {
-                pr_warn("es7210 channels-max not defined.using MIC_CHN_2 by default\n");
-                ES7210_CHANNELS_MAX = MIC_CHN_2;
-                ADC_DEV_MAXNUM =  1;
-        }
-        //printk("%s es7210->tdm_mode=%d channels-max=%d ADC_DEV_MAXNUM=%d\n", __func__, es7210->tdm_mode, ES7210_CHANNELS_MAX, ADC_DEV_MAXNUM);
-
-        es7210->mvdd = devm_regulator_get(&i2c_client->dev, "MVDD");
-        if (IS_ERR(es7210->mvdd)) {
-                ret = PTR_ERR(es7210->mvdd);
-                dev_warn(&i2c_client->dev, "Failed to get MVDD regulator: %d\n", ret);
-                es7210->mvdd = NULL;
-        }
-        es7210->avdd = devm_regulator_get(&i2c_client->dev, "AVDD");
-        if (IS_ERR(es7210->avdd)) {
-                ret = PTR_ERR(es7210->avdd);
-                dev_warn(&i2c_client->dev, "Failed to get AVDD regulator: %d\n", ret);
-                es7210->avdd = NULL;
-        }
-        es7210->dvdd = devm_regulator_get(&i2c_client->dev, "DVDD");
-        if (IS_ERR(es7210->dvdd)) {
-                ret = PTR_ERR(es7210->dvdd);
-                dev_warn(&i2c_client->dev, "Failed to get DVDD regulator: %d\n", ret);
-                es7210->dvdd = NULL;
-        }
-        es7210->pvdd = devm_regulator_get(&i2c_client->dev, "PVDD");
-        if (IS_ERR(es7210->pvdd)) {
-                ret = PTR_ERR(es7210->pvdd);
-                dev_warn(&i2c_client->dev, "Failed to get PVDD regulator: %d\n", ret);
-                es7210->pvdd = NULL;
-        }
-
-        if (of_property_read_u32(np, "mclk-sclk-ratio", &es7210->mclk_sclk_ratio) != 0) {
-                es7210->mclk_sclk_ratio = 1;
-        }
-
+        es7210->tdm_mode =  ES7210_WORK_MODE;  //to set tdm mode or normal mode       
         i2c_set_clientdata(i2c_client, es7210);
         if (i2c_id->driver_data < ADC_DEV_MAXNUM) {
                 i2c_clt1[i2c_id->driver_data] = i2c_client;
@@ -1877,19 +1665,41 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
 
 
 static const struct i2c_device_id es7210_i2c_id[] = {
+#if ES7210_CHANNELS_MAX > 0
         { "MicArray_0", 0 },//es7210_0
+#endif
+
+#if ES7210_CHANNELS_MAX > 4
         { "MicArray_1", 1 },//es7210_1
+#endif
+
+#if ES7210_CHANNELS_MAX > 8
         { "MicArray_2", 2 },//es7210_2
+#endif
+
+#if ES7210_CHANNELS_MAX > 12
         { "MicArray_3", 3 },//es7210_3
+#endif
         { }
 };
 MODULE_DEVICE_TABLE(i2c_client, es7210_i2c_id);
 
 static const struct of_device_id es7210_dt_ids[] = {
+#if ES7210_CHANNELS_MAX > 0
         { .compatible = "MicArray_0", },//es7210_0
+#endif
+
+#if ES7210_CHANNELS_MAX > 4
         { .compatible = "MicArray_1", },//es7210_1
+#endif
+
+#if ES7210_CHANNELS_MAX > 8
         { .compatible = "MicArray_2", },//es7210_2
+#endif
+
+#if ES7210_CHANNELS_MAX > 12
         { .compatible = "MicArray_3", },//es7210_3
+#endif
         {}
 };
 MODULE_DEVICE_TABLE(of, es7210_dt_ids);
