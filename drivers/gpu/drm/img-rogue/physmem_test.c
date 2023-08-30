@@ -159,8 +159,6 @@ PhysMemTestInit(PVRSRV_DEVICE_NODE **ppsDeviceNode, PVRSRV_DEVICE_CONFIG *psDevC
 	eError = PVRSRVPhysMemHeapsInit(psDeviceNode, psDevConfig);
 	PVR_LOG_GOTO_IF_ERROR(eError, "PVRSRVPhysMemHeapsInit", ErrorSysDevDeInit);
 
-	psDeviceNode->sDevMMUPxSetup.uiMMUPxLog2AllocGran = OSGetPageShift();
-
 	*ppsDeviceNode = psDeviceNode;
 
 	return PVRSRV_OK;

@@ -293,23 +293,10 @@ PVRSRVTQAcquireShaders(PVRSRV_DEVICE_NODE  * psDeviceNode,
 	*ppsCLIPMRMem = psDevInfo->hTQCLISharedMem;
 }
 
-PVRSRV_ERROR
-PVRSRVTQUnloadShaders(PVRSRV_DEVICE_NODE * psDeviceNode)
+void PVRSRVTQUnloadShaders(PVRSRV_DEVICE_NODE * psDeviceNode)
 {
 	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
-	PVRSRV_ERROR eError;
 
-	eError = PMRUnrefPMR(psDevInfo->hTQUSCSharedMem);
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	eError = PMRUnrefPMR(psDevInfo->hTQCLISharedMem);
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
-
-	return PVRSRV_OK;
+	(void) PMRUnrefPMR(psDevInfo->hTQUSCSharedMem);
+	(void) PMRUnrefPMR(psDevInfo->hTQCLISharedMem);
 }

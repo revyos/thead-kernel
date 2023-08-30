@@ -64,7 +64,7 @@ struct SYNC_CHECKPOINT_RECORD;
 
 typedef struct _SYNC_CHECKPOINT_CONTEXT_CTL_ _SYNC_CHECKPOINT_CONTEXT_CTL, *_PSYNC_CHECKPOINT_CONTEXT_CTL;
 
-typedef struct _SYNC_CHECKPOINT_CONTEXT_
+typedef struct SYNC_CHECKPOINT_CONTEXT_TAG
 {
 	PPVRSRV_DEVICE_NODE				psDevNode;
 	IMG_CHAR						azName[PVRSRV_SYNC_NAME_LENGTH];       /*!< Name of the RA */
@@ -100,7 +100,7 @@ typedef struct _SYNC_CHECKPOINT_BLOCK_
 
 typedef struct SYNC_CHECKPOINT_RECORD* PSYNC_CHECKPOINT_RECORD_HANDLE;
 
-typedef struct _SYNC_CHECKPOINT_
+typedef struct SYNC_CHECKPOINT_TAG
 {
 	//_SYNC_CHECKPOINT_CONTEXT      *psContext;             /*!< pointer to the parent context of this checkpoint */
 	/* A sync checkpoint is assigned a unique ID, to avoid any confusion should
@@ -122,12 +122,12 @@ typedef struct _SYNC_CHECKPOINT_
 	DLLIST_NODE                     sDeferredFreeListNode;  /*!< List node for the deferred free sync chkpt list */
 	IMG_UINT32                      ui32FWAddr;             /*!< FWAddr stored at sync checkpoint alloc time */
 	PDUMP_FLAGS_T                   ui32PDumpFlags;         /*!< Pdump Capture mode to be used for POL*/
-} _SYNC_CHECKPOINT;
+} SYNC_CHECKPOINT;
 
 
 typedef struct _SYNC_CHECKPOINT_SIGNAL_
 {
-	_SYNC_CHECKPOINT                asSyncCheckpoint;       /*!< Store sync checkpt for deferred signal */
+	SYNC_CHECKPOINT                asSyncCheckpoint;       /*!< Store sync checkpt for deferred signal */
 	IMG_UINT32                      ui32Status;             /*!< sync checkpt status signal/errored */
 } _SYNC_CHECKPOINT_DEFERRED_SIGNAL;
 

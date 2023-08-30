@@ -47,7 +47,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "handle.h"
 #include "osfunc.h"
 
+/*! Function not implemented definition. */
 #define OSCONNECTION_SERVER_NOT_IMPLEMENTED 0
+/*! Assert used for OSCONNECTION_SERVER_NOT_IMPLEMENTED. */
 #define OSCONNECTION_SERVER_NOT_IMPLEMENTED_ASSERT() PVR_ASSERT(OSCONNECTION_SERVER_NOT_IMPLEMENTED)
 
 #if defined(__linux__) || defined(__QNXNTO__) || defined(INTEGRITY_OS)

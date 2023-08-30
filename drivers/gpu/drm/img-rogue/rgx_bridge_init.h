@@ -50,7 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxdevice.h"
 
 PVRSRV_ERROR DeviceDepBridgeInit(PVRSRV_RGXDEV_INFO *psDevInfo);
-PVRSRV_ERROR DeviceDepBridgeDeInit(PVRSRV_RGXDEV_INFO *psDevInfo);
+void DeviceDepBridgeDeInit(PVRSRV_RGXDEV_INFO *psDevInfo);
 
 #endif /* RGX_BRIDGE_INIT_H */
-

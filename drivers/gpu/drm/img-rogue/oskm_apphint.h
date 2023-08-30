@@ -49,7 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(OSKM_APPHINT_H)
 #define OSKM_APPHINT_H
 
-/* Supplied to os_get_km_apphint_XXX() functions when the param/AppHint is
+/*! Supplied to os_get_km_apphint_XXX() functions when the param/AppHint is
  * applicable to all devices and not a specific device. Typically used
  * for server-wide build and module AppHints.
  */

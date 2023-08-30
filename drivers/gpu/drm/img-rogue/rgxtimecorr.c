@@ -259,7 +259,7 @@ static void _RGXMakeTimeCorrData(PVRSRV_DEVICE_NODE *psDeviceNode, RGXTIMECORR_E
 	}
 
 	/* Make sure the values are written to memory before updating the index of the current entry */
-	OSWriteMemoryBarrier();
+	OSWriteMemoryBarrier(psTimeCorr);
 
 	/* Update the index of the current entry in the timer correlation array */
 	psGpuUtilFWCB->ui32TimeCorrSeqCount = ui32NewSeqCount;

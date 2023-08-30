@@ -96,7 +96,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_MM_GETHEAPPHYSMEMUSAGE			PVRSRV_BRIDGE_MM_CMD_FIRST+37
 #define PVRSRV_BRIDGE_MM_DEVMEMGETFAULTADDRESS			PVRSRV_BRIDGE_MM_CMD_FIRST+38
 #define PVRSRV_BRIDGE_MM_PVRSRVUPDATEOOMSTATS			PVRSRV_BRIDGE_MM_CMD_FIRST+39
-#define PVRSRV_BRIDGE_MM_CMD_LAST			(PVRSRV_BRIDGE_MM_CMD_FIRST+39)
+#define PVRSRV_BRIDGE_MM_PHYSHEAPGETMEMINFOPKD			PVRSRV_BRIDGE_MM_CMD_FIRST+40
+#define PVRSRV_BRIDGE_MM_GETHEAPPHYSMEMUSAGEPKD			PVRSRV_BRIDGE_MM_CMD_FIRST+41
+#define PVRSRV_BRIDGE_MM_CMD_LAST			(PVRSRV_BRIDGE_MM_CMD_FIRST+41)
 
 /*******************************************
             PMRExportPMR
@@ -836,5 +838,42 @@ typedef struct PVRSRV_BRIDGE_OUT_PVRSRVUPDATEOOMSTATS_TAG
 {
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_PVRSRVUPDATEOOMSTATS;
+
+/*******************************************
+            PhysHeapGetMemInfoPkd
+ *******************************************/
+
+/* Bridge in structure for PhysHeapGetMemInfoPkd */
+typedef struct PVRSRV_BRIDGE_IN_PHYSHEAPGETMEMINFOPKD_TAG
+{
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStats;
+	PVRSRV_PHYS_HEAP *peaPhysHeapID;
+	IMG_UINT32 ui32PhysHeapCount;
+} __packed PVRSRV_BRIDGE_IN_PHYSHEAPGETMEMINFOPKD;
+
+/* Bridge out structure for PhysHeapGetMemInfoPkd */
+typedef struct PVRSRV_BRIDGE_OUT_PHYSHEAPGETMEMINFOPKD_TAG
+{
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStats;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_PHYSHEAPGETMEMINFOPKD;
+
+/*******************************************
+            GetHeapPhysMemUsagePkd
+ *******************************************/
+
+/* Bridge in structure for GetHeapPhysMemUsagePkd */
+typedef struct PVRSRV_BRIDGE_IN_GETHEAPPHYSMEMUSAGEPKD_TAG
+{
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStats;
+	IMG_UINT32 ui32PhysHeapCount;
+} __packed PVRSRV_BRIDGE_IN_GETHEAPPHYSMEMUSAGEPKD;
+
+/* Bridge out structure for GetHeapPhysMemUsagePkd */
+typedef struct PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD_TAG
+{
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStats;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD;
 
 #endif /* COMMON_MM_BRIDGE_H */

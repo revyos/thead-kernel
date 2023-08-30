@@ -53,6 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pdump_km.h"
 #include "osfunc.h"
 #include "tlstream.h"
+#include "rgxhwperf_common.h"
 
 /* PID associated with Connection currently being purged by Cleanup thread */
 static IMG_PID gCurrentPurgeConnectionPid;
@@ -91,41 +92,9 @@ static PVRSRV_ERROR ConnectionDataDestroy(CONNECTION_DATA *psConnection)
 
 	if (psProcessHandleBase != NULL)
 	{
-		/* acquire the lock now to ensure unref and removal from the
-		 * hash table is atomic.
-		 * if the refcount becomes zero then the lock needs to be held
-		 * until the entry is removed from the hash table.
-		 */
-		OSLockAcquire(psPVRSRVData->hProcessHandleBase_Lock);
-
-		/* In case the refcount becomes 0 we can remove the process handle base */
-		if (OSAtomicDecrement(&psProcessHandleBase->iRefCount) == 0)
-		{
-			uintptr_t uiHashValue;
-
-			uiHashValue = HASH_Remove(psPVRSRVData->psProcessHandleBase_Table, psConnection->pid);
-			OSLockRelease(psPVRSRVData->hProcessHandleBase_Lock);
-
-			if (!uiHashValue)
-			{
-				PVR_DPF((PVR_DBG_ERROR,
-						"%s: Failed to remove handle base from hash table.",
-						__func__));
-				return PVRSRV_ERROR_UNABLE_TO_REMOVE_HASH_VALUE;
-			}
-
-			eError = PVRSRVFreeKernelHandles(psProcessHandleBase->psHandleBase);
-			PVR_LOG_RETURN_IF_ERROR(eError, "PVRSRVFreeKernelHandles");
-
-			eError = PVRSRVFreeHandleBase(psProcessHandleBase->psHandleBase, ui64MaxBridgeTime);
-			PVR_LOG_RETURN_IF_ERROR(eError, "PVRSRVFreeHandleBase:1");
-
-			OSFreeMem(psProcessHandleBase);
-		}
-		else
-		{
-			OSLockRelease(psPVRSRVData->hProcessHandleBase_Lock);
-		}
+		eError = PVRSRVReleaseProcessHandleBase(psProcessHandleBase, psConnection->pid,
+		                                        ui64MaxBridgeTime);
+		PVR_LOG_RETURN_IF_ERROR(eError, "PVRSRVReleaseProcessHandleBase");
 
 		psConnection->psProcessHandleBase = NULL;
 	}
@@ -195,7 +164,6 @@ PVRSRV_ERROR PVRSRVCommonConnectionConnect(void **ppvPrivData, void *pvOSData)
 	CONNECTION_DATA *psConnection;
 	PVRSRV_ERROR eError;
 	PROCESS_HANDLE_BASE *psProcessHandleBase;
-	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
 	/* Allocate connection data area, no stats since process not registered yet */
 	psConnection = OSAllocZMemNoStats(sizeof(*psConnection));
@@ -245,46 +213,14 @@ PVRSRV_ERROR PVRSRVCommonConnectionConnect(void **ppvPrivData, void *pvOSData)
 	                               PVRSRV_HANDLE_BASE_TYPE_CONNECTION);
 	PVR_LOG_GOTO_IF_ERROR(eError, "PVRSRVAllocHandleBase", failure);
 
-	/* Try to get process handle base if it already exists */
-	OSLockAcquire(psPVRSRVData->hProcessHandleBase_Lock);
-	psProcessHandleBase = (PROCESS_HANDLE_BASE*) HASH_Retrieve(PVRSRVGetPVRSRVData()->psProcessHandleBase_Table,
-	                                                           psConnection->pid);
-
-	/* In case there is none we are going to allocate one */
-	if (psProcessHandleBase == NULL)
-	{
-		psProcessHandleBase = OSAllocZMem(sizeof(PROCESS_HANDLE_BASE));
-		PVR_LOG_GOTO_IF_NOMEM(psProcessHandleBase, eError, failureLock);
-
-		OSAtomicWrite(&psProcessHandleBase->iRefCount, 0);
-
-		/* Allocate handle base for this process */
-		eError = PVRSRVAllocHandleBase(&psProcessHandleBase->psHandleBase,
-		                               PVRSRV_HANDLE_BASE_TYPE_PROCESS);
-		if (eError != PVRSRV_OK)
-		{
-			PVR_LOG_ERROR(eError, "PVRSRVAllocHandleBase");
-			OSFreeMem(psProcessHandleBase);
-			goto failureLock;
-		}
-
-		/* Insert the handle base into the global hash table */
-		if (!HASH_Insert(PVRSRVGetPVRSRVData()->psProcessHandleBase_Table,
-		                 psConnection->pid,
-		                 (uintptr_t) psProcessHandleBase))
-		{
-			PVRSRVFreeHandleBase(psProcessHandleBase->psHandleBase, 0);
-
-			OSFreeMem(psProcessHandleBase);
-			PVR_GOTO_WITH_ERROR(eError, PVRSRV_ERROR_UNABLE_TO_INSERT_HASH_VALUE, failureLock);
-		}
-	}
-	OSAtomicIncrement(&psProcessHandleBase->iRefCount);
-
-	OSLockRelease(psPVRSRVData->hProcessHandleBase_Lock);
+	/* get process handle base (if it doesn't exist it will be allocated) */
+	eError = PVRSRVAcquireProcessHandleBase(psConnection->pid, &psProcessHandleBase);
+	PVR_LOG_GOTO_IF_ERROR(eError, "PVRSRVAcquireProcessHandleBase", failure);
 
 	/* hConnectionsLock now resides in PVRSRV_DEVICE_NODE */
 	{
+		IMG_BOOL bHostStreamIsNull;
+		PVRSRV_RGXDEV_INFO  *psRgxDevInfo;
 		PVRSRV_DEVICE_NODE	*psDevNode = OSGetDevNode(psConnection);
 
 		OSLockAcquire(psDevNode->hConnectionsLock);
@@ -294,6 +230,24 @@ PVRSRV_ERROR PVRSRVCommonConnectionConnect(void **ppvPrivData, void *pvOSData)
 		        psDevNode->sDevId.ui32InternalID));
 #endif
 		OSLockRelease(psDevNode->hConnectionsLock);
+
+		if (!PVRSRV_VZ_MODE_IS(GUEST))
+		{
+			psRgxDevInfo = _RGX_DEVICE_INFO_FROM_NODE(psDevNode);
+
+			OSLockAcquire(psRgxDevInfo->hLockHWPerfHostStream);
+			bHostStreamIsNull = (IMG_BOOL)(psRgxDevInfo->hHWPerfHostStream == NULL);
+			OSLockRelease(psRgxDevInfo->hLockHWPerfHostStream);
+
+			if (!bHostStreamIsNull)
+			{
+				if (TLStreamIsOpenForReading(psRgxDevInfo->hHWPerfHostStream))
+				{
+					/* Announce this client connection in the host stream, if event mask is set */
+					RGXSRV_HWPERF_HOST_CLIENT_INFO_PROCESS_NAME(psDevNode, psConnection->pid, psConnection->pszProcName);
+				}
+			}
+		}
 	}
 
 	psConnection->psProcessHandleBase = psProcessHandleBase;
@@ -302,8 +256,6 @@ PVRSRV_ERROR PVRSRVCommonConnectionConnect(void **ppvPrivData, void *pvOSData)
 
 	return PVRSRV_OK;
 
-failureLock:
-	OSLockRelease(psPVRSRVData->hProcessHandleBase_Lock);
 failure:
 	ConnectionDataDestroy(psConnection);
 
@@ -461,80 +413,79 @@ void PVRSRVConnectionDebugNotify(PVRSRV_DEVICE_NODE *psDevNode,
 	if (psDevNode->eDevState != PVRSRV_DEVICE_STATE_ACTIVE)
 	{
 		PVR_DUMPDEBUG_LOG("Connections: No Devices: No active connections");
+		return;
+	}
+
+	OSLockAcquire(psDevNode->hConnectionsLock);
+	if (dllist_is_empty(&psDevNode->sConnections))
+	{
+		PVR_DUMPDEBUG_LOG(CONNECTIONS_PREFIX " No active connections",
+						  (unsigned char)psDevNode->sDevId.ui32InternalID,
+						  (unsigned char)psDevNode->sDevId.i32OsDeviceID);
 	}
 	else
 	{
-		OSLockAcquire(psDevNode->hConnectionsLock);
-		if (dllist_is_empty(&psDevNode->sConnections))
-		{
-			PVR_DUMPDEBUG_LOG(CONNECTIONS_PREFIX " No active connections",
-				              (unsigned char)psDevNode->sDevId.ui32InternalID,
-				              (unsigned char)psDevNode->sDevId.i32OsDeviceID);
-		}
-		else
-		{
-			IMG_CHAR sActiveConnections[MAX_DEBUG_DUMP_STRING_LEN];
-			IMG_UINT16 i, uiPos = 0;
-			IMG_BOOL bPrinted = IMG_FALSE;
-			size_t uiSize = sizeof(sActiveConnections);
+		IMG_CHAR sActiveConnections[MAX_DEBUG_DUMP_STRING_LEN];
+		IMG_UINT16 i, uiPos = 0;
+		IMG_BOOL bPrinted = IMG_FALSE;
+		size_t uiSize = sizeof(sActiveConnections);
 
-			IMG_CHAR szTmpConBuff[MAX_CONNECTIONS_PREFIX + 1];
-			i = OSSNPrintf(szTmpConBuff,
-				           MAX_CONNECTIONS_PREFIX,
-				           CONNECTIONS_PREFIX,
-				           (unsigned char)psDevNode->sDevId.ui32InternalID,
-				           (unsigned char)psDevNode->sDevId.i32OsDeviceID);
-			OSStringLCopy(sActiveConnections+uiPos, szTmpConBuff, uiSize);
+		IMG_CHAR szTmpConBuff[MAX_CONNECTIONS_PREFIX + 1];
+		i = OSSNPrintf(szTmpConBuff,
+					   MAX_CONNECTIONS_PREFIX,
+					   CONNECTIONS_PREFIX,
+					   (unsigned char)psDevNode->sDevId.ui32InternalID,
+					   (unsigned char)psDevNode->sDevId.i32OsDeviceID);
+		OSStringLCopy(sActiveConnections+uiPos, szTmpConBuff, uiSize);
+
+		/* Move the write offset to the end of the current string */
+		uiPos += i;
+		/* Update the amount of remaining space available to copy into */
+		uiSize -= i;
+
+		dllist_foreach_node(&psDevNode->sConnections, pNode, pNext)
+		{
+			CONNECTION_DATA *sData = IMG_CONTAINER_OF(pNode, CONNECTION_DATA, sConnectionListNode);
+
+			IMG_CHAR sTmpBuff[MAX_DEBUG_DUMP_CONNECTION_STR_LEN];
+			i = OSSNPrintf(sTmpBuff, MAX_DEBUG_DUMP_CONNECTION_STR_LEN,
+				DEBUG_DUMP_CONNECTION_FORMAT_STR, sData->pid, sData->vpid, sData->tid, sData->pszProcName);
+			i = MIN(MAX_DEBUG_DUMP_CONNECTION_STR_LEN, i);
+			bPrinted = IMG_FALSE;
+
+			OSStringLCopy(sActiveConnections+uiPos, sTmpBuff, uiSize);
 
 			/* Move the write offset to the end of the current string */
 			uiPos += i;
 			/* Update the amount of remaining space available to copy into */
 			uiSize -= i;
 
-			dllist_foreach_node(&psDevNode->sConnections, pNode, pNext)
+			/* If there is not enough space to add another connection to this line, output the line */
+			if (uiSize <= MAX_DEBUG_DUMP_CONNECTION_STR_LEN)
 			{
-				CONNECTION_DATA *sData = IMG_CONTAINER_OF(pNode, CONNECTION_DATA, sConnectionListNode);
-
-				IMG_CHAR sTmpBuff[MAX_DEBUG_DUMP_CONNECTION_STR_LEN];
-				i = OSSNPrintf(sTmpBuff, MAX_DEBUG_DUMP_CONNECTION_STR_LEN,
-					DEBUG_DUMP_CONNECTION_FORMAT_STR, sData->pid, sData->vpid, sData->tid, sData->pszProcName);
-				i = MIN(MAX_DEBUG_DUMP_CONNECTION_STR_LEN, i);
-				bPrinted = IMG_FALSE;
-
-				OSStringLCopy(sActiveConnections+uiPos, sTmpBuff, uiSize);
-
-				/* Move the write offset to the end of the current string */
-				uiPos += i;
-				/* Update the amount of remaining space available to copy into */
-				uiSize -= i;
-
-				/* If there is not enough space to add another connection to this line, output the line */
-				if (uiSize <= MAX_DEBUG_DUMP_CONNECTION_STR_LEN)
-				{
-					PVR_DUMPDEBUG_LOG("%s", sActiveConnections);
-
-					/*
-					 * Remove the "Connections:" prefix from the buffer.
-					 * Leave the subsequent buffer contents indented by the same
-					 * amount to aid in interpreting the debug output.
-					 */
-					uiPos = sizeof(CONNECTIONS_PREFIX) - 1;
-					/* Reset the amount of space available to copy into */
-					uiSize = MAX_DEBUG_DUMP_STRING_LEN - uiPos;
-					bPrinted = IMG_TRUE;
-				}
-			}
-
-			/* Only print the current line if it hasn't already been printed */
-			if (!bPrinted)
-			{
-				// Strip of the final comma
-				sActiveConnections[OSStringNLength(sActiveConnections, MAX_DEBUG_DUMP_STRING_LEN) - 1] = '\0';
 				PVR_DUMPDEBUG_LOG("%s", sActiveConnections);
+
+				/*
+				 * Remove the "Connections:" prefix from the buffer.
+				 * Leave the subsequent buffer contents indented by the same
+				 * amount to aid in interpreting the debug output.
+				 */
+				uiPos = sizeof(CONNECTIONS_PREFIX) - 1;
+				/* Reset the amount of space available to copy into */
+				uiSize = MAX_DEBUG_DUMP_STRING_LEN - uiPos;
+				bPrinted = IMG_TRUE;
 			}
+		}
+
+		/* Only print the current line if it hasn't already been printed */
+		if (!bPrinted)
+		{
+			/* Strip off the final comma */
+			sActiveConnections[OSStringNLength(sActiveConnections, MAX_DEBUG_DUMP_STRING_LEN) - 1] = '\0';
+			PVR_DUMPDEBUG_LOG("%s", sActiveConnections);
+		}
 #undef MAX_DEBUG_DUMP_STRING_LEN
 #undef MAX_DEBUG_DUMP_CONNECTIONS_PER_LINE
-		}
-		OSLockRelease(psDevNode->hConnectionsLock);
 	}
+	OSLockRelease(psDevNode->hConnectionsLock);
 }

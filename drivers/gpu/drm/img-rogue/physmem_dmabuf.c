@@ -403,8 +403,9 @@ static PVRSRV_ERROR PMRDevPhysAddrDmaBuf(PMR_IMPL_PRIVDATA pvPriv,
 			ui32PageIndex = puiOffset[idx] >> PAGE_SHIFT;
 			ui32InPageOffset = puiOffset[idx] - ((IMG_DEVMEM_OFFSET_T)ui32PageIndex << PAGE_SHIFT);
 
+			PVR_LOG_RETURN_IF_FALSE(ui32PageIndex < psPrivData->ui32VirtPageCount,
+			                        "puiOffset out of range", PVRSRV_ERROR_OUT_OF_RANGE);
 
-			PVR_ASSERT(ui32PageIndex < psPrivData->ui32VirtPageCount);
 			PVR_ASSERT(ui32InPageOffset < PAGE_SIZE);
 			psDevPAddr[idx].uiAddr = psPrivData->pasDevPhysAddr[ui32PageIndex].uiAddr + ui32InPageOffset;
 		}
@@ -553,8 +554,11 @@ PhysmemCreateNewDmaBufBackedPMR(PHYS_HEAP *psHeap,
 
 	bZeroOnAlloc = PVRSRV_CHECK_ZERO_ON_ALLOC(uiFlags);
 	bPoisonOnAlloc = PVRSRV_CHECK_POISON_ON_ALLOC(uiFlags);
+#if defined(DEBUG)
 	bPoisonOnFree = PVRSRV_CHECK_POISON_ON_FREE(uiFlags);
-
+#else
+	bPoisonOnFree = IMG_FALSE;
+#endif
 	if (bZeroOnAlloc && bPoisonOnFree)
 	{
 		/* Zero on Alloc and Poison on Alloc are mutually exclusive */
@@ -774,11 +778,7 @@ PhysmemExportDmaBuf(CONNECTION_DATA *psConnection,
 
 	PMRRefPMR(psPMR);
 
-	eError = PMR_LogicalSize(psPMR, &uiPMRSize);
-	if (eError != PVRSRV_OK)
-	{
-		goto fail_pmr_ref;
-	}
+	PMR_LogicalSize(psPMR, &uiPMRSize);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
 	{

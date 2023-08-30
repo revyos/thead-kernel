@@ -43,7 +43,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef DI_SERVER_H
 #define DI_SERVER_H
 
-#include <stdarg.h>
+#if defined(__linux__)
+ #include <linux/version.h>
+
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+  #include <linux/stdarg.h>
+ #else
+  #include <stdarg.h>
+ #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) */
+#else
+ #include <stdarg.h>
+#endif /* __linux__ */
 
 #include "di_common.h"
 #include "pvrsrv_error.h"
@@ -149,6 +159,19 @@ void DIDestroyGroup(DI_GROUP *psGroup);
  *          has not been specified)
  */
 void *DIGetPrivData(const OSDI_IMPL_ENTRY *psEntry);
+
+/*! @Function DIWrite
+ *
+ * @Description
+ * Writes the binary data of the DI entry to the output sync, whatever that may
+ * be for the DI implementation.
+ *
+ * @Input psEntry pointer to OSDI_IMPL_ENTRY object
+ * @Input pvData data
+ * @Input uiSize pvData length
+ */
+void DIWrite(const OSDI_IMPL_ENTRY *psEntry, const void *pvData,
+             IMG_UINT32 uiSize);
 
 /*! @Function DIPrintf
  *

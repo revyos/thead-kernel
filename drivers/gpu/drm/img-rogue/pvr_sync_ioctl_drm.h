@@ -48,7 +48,7 @@ struct drm_device;
 struct drm_file;
 
 int pvr_sync_open(void *connection_data, struct drm_file *file);
-int pvr_sync_close(void *connection_data);
+void pvr_sync_close(void *connection_data);
 
 int pvr_sync_rename_ioctl(struct drm_device *dev, void *arg,
 			  struct drm_file *file);

@@ -45,8 +45,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PDUMP_KM_H
 
 #if defined(PDUMP)
-#include <stdarg.h>
-#endif
+ #if defined(__linux__)
+  #include <linux/version.h>
+  #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+   #include <linux/stdarg.h>
+  #else
+   #include <stdarg.h>
+  #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) */
+ #else
+  #include <stdarg.h>
+ #endif /* __linux__ */
+#endif /* PDUMP */
 
 /* services/srvkm/include/ */
 #include "device.h"
@@ -221,7 +230,9 @@ PVRSRV_ERROR PDumpGetFrameKM(CONNECTION_DATA *psConnection,
                              IMG_UINT32* pui32Frame);
 PVRSRV_ERROR PDumpCommentKM(CONNECTION_DATA *psConnection,
                             PVRSRV_DEVICE_NODE *psDeviceNode,
-                            IMG_CHAR *pszComment, IMG_UINT32 ui32Flags);
+                            IMG_UINT32 ui32CommentSize,
+                            IMG_CHAR *pszComment,
+                            IMG_UINT32 ui32Flags);
 
 PVRSRV_ERROR PDumpSetDefaultCaptureParamsKM(CONNECTION_DATA *psConnection,
                                             PVRSRV_DEVICE_NODE *psDeviceNode,
@@ -347,19 +358,6 @@ PVRSRV_ERROR PDumpRegPolKM(PVRSRV_DEVICE_NODE *psDeviceNode,
                            IMG_UINT32          ui32Mask,
                            IMG_UINT32          ui32Flags,
                            PDUMP_POLL_OPERATOR eOperator);
-
-PVRSRV_ERROR PDumpBitmapKM(PVRSRV_DEVICE_NODE *psDeviceNode,
-                           IMG_CHAR *pszFileName,
-                           IMG_UINT32 ui32FileOffset,
-                           IMG_UINT32 ui32Width,
-                           IMG_UINT32 ui32Height,
-                           IMG_UINT32 ui32StrideInBytes,
-                           IMG_DEV_VIRTADDR sDevBaseAddr,
-                           IMG_UINT32 ui32MMUContextID,
-                           IMG_UINT32 ui32Size,
-                           PDUMP_PIXEL_FORMAT ePixelFormat,
-                           IMG_UINT32 ui32AddrMode,
-                           IMG_UINT32 ui32PDumpFlags);
 
 
 /**************************************************************************/ /*!
@@ -548,8 +546,8 @@ PVRSRV_ERROR PDumpCOMCommand(PVRSRV_DEVICE_NODE *psDeviceNode,
                              IMG_UINT32 ui32PDumpFlags,
                              const IMG_CHAR *pszPDump);
 
-void PDumpPowerTransitionStart(void);
-void PDumpPowerTransitionEnd(void);
+void PDumpPowerTransitionStart(PVRSRV_DEVICE_NODE *psDeviceNode);
+void PDumpPowerTransitionEnd(PVRSRV_DEVICE_NODE *psDeviceNode);
 IMG_BOOL PDumpCheckFlagsWrite(PVRSRV_DEVICE_NODE *psDeviceNode,
                               IMG_UINT32 ui32Flags);
 
@@ -678,10 +676,8 @@ PDumpTransition(PVRSRV_DEVICE_NODE *psDeviceNode,
                 PDUMP_TRANSITION_EVENT eEvent,
                 IMG_UINT32 ui32PDumpFlags);
 
-/* Check if writing to a PDump file is permitted
- * (based on flags and device)
- */
-IMG_BOOL PDumpIsPermitted(PVRSRV_DEVICE_NODE *psDeviceNode);
+/* Check if writing to a PDump file is permitted for the given device */
+IMG_BOOL PDumpIsDevicePermitted(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 /* _ui32PDumpFlags must be a variable in the local scope */
 #define PDUMP_LOCK(_ui32PDumpFlags) do \
@@ -844,10 +840,13 @@ PDumpGetFrameKM(CONNECTION_DATA *psConnection,
 static INLINE PVRSRV_ERROR
 PDumpCommentKM(CONNECTION_DATA *psConnection,
                PVRSRV_DEVICE_NODE *psDeviceNode,
-               IMG_CHAR *pszComment, IMG_UINT32 ui32Flags)
+               IMG_UINT32 ui32CommentSize,
+               IMG_CHAR *pszComment,
+               IMG_UINT32 ui32Flags)
 {
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
+    PVR_UNREFERENCED_PARAMETER(ui32CommentSize);
 	PVR_UNREFERENCED_PARAMETER(pszComment);
 	PVR_UNREFERENCED_PARAMETER(ui32Flags);
 	return PVRSRV_OK;
@@ -939,38 +938,6 @@ PDumpForceCaptureStopKM(CONNECTION_DATA *psConnection,
 {
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
-	return PVRSRV_OK;
-}
-
-#ifdef INLINE_IS_PRAGMA
-#pragma inline(PDumpBitmapKM)
-#endif
-static INLINE PVRSRV_ERROR
-PDumpBitmapKM(PVRSRV_DEVICE_NODE *psDeviceNode,
-              IMG_CHAR *pszFileName,
-              IMG_UINT32 ui32FileOffset,
-              IMG_UINT32 ui32Width,
-              IMG_UINT32 ui32Height,
-              IMG_UINT32 ui32StrideInBytes,
-              IMG_DEV_VIRTADDR sDevBaseAddr,
-              IMG_UINT32 ui32MMUContextID,
-              IMG_UINT32 ui32Size,
-              PDUMP_PIXEL_FORMAT ePixelFormat,
-              IMG_UINT32 ui32AddrMode,
-              IMG_UINT32 ui32PDumpFlags)
-{
-	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
-	PVR_UNREFERENCED_PARAMETER(pszFileName);
-	PVR_UNREFERENCED_PARAMETER(ui32FileOffset);
-	PVR_UNREFERENCED_PARAMETER(ui32Width);
-	PVR_UNREFERENCED_PARAMETER(ui32Height);
-	PVR_UNREFERENCED_PARAMETER(ui32StrideInBytes);
-	PVR_UNREFERENCED_PARAMETER(sDevBaseAddr);
-	PVR_UNREFERENCED_PARAMETER(ui32MMUContextID);
-	PVR_UNREFERENCED_PARAMETER(ui32Size);
-	PVR_UNREFERENCED_PARAMETER(ePixelFormat);
-	PVR_UNREFERENCED_PARAMETER(ui32AddrMode);
-	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
 	return PVRSRV_OK;
 }
 

@@ -270,7 +270,7 @@ static INLINE uint32_t __const_function FloorLog2(uint32_t n)
 {
 	uint32_t ui32log2 = 0;
 
-	while (n >>= 1)
+	while ((n >>= 1) != 0U)
 	{
 		ui32log2++;
 	}
@@ -287,7 +287,7 @@ static INLINE uint32_t __const_function FloorLog2_64(uint64_t n)
 {
 	uint32_t ui32log2 = 0;
 
-	while (n >>= 1)
+	while ((n >>= 1) != 0U)
 	{
 		ui32log2++;
 	}
@@ -311,7 +311,7 @@ static INLINE uint32_t __const_function CeilLog2(uint32_t n)
 
 	n--; /* Handle powers of 2 */
 
-	while (n)
+	while (n != 0U)
 	{
 		ui32log2++;
 		n >>= 1;
@@ -336,7 +336,7 @@ static INLINE uint32_t __const_function CeilLog2_64(uint64_t n)
 
 	n--; /* Handle powers of 2 */
 
-	while (n)
+	while (n != 0U)
 	{
 		ui32log2++;
 		n >>= 1;

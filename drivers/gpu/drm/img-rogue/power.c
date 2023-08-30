@@ -728,15 +728,13 @@ PVRSRV_ERROR PVRSRVRegisterPowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode,
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
+void PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
 	if (psDeviceNode->psPowerDev)
 	{
 		OSFreeMem(psDeviceNode->psPowerDev);
 		psDeviceNode->psPowerDev = NULL;
 	}
-
-	return PVRSRV_OK;
 }
 
 PVRSRV_ERROR PVRSRVGetDevicePowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
@@ -797,7 +795,12 @@ PVRSRVDevicePreClockSpeedChange(PPVRSRV_DEVICE_NODE psDeviceNode,
 
 			if (eError != PVRSRV_OK)
 			{
-				PVR_DPF((PVR_DBG_WARNING, "%s() failed (%s) in %s()", "PVRSRVDeviceIdleRequestKM", PVRSRVGETERRORSTRING(eError), __func__));
+				/* FW Can signal denied when busy with SPM or other work it can not idle */
+				if (eError != PVRSRV_ERROR_DEVICE_IDLE_REQUEST_DENIED)
+				{
+					PVR_DPF((PVR_DBG_ERROR, "%s: Error (%s) from %s()", __func__,
+					         PVRSRVGETERRORSTRING(eError), "PVRSRVDeviceIdleRequestKM"));
+				}
 				if (eError != PVRSRV_ERROR_PWLOCK_RELEASED_REACQ_FAILED)
 				{
 					PVRSRVPowerUnlock(psDeviceNode);

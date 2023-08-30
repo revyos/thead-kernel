@@ -70,6 +70,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 /*
+    Register RGX_CR_USC_INDIRECT
+*/
+#define RGX_CR_USC_INDIRECT                               (0x8000U)
+#define RGX_CR_USC_INDIRECT_MASKFULL                      (IMG_UINT64_C(0x000000000000000F))
+#define RGX_CR_USC_INDIRECT_ADDRESS_SHIFT                 (0U)
+#define RGX_CR_USC_INDIRECT_ADDRESS_CLRMSK                (0xFFFFFFF0U)
+
+
+/*
     Register RGX_CR_PBE_INDIRECT
 */
 #define RGX_CR_PBE_INDIRECT                               (0x83E0U)
@@ -490,6 +499,24 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_CR_CHANGESET_NUMBER_MASKFULL                  (IMG_UINT64_C(0xFFFFFFFFFFFFFFFF))
 #define RGX_CR_CHANGESET_NUMBER_CHANGESET_NUMBER_SHIFT    (0U)
 #define RGX_CR_CHANGESET_NUMBER_CHANGESET_NUMBER_CLRMSK   (IMG_UINT64_C(0x0000000000000000))
+
+
+/*
+    Register RGX_CR_SOC_TIMER_GRAY
+*/
+#define RGX_CR_SOC_TIMER_GRAY                             (0x00E0U)
+#define RGX_CR_SOC_TIMER_GRAY_MASKFULL                    (IMG_UINT64_C(0xFFFFFFFFFFFFFFFF))
+#define RGX_CR_SOC_TIMER_GRAY_VALUE_SHIFT                 (0U)
+#define RGX_CR_SOC_TIMER_GRAY_VALUE_CLRMSK                (IMG_UINT64_C(0x0000000000000000))
+
+
+/*
+    Register RGX_CR_SOC_TIMER_BINARY
+*/
+#define RGX_CR_SOC_TIMER_BINARY                           (0x00E8U)
+#define RGX_CR_SOC_TIMER_BINARY_MASKFULL                  (IMG_UINT64_C(0xFFFFFFFFFFFFFFFF))
+#define RGX_CR_SOC_TIMER_BINARY_VALUE_SHIFT               (0U)
+#define RGX_CR_SOC_TIMER_BINARY_VALUE_CLRMSK              (IMG_UINT64_C(0x0000000000000000))
 
 
 /*
@@ -5460,6 +5487,25 @@ Fast scale render */
 #define RGX_CR_SLC_SIZE_IN_KB_MASKFULL                    (IMG_UINT64_C(0x000000000000FFFF))
 #define RGX_CR_SLC_SIZE_IN_KB_SIZE_SHIFT                  (0U)
 #define RGX_CR_SLC_SIZE_IN_KB_SIZE_CLRMSK                 (0xFFFF0000U)
+
+
+/*
+    Register RGX_CR_USC_TIMER
+*/
+#define RGX_CR_USC_TIMER                                  (0x46C8U)
+#define RGX_CR_USC_TIMER_MASKFULL                         (IMG_UINT64_C(0x00000000FFFFFFFF))
+#define RGX_CR_USC_TIMER_CNT_SHIFT                        (0U)
+#define RGX_CR_USC_TIMER_CNT_CLRMSK                       (0x00000000U)
+
+
+/*
+    Register RGX_CR_USC_TIMER_CNT
+*/
+#define RGX_CR_USC_TIMER_CNT                              (0x46D0U)
+#define RGX_CR_USC_TIMER_CNT_MASKFULL                     (IMG_UINT64_C(0x0000000000000001))
+#define RGX_CR_USC_TIMER_CNT_RESET_SHIFT                  (0U)
+#define RGX_CR_USC_TIMER_CNT_RESET_CLRMSK                 (0xFFFFFFFEU)
+#define RGX_CR_USC_TIMER_CNT_RESET_EN                     (0x00000001U)
 
 
 /*

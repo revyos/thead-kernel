@@ -321,7 +321,7 @@ static IMG_UINT32 RGXHWPerfDataStore(PVRSRV_RGXDEV_INFO	*psDevInfo)
 	 * indexes of the FW buffer */
 	ui32SrcRIdx = psFwSysData->ui32HWPerfRIdx;
 	ui32SrcWIdx = psFwSysData->ui32HWPerfWIdx;
-	OSMemoryBarrier();
+	OSMemoryBarrier(NULL);
 	ui32SrcWrapCount = psFwSysData->ui32HWPerfWrapCount;
 
 #if defined(HWPERF_MISR_FUNC_DEBUG) || defined(EMULATOR)
@@ -649,7 +649,6 @@ static void _HWPerfFWOnReaderOpenCB(void *pvArg)
 	eError = RGXScheduleCommandAndGetKCCBSlot(psDevNode->pvDevice,
 											  RGXFWIF_DM_GP,
 											  &sKccbCmd,
-											  0,
 											  PDUMP_FLAGS_CONTINUOUS,
 											  &ui32kCCBCommandSlot);
 	if (eError != PVRSRV_OK)
@@ -741,7 +740,7 @@ PVRSRV_ERROR RGXHWPerfInitOnDemandResources(PVRSRV_RGXDEV_INFO* psRgxDevInfo)
 #endif
 
 	/* flush write buffers for psRgxDevInfo->psRGXFWIfRuntimeCfg */
-	OSWriteMemoryBarrier();
+	OSWriteMemoryBarrier(&psRgxDevInfo->psRGXFWIfRuntimeCfg->sHWPerfBuf.ui32Addr);
 
 	eError = DevmemAcquireCpuVirtAddr(psRgxDevInfo->psRGXFWIfHWPerfBufMemDesc,
 	                                  (void**)&psRgxDevInfo->psRGXFWIfHWPerfBuf);
@@ -918,7 +917,7 @@ static PVRSRV_ERROR RGXHWPerfCtrlFwBuffer(const PVRSRV_DEVICE_NODE *psDeviceNode
 		}
 	}
 
-#if defined(RGX_FEATURE_HWPERF_VOLCANIC) && defined(SUPPORT_POWMON_COMPONENT)
+#if defined(RGX_FEATURE_HWPERF_VOLCANIC) && defined(SUPPORT_POWMON_COMPONENT) && defined(SUPPORT_POWER_VALIDATION_VIA_DEBUGFS)
 	if (RGXPowmonBufferIsInitRequired(psDeviceNode->pvDevice))
 	{
 		/* Allocate power monitoring log buffer if enabled */
@@ -949,7 +948,6 @@ static PVRSRV_ERROR RGXHWPerfCtrlFwBuffer(const PVRSRV_DEVICE_NODE *psDeviceNode
 	eError = RGXScheduleCommandAndGetKCCBSlot(psDevice,
 	                                          RGXFWIF_DM_GP,
 	                                          &sKccbCmd,
-	                                          0,
 	                                          IMG_TRUE,
 	                                          &ui32kCCBCommandSlot);
 	if (eError != PVRSRV_OK)
@@ -1338,6 +1336,10 @@ error:
 	return eError;
 }
 
+#define RGX_HWPERF_HOST_CLIENT_INFO_PROC_NAME_BASE_SIZE \
+	((IMG_UINT32)(offsetof(RGX_HWPERF_HOST_CLIENT_INFO_DATA, uDetail) + \
+		sizeof(((RGX_HWPERF_HOST_CLIENT_INFO_DETAIL*)0)->sProcName.ui32Count)))
+
 static void _HWPerfHostOnConnectCB(void *pvArg)
 {
 	PVRSRV_RGXDEV_INFO* psDevice;
@@ -1354,6 +1356,65 @@ static void _HWPerfHostOnConnectCB(void *pvArg)
 	{
 		eError = PVRSRVCreateHWPerfHostThread(PVRSRV_APPHINT_HWPERFHOSTTHREADTIMEOUTINMS);
 		PVR_LOG_IF_ERROR(eError, "PVRSRVCreateHWPerfHostThread");
+	}
+
+	if (RGXHWPerfHostIsEventEnabled(psDevice, RGX_HWPERF_HOST_CLIENT_INFO))
+	{
+		// GCC throws -Werror=frame-larger-than error if the frame size is > 1024 bytes,
+		// so use a heap allocation - is there an alternate solution?
+		IMG_BYTE *pbPktPayload = (IMG_BYTE*)OSAllocMem(RGX_HWPERF_MAX_PAYLOAD_SIZE);
+
+		if (pbPktPayload)
+		{
+			RGX_HWPERF_HOST_CLIENT_INFO_DATA *psHostClientInfo;
+			RGX_HWPERF_HOST_CLIENT_PROC_NAME *psProcName;
+			IMG_UINT32 ui32TotalPayloadSize, ui32NameLen, ui32ProcNamePktSize;
+			DLLIST_NODE *pNode, *pNext;
+
+			psHostClientInfo = IMG_OFFSET_ADDR(pbPktPayload,0);
+			psHostClientInfo->eType = RGX_HWPERF_HOST_CLIENT_INFO_TYPE_PROCESS_NAME;
+			psHostClientInfo->uDetail.sProcName.ui32Count = 0U;
+			psProcName = psHostClientInfo->uDetail.sProcName.asProcNames;
+			ui32TotalPayloadSize = RGX_HWPERF_HOST_CLIENT_INFO_PROC_NAME_BASE_SIZE;
+
+			OSLockAcquire(psDevice->psDeviceNode->hConnectionsLock);
+
+			// Announce current client connections to the reader
+			dllist_foreach_node(&psDevice->psDeviceNode->sConnections, pNode, pNext)
+			{
+				CONNECTION_DATA *psData = IMG_CONTAINER_OF(pNode, CONNECTION_DATA, sConnectionListNode);
+
+				ui32NameLen = OSStringLength(psData->pszProcName) + 1U;
+				ui32ProcNamePktSize = RGX_HWPERF_HOST_CLIENT_PROC_NAME_SIZE(ui32NameLen);
+
+				// Unlikely case where we have too much data to fit into a single hwperf packet
+				if (ui32ProcNamePktSize + ui32TotalPayloadSize > RGX_HWPERF_MAX_PAYLOAD_SIZE)
+				{
+					RGXHWPerfHostPostRaw(psDevice, RGX_HWPERF_HOST_CLIENT_INFO, pbPktPayload, ui32TotalPayloadSize);
+
+					psHostClientInfo->uDetail.sProcName.ui32Count = 0U;
+					psProcName = psHostClientInfo->uDetail.sProcName.asProcNames;
+					ui32TotalPayloadSize = RGX_HWPERF_HOST_CLIENT_INFO_PROC_NAME_BASE_SIZE;
+				}
+
+				// Setup packet data
+				psHostClientInfo->uDetail.sProcName.ui32Count++;
+				psProcName->uiClientPID = psData->pid;
+				psProcName->ui32Length = ui32NameLen;
+				(void)OSStringLCopy(psProcName->acName, psData->pszProcName, ui32NameLen);
+
+				psProcName = (RGX_HWPERF_HOST_CLIENT_PROC_NAME*)IMG_OFFSET_ADDR(psProcName, ui32ProcNamePktSize);
+				ui32TotalPayloadSize += ui32ProcNamePktSize;
+			}
+
+			OSLockRelease(psDevice->psDeviceNode->hConnectionsLock);
+			RGXHWPerfHostPostRaw(psDevice, RGX_HWPERF_HOST_CLIENT_INFO, pbPktPayload, ui32TotalPayloadSize);
+			OSFreeMem(pbPktPayload);
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: OUT OF MEMORY. Could not allocate memory for RGX_HWPERF_HOST_CLIENT_INFO_DATA packet.", __func__));
+		}
 	}
 }
 
@@ -1877,6 +1938,37 @@ static inline void _SetupHostEnqPacketData(IMG_UINT8 *pui8Dest,
 	psData->ui64UpdateFence_UID = ui64UpdateFenceUID;
 	psData->ui64DeadlineInus = ui64DeadlineInus;
 	psData->ui32CycleEstimate = ui32CycleEstimate;
+}
+
+void RGXHWPerfHostPostRaw(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+						  RGX_HWPERF_HOST_EVENT_TYPE eEvType,
+						  IMG_BYTE *pbPayload,
+						  IMG_UINT32 ui32PayloadSize)
+{
+	IMG_UINT8 *pui8Dest;
+	IMG_UINT32 ui32PktSize;
+	IMG_UINT32 ui32Ordinal;
+	IMG_UINT64 ui64Timestamp;
+
+	PVR_ASSERT(ui32PayloadSize <= RGX_HWPERF_MAX_PAYLOAD_SIZE);
+
+	_GetHWPerfHostPacketSpecifics(psRgxDevInfo, &ui32Ordinal, &ui64Timestamp, NULL, IMG_TRUE);
+	_PostFunctionPrologue(psRgxDevInfo, ui32Ordinal);
+
+	ui32PktSize = RGX_HWPERF_MAKE_SIZE_VARIABLE(ui32PayloadSize);
+	pui8Dest = _ReserveHWPerfStream(psRgxDevInfo, ui32PktSize);
+
+	if (pui8Dest == NULL)
+	{
+		goto cleanup;
+	}
+
+	_SetupHostPacketHeader(psRgxDevInfo, pui8Dest, eEvType, ui32PktSize, ui32Ordinal, ui64Timestamp);
+	OSDeviceMemCopy((IMG_UINT8*)IMG_OFFSET_ADDR(pui8Dest, sizeof(RGX_HWPERF_V2_PACKET_HDR)), pbPayload, ui32PayloadSize);
+	_CommitHWPerfStream(psRgxDevInfo, ui32PktSize);
+
+cleanup:
+	_PostFunctionEpilogue(psRgxDevInfo, ui32Ordinal);
 }
 
 void RGXHWPerfHostPostEnqEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
@@ -2790,6 +2882,45 @@ cleanup:
 
 }
 
+void RGXHWPerfHostPostClientInfoProcName(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+                                         IMG_PID uiPID,
+									     const IMG_CHAR *psName)
+{
+	RGX_HWPERF_HOST_CLIENT_INFO_DATA* psPkt;
+	IMG_UINT8 *pui8Dest;
+	IMG_UINT32 ui32Size;
+	IMG_UINT32 ui32NameLen;
+	IMG_UINT32 ui32Ordinal;
+	IMG_UINT64 ui64Timestamp;
+
+	_GetHWPerfHostPacketSpecifics(psRgxDevInfo, &ui32Ordinal, &ui64Timestamp, NULL, IMG_TRUE);
+	_PostFunctionPrologue(psRgxDevInfo, ui32Ordinal);
+
+	ui32NameLen = OSStringLength(psName) + 1U;
+	ui32Size = RGX_HWPERF_MAKE_SIZE_VARIABLE(RGX_HWPERF_HOST_CLIENT_INFO_PROC_NAME_BASE_SIZE
+		+ RGX_HWPERF_HOST_CLIENT_PROC_NAME_SIZE(ui32NameLen));
+
+	if ((pui8Dest = _ReserveHWPerfStream(psRgxDevInfo, ui32Size)) == NULL)
+	{
+		goto cleanup;
+	}
+
+	_SetupHostPacketHeader(psRgxDevInfo, pui8Dest, RGX_HWPERF_HOST_CLIENT_INFO,
+	                       ui32Size, ui32Ordinal, ui64Timestamp);
+
+	psPkt = (RGX_HWPERF_HOST_CLIENT_INFO_DATA*)IMG_OFFSET_ADDR(pui8Dest, sizeof(RGX_HWPERF_V2_PACKET_HDR));
+	psPkt->eType = RGX_HWPERF_HOST_CLIENT_INFO_TYPE_PROCESS_NAME;
+	psPkt->uDetail.sProcName.ui32Count = 1U;
+	psPkt->uDetail.sProcName.asProcNames[0].uiClientPID = uiPID;
+	psPkt->uDetail.sProcName.asProcNames[0].ui32Length = ui32NameLen;
+	(void)OSStringLCopy(psPkt->uDetail.sProcName.asProcNames[0].acName, psName, ui32NameLen);
+
+	_CommitHWPerfStream(psRgxDevInfo, ui32Size);
+
+cleanup:
+	_PostFunctionEpilogue(psRgxDevInfo, ui32Ordinal);
+}
+
 /******************************************************************************
  * Currently only implemented on Linux. Feature can be enabled to provide
  * an interface to 3rd-party kernel modules that wish to access the
@@ -2844,7 +2975,9 @@ PVRSRV_ERROR RGXHWPerfLazyConnect(RGX_HWPERF_CONNECTION** ppsHWPerfConnection)
 	/* early save the return pointer to aid clean-up if failure occurs */
 	*ppsHWPerfConnection = psHWPerfConnection;
 
+	OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
 	psDeviceNode = psPVRSRVData->psDeviceNodeList;
+
 	while (psDeviceNode)
 	{
 		if (psDeviceNode->eDevState != PVRSRV_DEVICE_STATE_ACTIVE)
@@ -2860,6 +2993,7 @@ PVRSRV_ERROR RGXHWPerfLazyConnect(RGX_HWPERF_CONNECTION** ppsHWPerfConnection)
 		psNewHWPerfDevice = OSAllocMem(sizeof(*psNewHWPerfDevice));
 		if (!psNewHWPerfDevice)
 		{
+			OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 			return PVRSRV_ERROR_OUT_OF_MEMORY;
 		}
 		/* Insert node at head of the list */
@@ -2871,11 +3005,13 @@ PVRSRV_ERROR RGXHWPerfLazyConnect(RGX_HWPERF_CONNECTION** ppsHWPerfConnection)
 		psNewHWPerfDevice->hDevData = (IMG_HANDLE)psDevData;
 		if (!psDevData)
 		{
+			OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 			return PVRSRV_ERROR_OUT_OF_MEMORY;
 		}
 		if (OSSNPrintf(psNewHWPerfDevice->pszName, sizeof(psNewHWPerfDevice->pszName),
-		               "hwperf_device_%d", psDeviceNode->sDevId.i32OsDeviceID) < 0)
+			           "hwperf_device_%d", psDeviceNode->sDevId.i32OsDeviceID) < 0)
 		{
+			OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 			PVR_DPF((PVR_DBG_ERROR,
 					 "%s: Failed to form HWPerf device name for device %d",
 					__func__,
@@ -2891,6 +3027,8 @@ PVRSRV_ERROR RGXHWPerfLazyConnect(RGX_HWPERF_CONNECTION** ppsHWPerfConnection)
 		/* At least one device is active */
 		bFWActive = IMG_TRUE;
 	}
+
+	OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 
 	if (!bFWActive)
 	{
@@ -3092,7 +3230,6 @@ PVRSRV_ERROR PVRSRVRGXControlHWPerfBlocksKM(
 	eError = RGXScheduleCommandAndGetKCCBSlot(psDevice,
 	                                          RGXFWIF_DM_GP,
 	                                          &sKccbCmd,
-	                                          0,
 	                                          PDUMP_FLAGS_CONTINUOUS,
 	                                          &ui32kCCBCommandSlot);
 	PVR_LOG_RETURN_IF_ERROR(eError, "RGXScheduleCommandAndGetKCCBSlot");

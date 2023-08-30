@@ -254,13 +254,19 @@ typedef struct
 {
 #if defined(UNDER_WDDM) || defined(WINDOWS_WDF)
 	uintptr_t uiAddr;
-#define IMG_CAST_TO_CPUPHYADDR_UINT(var)		(uintptr_t)(var)
+#define IMG_CAST_TO_CPUPHYADDR_UINT(var)	(uintptr_t)(var)
+#define CPUPHYADDR_FMTARG(var)				(IMG_UINT64)(var)
+#define CPUPHYADDR_UINT_FMTSPEC "0x%016" IMG_UINT64_FMTSPECx
 #elif defined(__linux__) && defined(__KERNEL__)
 	phys_addr_t uiAddr;
-#define IMG_CAST_TO_CPUPHYADDR_UINT(var)		(phys_addr_t)(var)
+#define IMG_CAST_TO_CPUPHYADDR_UINT(var)	(phys_addr_t)(var)
+#define CPUPHYADDR_FMTARG(var)				(&var)
+#define CPUPHYADDR_UINT_FMTSPEC "%pa"
 #else
 	IMG_UINT64 uiAddr;
-#define IMG_CAST_TO_CPUPHYADDR_UINT(var)		(IMG_UINT64)(var)
+#define IMG_CAST_TO_CPUPHYADDR_UINT(var)	(IMG_UINT64)(var)
+#define CPUPHYADDR_FMTARG(var)				(var)
+#define CPUPHYADDR_UINT_FMTSPEC "0x%016" IMG_UINT64_FMTSPECx
 #endif
 } IMG_CPU_PHYADDR;
 

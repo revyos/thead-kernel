@@ -67,4 +67,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define dma_resv_wait_timeout_rcu	reservation_object_wait_timeout_rcu
 #endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 14, 0))
+
+#define dma_resv_shared_list   dma_resv_get_list
+#define dma_resv_excl_fence    dma_resv_get_excl
+#define dma_resv_wait_timeout  dma_resv_wait_timeout_rcu
+#define dma_resv_test_signaled dma_resv_test_signaled_rcu
+#define dma_resv_get_fences    dma_resv_get_fences_rcu
+
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(5, 14, 0)) */
+
 #endif /* __PVR_DMA_RESV_H__ */

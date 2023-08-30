@@ -1,3 +1,4 @@
+override PVRSRV_DIR := services
 override HOST_PRIMARY_ARCH := host_x86_64
 override HOST_32BIT_ARCH := host_i386
 override HOST_FORCE_32BIT := -m32
@@ -20,7 +21,9 @@ override PVR_SYSTEM := rgx_thead
 override PVR_LOADER :=
 override SORT_BRIDGE_STRUCTS := 1
 override DEBUGLINK := 1
+override RGX_BNC := 36.V.104.182
 override SUPPORT_PHYSMEM_TEST := 1
+override SUPPORT_MIPS_64K_PAGE_SIZE :=
 override RGX_NUM_OS_SUPPORTED := 1
 override VMM_TYPE := stub
 override SUPPORT_POWMON_COMPONENT := 1
@@ -48,4 +51,3 @@ else
 override BUILD := release
 override PVR_BUILD_TYPE := release
 endif
-

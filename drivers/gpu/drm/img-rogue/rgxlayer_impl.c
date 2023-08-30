@@ -118,6 +118,7 @@ IMG_UINT32 RGXGetOSPageSize(const void *hPrivate)
 
 IMG_UINT32 RGXGetFWCorememSize(const void *hPrivate)
 {
+#if defined(RGX_FEATURE_META_COREMEM_SIZE_MAX_VALUE_IDX)
 	RGX_LAYER_PARAMS *psParams;
 	PVRSRV_RGXDEV_INFO *psDevInfo;
 	IMG_UINT32 ui32CorememSize = 0;
@@ -133,6 +134,11 @@ IMG_UINT32 RGXGetFWCorememSize(const void *hPrivate)
 	}
 
 	return ui32CorememSize;
+#else
+	PVR_UNREFERENCED_PARAMETER(hPrivate);
+
+	return 0U;
+#endif
 }
 
 void RGXWriteReg32(const void *hPrivate, IMG_UINT32 ui32RegAddr, IMG_UINT32 ui32RegValue)
@@ -726,6 +732,7 @@ IMG_BOOL RGXDoFWSlaveBoot(const void *hPrivate)
 	return PVRSRVSystemSnoopingOfCPUCache(psDevConfig);
 }
 
+#if defined(RGX_FEATURE_META_MAX_VALUE_IDX)
 static PVRSRV_ERROR RGXWriteMetaRegThroughSP(const void *hPrivate, IMG_UINT32 ui32RegAddr, IMG_UINT32 ui32RegValue)
 {
 	PVRSRV_ERROR eError = PVRSRV_OK;
@@ -743,6 +750,7 @@ static PVRSRV_ERROR RGXWriteMetaRegThroughSP(const void *hPrivate, IMG_UINT32 ui
 
 	return eError;
 }
+#endif
 
 /*
  * The fabric coherency test is performed when platform supports fabric coherency
@@ -755,17 +763,18 @@ static PVRSRV_ERROR RGXWriteMetaRegThroughSP(const void *hPrivate, IMG_UINT32 ui
  */
 PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 {
+#if defined(RGX_FEATURE_META_MAX_VALUE_IDX)
 	PVRSRV_RGXDEV_INFO *psDevInfo;
 	IMG_UINT32 *pui32FabricCohTestBufferCpuVA;
 	DEVMEM_MEMDESC *psFabricCohTestBufferMemDesc;
 	RGXFWIF_DEV_VIRTADDR sFabricCohTestBufferDevVA;
 	IMG_DEVMEM_SIZE_T uiFabricCohTestBlockSize = sizeof(IMG_UINT64);
 	IMG_DEVMEM_ALIGN_T uiFabricCohTestBlockAlign = sizeof(IMG_UINT64);
-	IMG_UINT64 ui64SegOutAddrTopCached = 0;
-	IMG_UINT64 ui64SegOutAddrTopUncached = 0;
 	IMG_UINT32 ui32SLCCTRL = 0;
 	IMG_UINT32 ui32OddEven;
-	IMG_BOOL   bFeatureS7;
+#if defined(RGX_FEATURE_S7_TOP_INFRASTRUCTURE_BIT_MASK)
+	IMG_BOOL   bFeatureS7 = RGX_DEVICE_HAS_FEATURE(hPrivate, S7_TOP_INFRASTRUCTURE);
+#endif
 	IMG_UINT32 ui32TestType;
 	IMG_UINT32 ui32OddEvenSeed = 1;
 	PVRSRV_ERROR eError = PVRSRV_OK;
@@ -780,18 +789,17 @@ PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 
 	PVR_LOG(("Starting fabric coherency test ....."));
 
-	bFeatureS7 = RGX_DEVICE_HAS_FEATURE(hPrivate, S7_TOP_INFRASTRUCTURE);
-
+#if defined(RGX_FEATURE_S7_TOP_INFRASTRUCTURE_BIT_MASK)
 	if (bFeatureS7)
 	{
-		ui64SegOutAddrTopCached   = RGXFW_SEGMMU_OUTADDR_TOP_VIVT_SLC_CACHED(MMU_CONTEXT_MAPPING_FWIF);
-		ui64SegOutAddrTopUncached = RGXFW_SEGMMU_OUTADDR_TOP_VIVT_SLC_UNCACHED(MMU_CONTEXT_MAPPING_FWIF);
+		IMG_UINT64 ui64SegOutAddrTopUncached = RGXFW_SEGMMU_OUTADDR_TOP_VIVT_SLC_UNCACHED(MMU_CONTEXT_MAPPING_FWIF);
 
 		/* Configure META to use SLC force-linefill for the bootloader segment */
 		RGXWriteMetaRegThroughSP(hPrivate, META_CR_MMCU_SEGMENTn_OUTA1(6),
 				(ui64SegOutAddrTopUncached | RGXFW_BOOTLDR_DEVV_ADDR) >> 32);
 	}
 	else
+#endif
 	{
 		/* Bypass the SLC when IO coherency is enabled */
 		ui32SLCCTRL = RGXReadReg32(hPrivate, RGX_CR_SLC_CTRL_BYPASS);
@@ -951,11 +959,11 @@ PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 					}
 
 					/* Write the value using the RGX slave-port interface */
-					eError = RGXWriteMETAAddr(psDevInfo, ui32FWAddr, ui32FWValue);
+					eError = RGXWriteFWModuleAddr(psDevInfo, ui32FWAddr, ui32FWValue);
 					if (eError != PVRSRV_OK)
 					{
 						PVR_DPF((PVR_DBG_ERROR,
-								"RGXWriteMETAAddr error: %s, exiting",
+								"RGXWriteFWModuleAddr error: %s, exiting",
 								PVRSRVGetErrorString(eError)));
 						bExit = IMG_TRUE;
 						continue;
@@ -963,11 +971,11 @@ PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 
 					/* Read back value using RGX slave-port interface, this is used
 					   as a sort of memory barrier for the above write */
-					eError = RGXReadMETAAddr(psDevInfo, ui32FWAddr, &ui32FWValue2);
+					eError = RGXReadFWModuleAddr(psDevInfo, ui32FWAddr, &ui32FWValue2);
 					if (eError != PVRSRV_OK)
 					{
 						PVR_DPF((PVR_DBG_ERROR,
-								"RGXReadMETAAddr error: %s, exiting",
+								"RGXReadFWModuleAddr error: %s, exiting",
 								PVRSRVGetErrorString(eError)));
 						bExit = IMG_TRUE;
 						continue;
@@ -1013,7 +1021,7 @@ PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 					pui32FabricCohTestBufferCpuVA[i] = i + ui32OddEvenSeed;
 
 					/* Flush possible cpu store-buffer(ing) on LMA */
-					OSWriteMemoryBarrier();
+					OSWriteMemoryBarrier(&pui32FabricCohTestBufferCpuVA[i]);
 
 					switch (ui32TestType)
 					{
@@ -1031,11 +1039,11 @@ PVRSRV_ERROR RGXFabricCoherencyTest(const void *hPrivate)
 					}
 
 					/* Read back value using RGX slave-port interface */
-					eError = RGXReadMETAAddr(psDevInfo, ui32FWAddr, &ui32FWValue);
+					eError = RGXReadFWModuleAddr(psDevInfo, ui32FWAddr, &ui32FWValue);
 					if (eError != PVRSRV_OK)
 					{
 						PVR_DPF((PVR_DBG_ERROR,
-								"RGXReadWithSP error: %s, exiting",
+								"RGXReadFWModuleAddr error: %s, exiting",
 								PVRSRVGetErrorString(eError)));
 						bExit = IMG_TRUE;
 						continue;
@@ -1135,13 +1143,16 @@ e1:
 	DevmemFwUnmapAndFree(psDevInfo, psFabricCohTestBufferMemDesc);
 
 e0:
+#if defined(RGX_FEATURE_S7_TOP_INFRASTRUCTURE_BIT_MASK)
 	if (bFeatureS7)
 	{
 		/* Restore bootloader segment settings */
+		IMG_UINT64 ui64SegOutAddrTopCached   = RGXFW_SEGMMU_OUTADDR_TOP_VIVT_SLC_CACHED(MMU_CONTEXT_MAPPING_FWIF);
 		RGXWriteMetaRegThroughSP(hPrivate, META_CR_MMCU_SEGMENTn_OUTA1(6),
 				(ui64SegOutAddrTopCached | RGXFW_BOOTLDR_DEVV_ADDR) >> 32);
 	}
 	else
+#endif
 	{
 		/* Restore SLC bypass settings */
 		RGXWriteReg32(hPrivate, RGX_CR_SLC_CTRL_BYPASS, ui32SLCCTRL);
@@ -1160,6 +1171,11 @@ e0:
 	}
 
 	return eError;
+#else
+	PVR_UNREFERENCED_PARAMETER(hPrivate);
+
+	return PVRSRV_OK;
+#endif
 }
 
 IMG_INT32 RGXDeviceGetFeatureValue(const void *hPrivate, IMG_UINT64 ui64Feature)

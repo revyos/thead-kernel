@@ -252,10 +252,8 @@ PVRSRV_ERROR PVRSRVRegisterPowerDevice(PPVRSRV_DEVICE_NODE				psDeviceNode,
 
  @Input		psDeviceNode : Device node
 
- @Return	PVRSRV_ERROR
-
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode);
+void PVRSRVRemovePowerDevice(PPVRSRV_DEVICE_NODE psDeviceNode);
 
 /*!
 ******************************************************************************

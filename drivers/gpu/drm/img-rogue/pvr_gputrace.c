@@ -280,10 +280,18 @@ static PVRSRV_ERROR _GpuTraceEnable(PVRSRV_RGXDEV_INFO *psRgxDevInfo)
 		IMG_UINT64 ui64UFOFilter = psRgxDevInfo->ui64HWPerfFilter &
 		        (RGX_HWPERF_EVENT_MASK_FW_SED | RGX_HWPERF_EVENT_MASK_FW_UFO);
 
-		eError = PVRSRVRGXCtrlHWPerfKM(NULL, psRgxDevNode,
-		                               RGX_HWPERF_STREAM_ID0_FW, IMG_FALSE,
-		                               RGX_HWPERF_EVENT_MASK_HW_KICKFINISH |
-		                               ui64UFOFilter);
+		/* Do not call into PVRSRVRGXCtrlHWPerfKM if we're in GUEST mode. */
+		if (PVRSRV_VZ_MODE_IS(GUEST))
+		{
+			eError = PVRSRV_OK;
+		}
+		else
+		{
+			eError = PVRSRVRGXCtrlHWPerfKM(NULL, psRgxDevNode,
+			                               RGX_HWPERF_STREAM_ID0_FW, IMG_FALSE,
+			                               RGX_HWPERF_EVENT_MASK_HW_KICKFINISH |
+			                               ui64UFOFilter);
+		}
 		PVR_LOG_GOTO_IF_ERROR(eError, "PVRSRVRGXCtrlHWPerfKM", err_out);
 	}
 	else
@@ -374,10 +382,11 @@ static PVRSRV_ERROR _GpuTraceDisable(PVRSRV_RGXDEV_INFO *psRgxDevInfo, IMG_BOOL 
 	if (!psRgxDevInfo->bFirmwareInitialised)
 	{
 		psRgxDevInfo->ui64HWPerfFilter = RGX_HWPERF_EVENT_MASK_NONE;
+#if !defined(NO_HARDWARE)
 		PVR_DPF((PVR_DBG_WARNING,
-				 "HWPerfFW mask has been SET to (%" IMG_UINT64_FMTSPECx ")",
-				 psRgxDevInfo->ui64HWPerfFilter));
-
+		         "HWPerfFW mask has been SET to (%" IMG_UINT64_FMTSPECx ")",
+		         psRgxDevInfo->ui64HWPerfFilter));
+#endif
 		return PVRSRV_OK;
 	}
 
@@ -390,9 +399,17 @@ static PVRSRV_ERROR _GpuTraceDisable(PVRSRV_RGXDEV_INFO *psRgxDevInfo, IMG_BOOL 
 #if defined(SUPPORT_RGX)
 	if (!bDeInit)
 	{
-		eError = PVRSRVRGXCtrlHWPerfKM(NULL, psRgxDevNode,
-		                               RGX_HWPERF_STREAM_ID0_FW, IMG_FALSE,
-		                               (RGX_HWPERF_EVENT_MASK_NONE));
+		/* Do not call into PVRSRVRGXCtrlHWPerfKM if we are in GUEST mode. */
+		if (PVRSRV_VZ_MODE_IS(GUEST))
+		{
+			eError = PVRSRV_OK;
+		}
+		else
+		{
+			eError = PVRSRVRGXCtrlHWPerfKM(NULL, psRgxDevNode,
+			                               RGX_HWPERF_STREAM_ID0_FW, IMG_FALSE,
+			                               (RGX_HWPERF_EVENT_MASK_NONE));
+		}
 		PVR_LOG_IF_ERROR(eError, "PVRSRVRGXCtrlHWPerfKM");
 	}
 #endif
@@ -475,7 +492,9 @@ static PVRSRV_ERROR _GpuTraceSetEnabledForAllDevices(IMG_BOOL bNewValue)
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 	PVRSRV_DEVICE_NODE *psDeviceNode;
 
+	OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
 	psDeviceNode = psPVRSRVData->psDeviceNodeList;
+
 	/* enable/disable GPU trace on all devices */
 	while (psDeviceNode)
 	{
@@ -486,6 +505,8 @@ static PVRSRV_ERROR _GpuTraceSetEnabledForAllDevices(IMG_BOOL bNewValue)
 		}
 		psDeviceNode = psDeviceNode->psNext;
 	}
+
+	OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 
 	PVR_DPF_RETURN_RC(eError);
 }
@@ -501,10 +522,10 @@ PVRSRV_ERROR PVRGpuTraceSetEnabled(PVRSRV_DEVICE_NODE *psDeviceNode,
 static const IMG_CHAR *_HWPerfKickTypeToStr(RGX_HWPERF_KICK_TYPE eKickType)
 {
 	static const IMG_CHAR *aszKickType[RGX_HWPERF_KICK_TYPE_LAST+1] = {
-#if defined(HWPERF_PACKET_V2C_SIG)
-		"TA3D", "CDM", "RS", "SHG", "TQTDM", "SYNC", "LAST"
+#if defined(RGX_FEATURE_HWPERF_VOLCANIC)
+		"TA3D", "CDM", "RS", "SHG", "TQTDM", "SYNC", "TA", "3D", "LAST"
 #else
-		"TA3D", "TQ2D", "TQ3D", "CDM", "RS", "VRDM", "TQTDM", "SYNC", "LAST"
+		"TA3D", "TQ2D", "TQ3D", "CDM", "RS", "VRDM", "TQTDM", "SYNC", "TA", "3D", "LAST"
 #endif
 	};
 
@@ -1053,7 +1074,8 @@ void PVRGpuTraceInitAppHintCallbacks(const PVRSRV_DEVICE_NODE *psDeviceNode)
 
 void PVRGpuTraceEnableUfoCallback(void)
 {
-	PVRSRV_DEVICE_NODE *psDeviceNode = PVRSRVGetPVRSRVData()->psDeviceNodeList;
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+	PVRSRV_DEVICE_NODE *psDeviceNode;
 #if defined(SUPPORT_RGX)
 	PVRSRV_RGXDEV_INFO *psRgxDevInfo;
 	PVRSRV_ERROR eError;
@@ -1063,6 +1085,9 @@ void PVRGpuTraceEnableUfoCallback(void)
 	OSLockAcquire(ghLockFTraceEventLock);
 	if (guiUfoEventRef++ == 0)
 	{
+		OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
+		psDeviceNode = psPVRSRVData->psDeviceNodeList;
+
 		/* make sure UFO events are enabled on all rogue devices */
 		while (psDeviceNode)
 		{
@@ -1090,6 +1115,8 @@ void PVRGpuTraceEnableUfoCallback(void)
 #endif
 			psDeviceNode = psDeviceNode->psNext;
 		}
+
+		OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 	}
 	OSLockRelease(ghLockFTraceEventLock);
 }
@@ -1099,6 +1126,7 @@ void PVRGpuTraceDisableUfoCallback(void)
 #if defined(SUPPORT_RGX)
 	PVRSRV_ERROR eError;
 #endif
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 	PVRSRV_DEVICE_NODE *psDeviceNode;
 
 	/* We have to check if lock is valid because on driver unload
@@ -1110,7 +1138,8 @@ void PVRGpuTraceDisableUfoCallback(void)
 	if (ghLockFTraceEventLock == NULL)
 		return;
 
-	psDeviceNode = PVRSRVGetPVRSRVData()->psDeviceNodeList;
+	OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
+	psDeviceNode = psPVRSRVData->psDeviceNodeList;
 
 	/* Lock down events state, for consistent value of guiUfoEventRef */
 	OSLockAcquire(ghLockFTraceEventLock);
@@ -1142,15 +1171,19 @@ void PVRGpuTraceDisableUfoCallback(void)
 				        psDeviceNode->sDevId.i32OsDeviceID));
 			}
 #endif
+
 			psDeviceNode = psDeviceNode->psNext;
 		}
 	}
 	OSLockRelease(ghLockFTraceEventLock);
+
+	OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 }
 
 void PVRGpuTraceEnableFirmwareActivityCallback(void)
 {
-	PVRSRV_DEVICE_NODE *psDeviceNode = PVRSRVGetPVRSRVData()->psDeviceNodeList;
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+	PVRSRV_DEVICE_NODE *psDeviceNode;
 #if defined(SUPPORT_RGX)
 	PVRSRV_RGXDEV_INFO *psRgxDevInfo;
 	uint64_t ui64Filter, ui64FWEventsFilter = 0;
@@ -1162,6 +1195,10 @@ void PVRGpuTraceEnableFirmwareActivityCallback(void)
 		ui64FWEventsFilter |= RGX_HWPERF_EVENT_MASK_VALUE(i);
 	}
 #endif
+
+	OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
+	psDeviceNode = psPVRSRVData->psDeviceNodeList;
+
 	OSLockAcquire(ghLockFTraceEventLock);
 	/* Enable all FW events on all the devices */
 	while (psDeviceNode)
@@ -1173,7 +1210,7 @@ void PVRGpuTraceEnableFirmwareActivityCallback(void)
 
 		eError = PVRSRVRGXCtrlHWPerfKM(NULL, psDeviceNode, RGX_HWPERF_STREAM_ID0_FW,
 		                               IMG_FALSE, ui64Filter);
-		if (eError != PVRSRV_OK)
+		if ((eError != PVRSRV_OK) && !PVRSRV_VZ_MODE_IS(GUEST))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Could not enable HWPerf event for firmware"
 			        " task timings (%s).", PVRSRVGetErrorString(eError)));
@@ -1182,10 +1219,13 @@ void PVRGpuTraceEnableFirmwareActivityCallback(void)
 		psDeviceNode = psDeviceNode->psNext;
 	}
 	OSLockRelease(ghLockFTraceEventLock);
+
+	OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 }
 
 void PVRGpuTraceDisableFirmwareActivityCallback(void)
 {
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 	PVRSRV_DEVICE_NODE *psDeviceNode;
 #if defined(SUPPORT_RGX)
 	IMG_UINT64 ui64FWEventsFilter = ~0;
@@ -1201,7 +1241,8 @@ void PVRGpuTraceDisableFirmwareActivityCallback(void)
 	if (ghLockFTraceEventLock == NULL)
 		return;
 
-	psDeviceNode = PVRSRVGetPVRSRVData()->psDeviceNodeList;
+	OSWRLockAcquireRead(psPVRSRVData->hDeviceNodeListLock);
+	psDeviceNode = psPVRSRVData->psDeviceNodeList;
 
 #if defined(SUPPORT_RGX)
 	for (i = RGX_HWPERF_FW_EVENT_RANGE_FIRST_TYPE;
@@ -1220,8 +1261,9 @@ void PVRGpuTraceDisableFirmwareActivityCallback(void)
 		PVRSRV_RGXDEV_INFO *psRgxDevInfo = psDeviceNode->pvDevice;
 		IMG_UINT64 ui64Filter = psRgxDevInfo->ui64HWPerfFilter & ui64FWEventsFilter;
 
-		if (PVRSRVRGXCtrlHWPerfKM(NULL, psDeviceNode, RGX_HWPERF_STREAM_ID0_FW,
-		                          IMG_FALSE, ui64Filter) != PVRSRV_OK)
+		if ((PVRSRVRGXCtrlHWPerfKM(NULL, psDeviceNode, RGX_HWPERF_STREAM_ID0_FW,
+		                          IMG_FALSE, ui64Filter) != PVRSRV_OK) &&
+		    !PVRSRV_VZ_MODE_IS(GUEST))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Could not disable HWPerf event for firmware task timings."));
 		}
@@ -1230,6 +1272,8 @@ void PVRGpuTraceDisableFirmwareActivityCallback(void)
 	}
 
 	OSLockRelease(ghLockFTraceEventLock);
+
+	OSWRLockReleaseRead(psPVRSRVData->hDeviceNodeListLock);
 }
 
 /******************************************************************************

@@ -55,6 +55,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_sync_km.h"
 #include "sync_checkpoint_external.h"
 
+/* included for the define PVRSRV_LINUX_DEV_INIT_ON_PROBE */
+#include "pvr_drm.h"
+
 #ifndef __pvrsrv_defined_struct_enum__
 
 /* sync_external.h */
@@ -173,7 +176,7 @@ enum PVRSRV_ERROR_TAG PVRSRVCommonDeviceCreate(void *pvOSDevice,
 enum PVRSRV_ERROR_TAG PVRSRVCommonDeviceDestroy(
 	struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 const char *PVRSRVGetErrorString(enum PVRSRV_ERROR_TAG eError);
-#if defined(SUPPORT_FWLOAD_ON_PROBE)
+#if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_PROBE)
 enum PVRSRV_ERROR_TAG PVRSRVCommonDeviceInitialise(
 	struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 #endif
@@ -183,6 +186,7 @@ typedef PVRSRV_ERROR (*PFN_SYNC_CHECKPOINT_FENCE_RESOLVE_FN)(PSYNC_CHECKPOINT_CO
 
 #ifndef CHECKPOINT_PFNS
 typedef PVRSRV_ERROR (*PFN_SYNC_CHECKPOINT_FENCE_CREATE_FN)(
+		struct _PVRSRV_DEVICE_NODE_ *device,
 		const char *fence_name,
 		PVRSRV_TIMELINE timeline,
 		PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,

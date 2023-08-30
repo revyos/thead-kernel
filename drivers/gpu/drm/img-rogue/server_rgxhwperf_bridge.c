@@ -591,7 +591,7 @@ RGXConfigureHWPerfBlocks_exit:
  */
 
 PVRSRV_ERROR InitRGXHWPERFBridge(void);
-PVRSRV_ERROR DeinitRGXHWPERFBridge(void);
+void DeinitRGXHWPERFBridge(void);
 
 /*
  * Register all RGXHWPERF functions with services
@@ -628,7 +628,7 @@ PVRSRV_ERROR InitRGXHWPERFBridge(void)
 /*
  * Unregister all rgxhwperf functions with services
  */
-PVRSRV_ERROR DeinitRGXHWPERFBridge(void)
+void DeinitRGXHWPERFBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXHWPERF, PVRSRV_BRIDGE_RGXHWPERF_RGXCTRLHWPERF);
@@ -648,5 +648,4 @@ PVRSRV_ERROR DeinitRGXHWPERFBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXHWPERF,
 				PVRSRV_BRIDGE_RGXHWPERF_RGXCONFIGUREHWPERFBLOCKS);
 
-	return PVRSRV_OK;
 }

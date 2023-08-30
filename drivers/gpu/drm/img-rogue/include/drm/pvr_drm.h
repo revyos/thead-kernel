@@ -89,6 +89,17 @@ struct pvr_sw_timeline_advance_data {
 	__u64 sync_pt_idx;
 };
 
+#define PVR_SRVKM_SERVICES_INIT  1
+#define PVR_SRVKM_SYNC_INIT 2
+struct drm_pvr_srvkm_init_data {
+	__u32 init_module;
+};
+
+/* Values used to configure the PVRSRV_DEVICE_INIT_MODE tunable (Linux-only) */
+#define PVRSRV_LINUX_DEV_INIT_ON_PROBE   1
+#define PVRSRV_LINUX_DEV_INIT_ON_OPEN    2
+#define PVRSRV_LINUX_DEV_INIT_ON_CONNECT 3
+
 /*
  * DRM command numbers, relative to DRM_COMMAND_BASE.
  * These defines must be prefixed with "DRM_".
@@ -104,6 +115,9 @@ struct pvr_sw_timeline_advance_data {
 /* PVR Software Sync commands */
 #define DRM_PVR_SW_SYNC_CREATE_FENCE_CMD	3
 #define DRM_PVR_SW_SYNC_INC_CMD			4
+
+/* PVR Services Render Device Init command */
+#define DRM_PVR_SRVKM_INIT		5
 
 /* These defines must be prefixed with "DRM_IOCTL_". */
 #define	DRM_IOCTL_PVR_SRVKM_CMD	\
@@ -124,5 +138,9 @@ struct pvr_sw_timeline_advance_data {
 #define DRM_IOCTL_PVR_SW_SYNC_INC_CMD \
 	DRM_IOR(DRM_COMMAND_BASE + DRM_PVR_SW_SYNC_INC_CMD, \
 		struct pvr_sw_timeline_advance_data)
+
+#define DRM_IOCTL_PVR_SRVKM_INIT \
+	DRM_IOW(DRM_COMMAND_BASE + DRM_PVR_SRVKM_INIT, \
+		struct drm_pvr_srvkm_init_data)
 
 #endif /* defined(__PVR_DRM_H__) */

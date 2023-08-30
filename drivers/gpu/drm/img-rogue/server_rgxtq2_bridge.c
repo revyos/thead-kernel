@@ -103,10 +103,10 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 
 	IMG_UINT32 ui32BufferSize = 0;
 	IMG_UINT64 ui64BufferSize =
-	    ((IMG_UINT64) psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize * sizeof(IMG_BYTE)) +
-	    0;
+	    ((IMG_UINT64) psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize *
+	     sizeof(IMG_BYTE)) + 0;
 
-	if (unlikely(psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize > RGXFWIF_RF_CMD_SIZE))
+	if (unlikely(psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize > RGXFWIF_RF_CMD_SIZE))
 	{
 		psRGXTDMCreateTransferContextOUT->eError = PVRSRV_ERROR_BRIDGE_ARRAY_SIZE_TOO_BIG;
 		goto RGXTDMCreateTransferContext_exit;
@@ -166,20 +166,20 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 		}
 	}
 
-	if (psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize != 0)
+	if (psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize != 0)
 	{
 		ui8FrameworkCmdInt = (IMG_BYTE *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
 		ui32NextOffset +=
-		    psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize * sizeof(IMG_BYTE);
+		    psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize * sizeof(IMG_BYTE);
 	}
 
 	/* Copy the data over */
-	if (psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize * sizeof(IMG_BYTE) > 0)
+	if (psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize * sizeof(IMG_BYTE) > 0)
 	{
 		if (OSCopyFromUser
 		    (NULL, ui8FrameworkCmdInt,
 		     (const void __user *)psRGXTDMCreateTransferContextIN->pui8FrameworkCmd,
-		     psRGXTDMCreateTransferContextIN->ui32FrameworkCmdize * sizeof(IMG_BYTE)) !=
+		     psRGXTDMCreateTransferContextIN->ui32FrameworkCmdSize * sizeof(IMG_BYTE)) !=
 		    PVRSRV_OK)
 		{
 			psRGXTDMCreateTransferContextOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
@@ -208,12 +208,13 @@ PVRSRVBridgeRGXTDMCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 	    PVRSRVRGXTDMCreateTransferContextKM(psConnection, OSGetDevNode(psConnection),
 						psRGXTDMCreateTransferContextIN->ui32Priority,
 						psRGXTDMCreateTransferContextIN->
-						ui32FrameworkCmdize, ui8FrameworkCmdInt,
+						ui32FrameworkCmdSize, ui8FrameworkCmdInt,
 						hPrivDataInt,
 						psRGXTDMCreateTransferContextIN->
 						ui32PackedCCBSizeU88,
 						psRGXTDMCreateTransferContextIN->ui32ContextFlags,
-						&psTransferContextInt);
+						psRGXTDMCreateTransferContextIN->
+						ui64RobustnessAddress, &psTransferContextInt);
 	/* Exit early if bridged call fails */
 	if (unlikely(psRGXTDMCreateTransferContextOUT->eError != PVRSRV_OK))
 	{
@@ -309,12 +310,13 @@ PVRSRVBridgeRGXTDMDestroyTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psRGXTDMDestroyTransferContextOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psRGXTDMDestroyTransferContextIN->
-					    hTransferContext,
-					    PVRSRV_HANDLE_TYPE_RGX_SERVER_TQ_TDM_CONTEXT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psRGXTDMDestroyTransferContextIN->
+					      hTransferContext,
+					      PVRSRV_HANDLE_TYPE_RGX_SERVER_TQ_TDM_CONTEXT);
 	if (unlikely
 	    ((psRGXTDMDestroyTransferContextOUT->eError != PVRSRV_OK)
+	     && (psRGXTDMDestroyTransferContextOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL)
 	     && (psRGXTDMDestroyTransferContextOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -816,7 +818,6 @@ PVRSRVBridgeRGXTDMSubmitTransfer2(IMG_UINT32 ui32DispatchTableEntry,
 	psRGXTDMSubmitTransfer2OUT->eError =
 	    PVRSRVRGXTDMSubmitTransferKM(psTransferContextInt,
 					 psRGXTDMSubmitTransfer2IN->ui32PDumpFlags,
-					 psRGXTDMSubmitTransfer2IN->ui32ClientCacheOpSeqNum,
 					 psRGXTDMSubmitTransfer2IN->ui32ClientUpdateCount,
 					 psUpdateUFOSyncPrimBlockInt,
 					 ui32UpdateSyncOffsetInt,
@@ -1037,10 +1038,11 @@ PVRSRVBridgeRGXTDMReleaseSharedMemory(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psRGXTDMReleaseSharedMemoryOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psRGXTDMReleaseSharedMemoryIN->hPMRMem,
-					    PVRSRV_HANDLE_TYPE_PMR_LOCAL_EXPORT_HANDLE);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psRGXTDMReleaseSharedMemoryIN->hPMRMem,
+					      PVRSRV_HANDLE_TYPE_PMR_LOCAL_EXPORT_HANDLE);
 	if (unlikely((psRGXTDMReleaseSharedMemoryOUT->eError != PVRSRV_OK) &&
+		     (psRGXTDMReleaseSharedMemoryOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psRGXTDMReleaseSharedMemoryOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -1137,7 +1139,7 @@ RGXTDMSetTransferContextProperty_exit:
  */
 
 PVRSRV_ERROR InitRGXTQ2Bridge(void);
-PVRSRV_ERROR DeinitRGXTQ2Bridge(void);
+void DeinitRGXTQ2Bridge(void);
 
 /*
  * Register all RGXTQ2 functions with services
@@ -1180,7 +1182,7 @@ PVRSRV_ERROR InitRGXTQ2Bridge(void)
 /*
  * Unregister all rgxtq2 functions with services
  */
-PVRSRV_ERROR DeinitRGXTQ2Bridge(void)
+void DeinitRGXTQ2Bridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXTQ2,
@@ -1205,5 +1207,4 @@ PVRSRV_ERROR DeinitRGXTQ2Bridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXTQ2,
 				PVRSRV_BRIDGE_RGXTQ2_RGXTDMSETTRANSFERCONTEXTPROPERTY);
 
-	return PVRSRV_OK;
 }

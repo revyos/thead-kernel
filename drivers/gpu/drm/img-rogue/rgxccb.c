@@ -297,6 +297,10 @@ static void RGXCCBPDumpFastForwardCCB(RGX_CLIENT_CCB *psClientCCB, IMG_UINT32 ui
 	psCCBCtl->ui32WriteOffset = psClientCCB->ui32HostWriteOffset;
 #if defined(SUPPORT_AGP)
 	psCCBCtl->ui32ReadOffset2 = psClientCCB->ui32HostWriteOffset;
+#if defined(SUPPORT_AGP4)
+	psCCBCtl->ui32ReadOffset3 = psClientCCB->ui32HostWriteOffset;
+	psCCBCtl->ui32ReadOffset4 = psClientCCB->ui32HostWriteOffset;
+#endif
 #endif
 
 	PDUMPCOMMENTWITHFLAGS(psDevInfo->psDeviceNode,
@@ -1585,7 +1589,8 @@ PVRSRV_ERROR RGXSetCCBFlags(RGX_CLIENT_CCB *psClientCCB,
 	return PVRSRV_OK;
 }
 
-void RGXCmdHelperInitCmdCCB_CommandSize(IMG_UINT64 ui64FBSCEntryMask,
+void RGXCmdHelperInitCmdCCB_CommandSize(PVRSRV_RGXDEV_INFO *psDevInfo,
+                                        IMG_UINT64 ui64FBSCEntryMask,
                                         IMG_UINT32 ui32ClientFenceCount,
                                         IMG_UINT32 ui32ClientUpdateCount,
                                         IMG_UINT32 ui32CmdSize,
@@ -1594,6 +1599,8 @@ void RGXCmdHelperInitCmdCCB_CommandSize(IMG_UINT64 ui64FBSCEntryMask,
                                         PRGXFWIF_UFO_ADDR         *ppRMWUFOAddr,
                                         RGX_CCB_CMD_HELPER_DATA *psCmdHelperData)
 {
+	PVRSRV_DEVICE_NODE *psDeviceNode = psDevInfo->psDeviceNode;
+	IMG_BOOL bCacheInval = IMG_TRUE;
 	/* Init the generated data members */
 	psCmdHelperData->ui32FBSCInvalCmdSize = 0;
 	psCmdHelperData->ui64FBSCEntryMask = 0;
@@ -1603,14 +1610,32 @@ void RGXCmdHelperInitCmdCCB_CommandSize(IMG_UINT64 ui64FBSCEntryMask,
 	psCmdHelperData->ui32PostTimeStampCmdSize = 0;
 	psCmdHelperData->ui32RMWUFOCmdSize = 0;
 
-	/* Total FBSC invalidate command size (header plus command data) */
+	/* Only compile if RGX_FEATURE_PDS_INSTRUCTION_CACHE_AUTO_INVALIDATE is defined to avoid
+	 * compilation errors on rogue cores.
+	 */
+#if defined(RGX_FEATURE_PDS_INSTRUCTION_CACHE_AUTO_INVALIDATE)
+	bCacheInval = !(PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, PDS_INSTRUCTION_CACHE_AUTO_INVALIDATE) &&
+				    PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, USC_INSTRUCTION_CACHE_AUTO_INVALIDATE) &&
+				    PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, TDM_SLC_MMU_AUTO_CACHE_OPS) &&
+				    PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, GEOM_SLC_MMU_AUTO_CACHE_OPS) &&
+				    PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, FRAG_SLC_MMU_AUTO_CACHE_OPS) &&
+				    PVRSRV_IS_FEATURE_SUPPORTED(psDeviceNode, COMPUTE_SLC_MMU_AUTO_CACHE_OPS)) ||
+				    RGX_IS_BRN_SUPPORTED(psDevInfo, 71960) ||
+				    RGX_IS_BRN_SUPPORTED(psDevInfo, 72143);
+#else
+	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
+#endif
 
-	if (ui64FBSCEntryMask != 0)
+	/* Total FBSC invalidate command size (header plus command data) */
+	if (bCacheInval)
 	{
-		psCmdHelperData->ui32FBSCInvalCmdSize =
-		        RGX_CCB_FWALLOC_ALIGN(sizeof(psCmdHelperData->ui64FBSCEntryMask) +
-		                              sizeof(RGXFWIF_CCB_CMD_HEADER));
-		psCmdHelperData->ui64FBSCEntryMask = ui64FBSCEntryMask;
+		if (ui64FBSCEntryMask != 0)
+		{
+			psCmdHelperData->ui32FBSCInvalCmdSize =
+			        RGX_CCB_FWALLOC_ALIGN(sizeof(psCmdHelperData->ui64FBSCEntryMask) +
+			                              sizeof(RGXFWIF_CCB_CMD_HEADER));
+			psCmdHelperData->ui64FBSCEntryMask = ui64FBSCEntryMask;
+		}
 	}
 
 	/* total DM command size (header plus command data) */
@@ -1739,7 +1764,8 @@ void RGXCmdHelperInitCmdCCB_OtherData(RGX_CLIENT_CCB            *psClientCCB,
 /*
 	Work out how much space this command will require
 */
-void RGXCmdHelperInitCmdCCB(RGX_CLIENT_CCB            *psClientCCB,
+void RGXCmdHelperInitCmdCCB(PVRSRV_RGXDEV_INFO		*psDevInfo,
+                            RGX_CLIENT_CCB            *psClientCCB,
                             IMG_UINT64                ui64FBSCEntryMask,
                             IMG_UINT32                ui32ClientFenceCount,
                             PRGXFWIF_UFO_ADDR         *pauiFenceUFOAddress,
@@ -1761,7 +1787,8 @@ void RGXCmdHelperInitCmdCCB(RGX_CLIENT_CCB            *psClientCCB,
                             IMG_BOOL                  bCCBStateOpen,
                             RGX_CCB_CMD_HELPER_DATA   *psCmdHelperData)
 {
-	RGXCmdHelperInitCmdCCB_CommandSize(ui64FBSCEntryMask,
+	RGXCmdHelperInitCmdCCB_CommandSize(psDevInfo,
+	                                 ui64FBSCEntryMask,
 	                                 ui32ClientFenceCount,
 	                                 ui32ClientUpdateCount,
 	                                 ui32CmdSize,
@@ -2435,7 +2462,7 @@ void DumpCCB(PVRSRV_RGXDEV_INFO *psDevInfo,
 	psClientCCBCtrl = psCurrentClientCCB->psClientCCBCtrl;
 	pvClientCCBBuff = psCurrentClientCCB->pvClientCCB;
 	ui32EndOffset = psCurrentClientCCB->ui32HostWriteOffset;
-	OSMemoryBarrier();
+	OSMemoryBarrier(NULL);
 	ui32Offset = psClientCCBCtrl->ui32ReadOffset;
 	ui32DepOffset = psClientCCBCtrl->ui32DepOffset;
 	/* NB. Use psCurrentClientCCB->ui32Size as basis for wrap mask (rather
@@ -2598,7 +2625,7 @@ void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 				PVR_DUMPDEBUG_LOG("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value);
 #else
 				ui32Val = 0;
-				RGXReadWithSP(psDevInfo, psUFOPtr[jj].puiAddrUFO.ui32Addr, &ui32Val);
+				RGXReadFWModuleAddr(psDevInfo, psUFOPtr[jj].puiAddrUFO.ui32Addr, &ui32Val);
 				PVR_DUMPDEBUG_LOG("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
 				                   psUFOPtr[jj].puiAddrUFO.ui32Addr,
 				                   psUFOPtr[jj].ui32Value, ui32Val);
@@ -2629,7 +2656,7 @@ void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 							PVR_DUMPDEBUG_LOG("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value);
 #else
 							ui32Val = 0;
-							RGXReadWithSP(psDevInfo, psUFOPtr[jj].puiAddrUFO.ui32Addr, &ui32Val);
+							RGXReadFWModuleAddr(psDevInfo, psUFOPtr[jj].puiAddrUFO.ui32Addr, &ui32Val);
 							PVR_DUMPDEBUG_LOG("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
 							                   psUFOPtr[jj].puiAddrUFO.ui32Addr,
 							                   psUFOPtr[jj].ui32Value,
@@ -2696,7 +2723,7 @@ void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo)
 			}
 			psDevInfo->psRGXFWIfFwOsData->ui32ForcedUpdatesRequested++;
 			/* flush write buffers for psRGXFWIfFwOsData */
-			OSWriteMemoryBarrier();
+			OSWriteMemoryBarrier(&psDevInfo->psRGXFWIfFwOsData->sSLRLog[psDevInfo->psRGXFWIfFwOsData->ui8SLRLogWp]);
 #endif
 			PVR_LOG(("Fence found on context 0x%x '%s' @ %d has %d UFOs",
 			         FWCommonContextGetFWAddress(psStalledClientCCB->psServerCommonContext).ui32Addr,
@@ -2762,7 +2789,6 @@ void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo)
 					RGXScheduleCommand(FWCommonContextGetRGXDevInfo(psStalledClientCCB->psServerCommonContext),
 					                   RGXFWIF_DM_GP,
 					                   &sSignalFencesCmd,
-					                   0,
 					                   PDUMP_FLAGS_CONTINUOUS);
 				}
 			}

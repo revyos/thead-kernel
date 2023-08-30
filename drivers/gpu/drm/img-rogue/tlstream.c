@@ -1062,7 +1062,7 @@ TLStreamCommit(IMG_HANDLE hStream, IMG_UINT32 ui32ReqSize)
 
 	/* Memory barrier required to ensure prior data written by writer is
 	 * flushed from WC buffer to main memory. */
-	OSWriteMemoryBarrier();
+	OSWriteMemoryBarrier(NULL);
 
 	/* Acquire stream lock to ensure other context(s) (if any)
 	 * wait on the lock (in DoTLStreamReserve) for consistent values
@@ -1072,6 +1072,9 @@ TLStreamCommit(IMG_HANDLE hStream, IMG_UINT32 ui32ReqSize)
 	/* Update stream buffer parameters to match local copies */
 	psTmp->ui32Write = ui32LWrite;
 	psTmp->ui32Pending = ui32LPending;
+
+	/* Ensure write pointer is flushed */
+	OSWriteMemoryBarrier(&psTmp->ui32Write);
 
 	TL_COUNTER_ADD(psTmp->ui32ProducerByteCount, ui32ReqSize);
 	TL_COUNTER_INC(psTmp->ui32NumCommits);

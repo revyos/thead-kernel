@@ -309,7 +309,7 @@ static POS_LOCK pHTBUFFERBridgeLock;
 
 #if !defined(EXCLUDE_HTBUFFER_BRIDGE)
 PVRSRV_ERROR InitHTBUFFERBridge(void);
-PVRSRV_ERROR DeinitHTBUFFERBridge(void);
+void DeinitHTBUFFERBridge(void);
 
 /*
  * Register all HTBUFFER functions with services
@@ -330,15 +330,14 @@ PVRSRV_ERROR InitHTBUFFERBridge(void)
 /*
  * Unregister all htbuffer functions with services
  */
-PVRSRV_ERROR DeinitHTBUFFERBridge(void)
+void DeinitHTBUFFERBridge(void)
 {
-	PVR_LOG_RETURN_IF_ERROR(OSLockDestroy(pHTBUFFERBridgeLock), "OSLockDestroy");
+	OSLockDestroy(pHTBUFFERBridgeLock);
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_HTBUFFER, PVRSRV_BRIDGE_HTBUFFER_HTBCONTROL);
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_HTBUFFER, PVRSRV_BRIDGE_HTBUFFER_HTBLOG);
 
-	return PVRSRV_OK;
 }
 #else /* EXCLUDE_HTBUFFER_BRIDGE */
 /* This bridge is conditional on EXCLUDE_HTBUFFER_BRIDGE - when defined,
@@ -347,7 +346,6 @@ PVRSRV_ERROR DeinitHTBUFFERBridge(void)
 #define InitHTBUFFERBridge() \
 	PVRSRV_OK
 
-#define DeinitHTBUFFERBridge() \
-	PVRSRV_OK
+#define DeinitHTBUFFERBridge()
 
 #endif /* EXCLUDE_HTBUFFER_BRIDGE */

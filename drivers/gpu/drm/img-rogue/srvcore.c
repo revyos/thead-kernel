@@ -224,7 +224,7 @@ PVRSRV_ERROR PVRSRVPrintBridgeStats()
 		   "Total number of bytes copied via copy_from_user = %u\n"
 		   "Total number of bytes copied via copy_to_user = %u\n"
 		   "Total number of bytes copied via copy_*_user = %u\n\n"
-		   "%3s: %-60s | %-48s | %10s | %20s | %20s | %20s | %20s \n",
+		   "%3s: %-60s | %-48s | %10s | %20s | %20s | %20s | %20s\n",
 		   g_BridgeGlobalStats.ui32IOCTLCount,
 		   g_BridgeGlobalStats.ui32TotalCopyFromUserBytes,
 		   g_BridgeGlobalStats.ui32TotalCopyToUserBytes,
@@ -655,12 +655,7 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 				__func__, ui32DDKBuild, ui32ClientDDKBuild));
 	}
 
-	/* If first connection, bind this and future PDump clients to use this device */
-	if (psSRVData->ui32PDumpBoundDevice == PVRSRV_MAX_DEVICES)
-	{
-		psSRVData->ui32PDumpBoundDevice = psDeviceNode->sDevId.ui32InternalID;
-	}
-
+#if defined(PDUMP)
 	/* Success so far so is it the PDump client that is connecting? */
 	if (ui32Flags & SRV_FLAGS_PDUMPCTRL)
 	{
@@ -676,7 +671,6 @@ PVRSRVConnectKM(CONNECTION_DATA *psConnection,
 			goto chk_exit;
 		}
 	}
-#if defined(PDUMP)
 	else
 	{
 		/* Warn if the app is connecting to a device PDump won't be able to capture */
@@ -927,6 +921,14 @@ PVRSRV_ERROR PVRSRVGetMultiCoreInfoKM(CONNECTION_DATA *psConnection,
 {
 	PVRSRV_ERROR eError = PVRSRV_ERROR_NOT_SUPPORTED;
 	PVR_UNREFERENCED_PARAMETER(psConnection);
+
+	if (ui32CapsSize > 0)
+	{
+		/* Clear the buffer to ensure no uninitialised data is returned to UM
+		 * if the pfn call below does not write to the whole array, or is null.
+		 */
+		memset(pui64Caps, 0x00, (ui32CapsSize * sizeof(IMG_UINT64)));
+	}
 
 	if (psDeviceNode->pfnGetMultiCoreInfo != NULL)
 	{

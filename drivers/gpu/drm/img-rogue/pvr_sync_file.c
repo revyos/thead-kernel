@@ -263,6 +263,7 @@ pvr_sync_finalise_fence(PVRSRV_FENCE fence_fd, void *finalise_data)
  * in that fence. The OS native sync code needs to implement a function
  * meeting this specification.
  *
+ * Input: device                   Device node to use in creating a hw_fence_ctx
  * Input: fence_name               A string to annotate the fence with (for
  *                                 debug).
  * Input: timeline                 The timeline on which the new fence is to be
@@ -274,7 +275,9 @@ pvr_sync_finalise_fence(PVRSRV_FENCE fence_fd, void *finalise_data)
  * Output: new_checkpoint_handle   The PSYNC_CHECKPOINT used by the new fence.
  */
 static enum PVRSRV_ERROR_TAG
-pvr_sync_create_fence(const char *fence_name,
+pvr_sync_create_fence(
+		      struct _PVRSRV_DEVICE_NODE_ *device,
+		      const char *fence_name,
 		      PVRSRV_TIMELINE new_fence_timeline,
 		      PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,
 		      PVRSRV_FENCE *new_fence, u64 *fence_uid,
@@ -327,7 +330,7 @@ pvr_sync_create_fence(const char *fence_name,
 		/* First time we use this timeline, so create a context. */
 		timeline->hw_fence_context =
 			pvr_fence_context_create(
-				SyncCheckpointGetAssociatedDevice(psSyncCheckpointContext),
+				device,
 				NativeSyncGetFenceStatusWq(),
 				timeline->name);
 		if (!timeline->hw_fence_context) {
@@ -588,12 +591,12 @@ pvr_sync_dump_info_on_stalled_ufos(u32 nr_ufos, u32 *vaddrs)
 #if defined(PDUMP)
 static enum PVRSRV_ERROR_TAG
 pvr_sync_fence_get_checkpoints(PVRSRV_FENCE fence_to_pdump, u32 *nr_checkpoints,
-				struct _SYNC_CHECKPOINT ***checkpoint_handles)
+				struct SYNC_CHECKPOINT_TAG ***checkpoint_handles)
 {
 	struct dma_fence **fences = NULL;
 	struct dma_fence *fence;
 	struct pvr_fence *pvr_fence;
-	struct _SYNC_CHECKPOINT **checkpoints = NULL;
+	struct SYNC_CHECKPOINT_TAG **checkpoints = NULL;
 	unsigned int i, num_fences, num_used_fences = 0;
 	enum PVRSRV_ERROR_TAG err;
 

@@ -201,7 +201,7 @@ PMRExportPMR_exit:
 			/* Lock over handle creation cleanup. */
 			LockHandle(KERNEL_HANDLE_BASE);
 
-			eError = PVRSRVReleaseHandleUnlocked(KERNEL_HANDLE_BASE,
+			eError = PVRSRVDestroyHandleUnlocked(KERNEL_HANDLE_BASE,
 							     (IMG_HANDLE) psPMRExportPMROUT->
 							     hPMRExport,
 							     PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
@@ -226,7 +226,7 @@ PMRExportPMR_exit:
 			LockHandle(psConnection->psProcessHandleBase->psHandleBase);
 
 			eError =
-			    PVRSRVReleaseHandleUnlocked(psConnection->psProcessHandleBase->
+			    PVRSRVDestroyHandleUnlocked(psConnection->psProcessHandleBase->
 							psHandleBase, hPMRExportInt,
 							PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
 			if ((eError != PVRSRV_OK) && (eError != PVRSRV_ERROR_RETRY))
@@ -307,9 +307,10 @@ PVRSRVBridgePMRUnexportPMR(IMG_UINT32 ui32DispatchTableEntry,
 	PVR_ASSERT(psPMRUnexportPMROUT->eError == PVRSRV_OK);
 
 	psPMRUnexportPMROUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psProcessHandleBase->psHandleBase,
-					    hPMRExportInt, PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psProcessHandleBase->psHandleBase,
+					      hPMRExportInt, PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
 	if (unlikely((psPMRUnexportPMROUT->eError != PVRSRV_OK) &&
+		     (psPMRUnexportPMROUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psPMRUnexportPMROUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -324,10 +325,11 @@ PVRSRVBridgePMRUnexportPMR(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(KERNEL_HANDLE_BASE);
 
 	psPMRUnexportPMROUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(KERNEL_HANDLE_BASE,
-					    (IMG_HANDLE) psPMRUnexportPMRIN->hPMRExport,
-					    PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
+	    PVRSRVDestroyHandleStagedUnlocked(KERNEL_HANDLE_BASE,
+					      (IMG_HANDLE) psPMRUnexportPMRIN->hPMRExport,
+					      PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT);
 	if (unlikely((psPMRUnexportPMROUT->eError != PVRSRV_OK) &&
+		     (psPMRUnexportPMROUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psPMRUnexportPMROUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -503,10 +505,11 @@ PVRSRVBridgePMRUnmakeLocalImportHandle(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psProcessHandleBase->psHandleBase);
 
 	psPMRUnmakeLocalImportHandleOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psProcessHandleBase->psHandleBase,
-					    (IMG_HANDLE) psPMRUnmakeLocalImportHandleIN->hExtMem,
-					    PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psProcessHandleBase->psHandleBase,
+					      (IMG_HANDLE) psPMRUnmakeLocalImportHandleIN->hExtMem,
+					      PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT);
 	if (unlikely((psPMRUnmakeLocalImportHandleOUT->eError != PVRSRV_OK) &&
+		     (psPMRUnmakeLocalImportHandleOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psPMRUnmakeLocalImportHandleOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -727,10 +730,11 @@ PVRSRVBridgePMRUnrefPMR(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psPMRUnrefPMROUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psPMRUnrefPMRIN->hPMR,
-					    PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psPMRUnrefPMRIN->hPMR,
+					      PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
 	if (unlikely((psPMRUnrefPMROUT->eError != PVRSRV_OK) &&
+		     (psPMRUnrefPMROUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psPMRUnrefPMROUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -762,10 +766,11 @@ PVRSRVBridgePMRUnrefUnlockPMR(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psPMRUnrefUnlockPMROUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psPMRUnrefUnlockPMRIN->hPMR,
-					    PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psPMRUnrefUnlockPMRIN->hPMR,
+					      PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
 	if (unlikely((psPMRUnrefUnlockPMROUT->eError != PVRSRV_OK) &&
+		     (psPMRUnrefUnlockPMROUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psPMRUnrefUnlockPMROUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -1518,7 +1523,7 @@ DevmemIntCtxCreate_exit:
 			/* Lock over handle creation cleanup. */
 			LockHandle(psConnection->psHandleBase);
 
-			eError = PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+			eError = PVRSRVDestroyHandleUnlocked(psConnection->psHandleBase,
 							     (IMG_HANDLE) psDevmemIntCtxCreateOUT->
 							     hDevMemServerContext,
 							     PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX);
@@ -1564,11 +1569,13 @@ PVRSRVBridgeDevmemIntCtxDestroy(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psDevmemIntCtxDestroyOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psDevmemIntCtxDestroyIN->
-					    hDevmemServerContext, PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psDevmemIntCtxDestroyIN->
+					      hDevmemServerContext,
+					      PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX);
 	if (unlikely
 	    ((psDevmemIntCtxDestroyOUT->eError != PVRSRV_OK)
+	     && (psDevmemIntCtxDestroyOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL)
 	     && (psDevmemIntCtxDestroyOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -1699,10 +1706,11 @@ PVRSRVBridgeDevmemIntHeapDestroy(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psDevmemIntHeapDestroyOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psDevmemIntHeapDestroyIN->hDevmemHeap,
-					    PVRSRV_HANDLE_TYPE_DEVMEMINT_HEAP);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psDevmemIntHeapDestroyIN->hDevmemHeap,
+					      PVRSRV_HANDLE_TYPE_DEVMEMINT_HEAP);
 	if (unlikely((psDevmemIntHeapDestroyOUT->eError != PVRSRV_OK) &&
+		     (psDevmemIntHeapDestroyOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psDevmemIntHeapDestroyOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -1868,10 +1876,11 @@ PVRSRVBridgeDevmemIntUnmapPMR(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psDevmemIntUnmapPMROUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psDevmemIntUnmapPMRIN->hMapping,
-					    PVRSRV_HANDLE_TYPE_DEVMEMINT_MAPPING);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psDevmemIntUnmapPMRIN->hMapping,
+					      PVRSRV_HANDLE_TYPE_DEVMEMINT_MAPPING);
 	if (unlikely((psDevmemIntUnmapPMROUT->eError != PVRSRV_OK) &&
+		     (psDevmemIntUnmapPMROUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psDevmemIntUnmapPMROUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -2001,11 +2010,14 @@ PVRSRVBridgeDevmemIntUnreserveRange(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psDevmemIntUnreserveRangeOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psDevmemIntUnreserveRangeIN->hReservation,
-					    PVRSRV_HANDLE_TYPE_DEVMEMINT_RESERVATION);
-	if (unlikely((psDevmemIntUnreserveRangeOUT->eError != PVRSRV_OK) &&
-		     (psDevmemIntUnreserveRangeOUT->eError != PVRSRV_ERROR_RETRY)))
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psDevmemIntUnreserveRangeIN->
+					      hReservation,
+					      PVRSRV_HANDLE_TYPE_DEVMEMINT_RESERVATION);
+	if (unlikely
+	    ((psDevmemIntUnreserveRangeOUT->eError != PVRSRV_OK)
+	     && (psDevmemIntUnreserveRangeOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL)
+	     && (psDevmemIntUnreserveRangeOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
 			 "%s: %s",
@@ -3276,12 +3288,291 @@ PVRSRVBridgePVRSRVUpdateOOMStats(IMG_UINT32 ui32DispatchTableEntry,
 #define PVRSRVBridgePVRSRVUpdateOOMStats NULL
 #endif
 
+static_assert(PVRSRV_PHYS_HEAP_LAST <= IMG_UINT32_MAX,
+	      "PVRSRV_PHYS_HEAP_LAST must not be larger than IMG_UINT32_MAX");
+
+static IMG_INT
+PVRSRVBridgePhysHeapGetMemInfoPkd(IMG_UINT32 ui32DispatchTableEntry,
+				  IMG_UINT8 * psPhysHeapGetMemInfoPkdIN_UI8,
+				  IMG_UINT8 * psPhysHeapGetMemInfoPkdOUT_UI8,
+				  CONNECTION_DATA * psConnection)
+{
+	PVRSRV_BRIDGE_IN_PHYSHEAPGETMEMINFOPKD *psPhysHeapGetMemInfoPkdIN =
+	    (PVRSRV_BRIDGE_IN_PHYSHEAPGETMEMINFOPKD *)
+	    IMG_OFFSET_ADDR(psPhysHeapGetMemInfoPkdIN_UI8, 0);
+	PVRSRV_BRIDGE_OUT_PHYSHEAPGETMEMINFOPKD *psPhysHeapGetMemInfoPkdOUT =
+	    (PVRSRV_BRIDGE_OUT_PHYSHEAPGETMEMINFOPKD *)
+	    IMG_OFFSET_ADDR(psPhysHeapGetMemInfoPkdOUT_UI8, 0);
+
+	PVRSRV_PHYS_HEAP *eaPhysHeapIDInt = NULL;
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStatsInt = NULL;
+
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize = 0;
+	IMG_UINT64 ui64BufferSize =
+	    ((IMG_UINT64) psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PVRSRV_PHYS_HEAP)) +
+	    ((IMG_UINT64) psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount *
+	     sizeof(PHYS_HEAP_MEM_STATS_PKD)) + 0;
+
+	if (unlikely(psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount > PVRSRV_PHYS_HEAP_LAST))
+	{
+		psPhysHeapGetMemInfoPkdOUT->eError = PVRSRV_ERROR_BRIDGE_ARRAY_SIZE_TOO_BIG;
+		goto PhysHeapGetMemInfoPkd_exit;
+	}
+
+	psPhysHeapGetMemInfoPkdOUT->psapPhysHeapMemStats =
+	    psPhysHeapGetMemInfoPkdIN->psapPhysHeapMemStats;
+
+	if (ui64BufferSize > IMG_UINT32_MAX)
+	{
+		psPhysHeapGetMemInfoPkdOUT->eError = PVRSRV_ERROR_BRIDGE_BUFFER_TOO_SMALL;
+		goto PhysHeapGetMemInfoPkd_exit;
+	}
+
+	ui32BufferSize = (IMG_UINT32) ui64BufferSize;
+
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset =
+		    PVR_ALIGN(sizeof(*psPhysHeapGetMemInfoPkdIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize =
+		    ui32InBufferOffset >=
+		    PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 : PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *) (void *)psPhysHeapGetMemInfoPkdIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
+		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if (!pArrayArgsBuffer)
+			{
+				psPhysHeapGetMemInfoPkdOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto PhysHeapGetMemInfoPkd_exit;
+			}
+		}
+	}
+
+	if (psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount != 0)
+	{
+		eaPhysHeapIDInt =
+		    (PVRSRV_PHYS_HEAP *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
+		ui32NextOffset +=
+		    psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PVRSRV_PHYS_HEAP);
+	}
+
+	/* Copy the data over */
+	if (psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PVRSRV_PHYS_HEAP) > 0)
+	{
+		if (OSCopyFromUser
+		    (NULL, eaPhysHeapIDInt,
+		     (const void __user *)psPhysHeapGetMemInfoPkdIN->peaPhysHeapID,
+		     psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PVRSRV_PHYS_HEAP)) !=
+		    PVRSRV_OK)
+		{
+			psPhysHeapGetMemInfoPkdOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+			goto PhysHeapGetMemInfoPkd_exit;
+		}
+	}
+	if (psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount != 0)
+	{
+		psapPhysHeapMemStatsInt =
+		    (PHYS_HEAP_MEM_STATS_PKD *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
+		ui32NextOffset +=
+		    psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PHYS_HEAP_MEM_STATS_PKD);
+	}
+
+	psPhysHeapGetMemInfoPkdOUT->eError =
+	    PVRSRVPhysHeapGetMemInfoPkdKM(psConnection, OSGetDevNode(psConnection),
+					  psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount,
+					  eaPhysHeapIDInt, psapPhysHeapMemStatsInt);
+	/* Exit early if bridged call fails */
+	if (unlikely(psPhysHeapGetMemInfoPkdOUT->eError != PVRSRV_OK))
+	{
+		goto PhysHeapGetMemInfoPkd_exit;
+	}
+
+	/* If dest ptr is non-null and we have data to copy */
+	if ((psapPhysHeapMemStatsInt) &&
+	    ((psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount * sizeof(PHYS_HEAP_MEM_STATS_PKD)) > 0))
+	{
+		if (unlikely
+		    (OSCopyToUser
+		     (NULL, (void __user *)psPhysHeapGetMemInfoPkdOUT->psapPhysHeapMemStats,
+		      psapPhysHeapMemStatsInt,
+		      (psPhysHeapGetMemInfoPkdIN->ui32PhysHeapCount *
+		       sizeof(PHYS_HEAP_MEM_STATS_PKD))) != PVRSRV_OK))
+		{
+			psPhysHeapGetMemInfoPkdOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+			goto PhysHeapGetMemInfoPkd_exit;
+		}
+	}
+
+PhysHeapGetMemInfoPkd_exit:
+
+	/* Allocated space should be equal to the last updated offset */
+#ifdef PVRSRV_NEED_PVR_ASSERT
+	if (psPhysHeapGetMemInfoPkdOUT->eError == PVRSRV_OK)
+		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+#endif /* PVRSRV_NEED_PVR_ASSERT */
+
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
+	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
+
+	return 0;
+}
+
+static IMG_INT
+PVRSRVBridgeGetHeapPhysMemUsagePkd(IMG_UINT32 ui32DispatchTableEntry,
+				   IMG_UINT8 * psGetHeapPhysMemUsagePkdIN_UI8,
+				   IMG_UINT8 * psGetHeapPhysMemUsagePkdOUT_UI8,
+				   CONNECTION_DATA * psConnection)
+{
+	PVRSRV_BRIDGE_IN_GETHEAPPHYSMEMUSAGEPKD *psGetHeapPhysMemUsagePkdIN =
+	    (PVRSRV_BRIDGE_IN_GETHEAPPHYSMEMUSAGEPKD *)
+	    IMG_OFFSET_ADDR(psGetHeapPhysMemUsagePkdIN_UI8, 0);
+	PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD *psGetHeapPhysMemUsagePkdOUT =
+	    (PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD *)
+	    IMG_OFFSET_ADDR(psGetHeapPhysMemUsagePkdOUT_UI8, 0);
+
+	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStatsInt = NULL;
+
+	IMG_UINT32 ui32NextOffset = 0;
+	IMG_BYTE *pArrayArgsBuffer = NULL;
+#if !defined(INTEGRITY_OS)
+	IMG_BOOL bHaveEnoughSpace = IMG_FALSE;
+#endif
+
+	IMG_UINT32 ui32BufferSize = 0;
+	IMG_UINT64 ui64BufferSize =
+	    ((IMG_UINT64) psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount *
+	     sizeof(PHYS_HEAP_MEM_STATS_PKD)) + 0;
+
+	if (psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount > PVRSRV_PHYS_HEAP_LAST)
+	{
+		psGetHeapPhysMemUsagePkdOUT->eError = PVRSRV_ERROR_BRIDGE_ARRAY_SIZE_TOO_BIG;
+		goto GetHeapPhysMemUsagePkd_exit;
+	}
+
+	psGetHeapPhysMemUsagePkdOUT->psapPhysHeapMemStats =
+	    psGetHeapPhysMemUsagePkdIN->psapPhysHeapMemStats;
+
+	if (ui64BufferSize > IMG_UINT32_MAX)
+	{
+		psGetHeapPhysMemUsagePkdOUT->eError = PVRSRV_ERROR_BRIDGE_BUFFER_TOO_SMALL;
+		goto GetHeapPhysMemUsagePkd_exit;
+	}
+
+	ui32BufferSize = (IMG_UINT32) ui64BufferSize;
+
+	if (ui32BufferSize != 0)
+	{
+#if !defined(INTEGRITY_OS)
+		/* Try to use remainder of input buffer for copies if possible, word-aligned for safety. */
+		IMG_UINT32 ui32InBufferOffset =
+		    PVR_ALIGN(sizeof(*psGetHeapPhysMemUsagePkdIN), sizeof(unsigned long));
+		IMG_UINT32 ui32InBufferExcessSize =
+		    ui32InBufferOffset >=
+		    PVRSRV_MAX_BRIDGE_IN_SIZE ? 0 : PVRSRV_MAX_BRIDGE_IN_SIZE - ui32InBufferOffset;
+
+		bHaveEnoughSpace = ui32BufferSize <= ui32InBufferExcessSize;
+		if (bHaveEnoughSpace)
+		{
+			IMG_BYTE *pInputBuffer = (IMG_BYTE *) (void *)psGetHeapPhysMemUsagePkdIN;
+
+			pArrayArgsBuffer = &pInputBuffer[ui32InBufferOffset];
+		}
+		else
+#endif
+		{
+			pArrayArgsBuffer = OSAllocMemNoStats(ui32BufferSize);
+
+			if (!pArrayArgsBuffer)
+			{
+				psGetHeapPhysMemUsagePkdOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto GetHeapPhysMemUsagePkd_exit;
+			}
+		}
+	}
+
+	if (psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount != 0)
+	{
+		psapPhysHeapMemStatsInt =
+		    (PHYS_HEAP_MEM_STATS_PKD *) IMG_OFFSET_ADDR(pArrayArgsBuffer, ui32NextOffset);
+		ui32NextOffset +=
+		    psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount * sizeof(PHYS_HEAP_MEM_STATS_PKD);
+	}
+
+	psGetHeapPhysMemUsagePkdOUT->eError =
+	    PVRSRVGetHeapPhysMemUsagePkdKM(psConnection, OSGetDevNode(psConnection),
+					   psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount,
+					   psapPhysHeapMemStatsInt);
+	/* Exit early if bridged call fails */
+	if (unlikely(psGetHeapPhysMemUsagePkdOUT->eError != PVRSRV_OK))
+	{
+		goto GetHeapPhysMemUsagePkd_exit;
+	}
+
+	/* If dest ptr is non-null and we have data to copy */
+	if ((psapPhysHeapMemStatsInt) &&
+	    ((psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount * sizeof(PHYS_HEAP_MEM_STATS_PKD)) > 0))
+	{
+		if (unlikely
+		    (OSCopyToUser
+		     (NULL, (void __user *)psGetHeapPhysMemUsagePkdOUT->psapPhysHeapMemStats,
+		      psapPhysHeapMemStatsInt,
+		      (psGetHeapPhysMemUsagePkdIN->ui32PhysHeapCount *
+		       sizeof(PHYS_HEAP_MEM_STATS_PKD))) != PVRSRV_OK))
+		{
+			psGetHeapPhysMemUsagePkdOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+
+			goto GetHeapPhysMemUsagePkd_exit;
+		}
+	}
+
+GetHeapPhysMemUsagePkd_exit:
+
+	/* Allocated space should be equal to the last updated offset */
+#ifdef PVRSRV_NEED_PVR_ASSERT
+	if (psGetHeapPhysMemUsagePkdOUT->eError == PVRSRV_OK)
+		PVR_ASSERT(ui32BufferSize == ui32NextOffset);
+#endif /* PVRSRV_NEED_PVR_ASSERT */
+
+#if defined(INTEGRITY_OS)
+	if (pArrayArgsBuffer)
+#else
+	if (!bHaveEnoughSpace && pArrayArgsBuffer)
+#endif
+		OSFreeMemNoStats(pArrayArgsBuffer);
+
+	return 0;
+}
+
 /* ***************************************************************************
  * Server bridge dispatch related glue
  */
 
 PVRSRV_ERROR InitMMBridge(void);
-PVRSRV_ERROR DeinitMMBridge(void);
+void DeinitMMBridge(void);
 
 /*
  * Register all MM functions with services
@@ -3409,13 +3700,19 @@ PVRSRV_ERROR InitMMBridge(void)
 	SetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_PVRSRVUPDATEOOMSTATS,
 			      PVRSRVBridgePVRSRVUpdateOOMStats, NULL);
 
+	SetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_PHYSHEAPGETMEMINFOPKD,
+			      PVRSRVBridgePhysHeapGetMemInfoPkd, NULL);
+
+	SetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_GETHEAPPHYSMEMUSAGEPKD,
+			      PVRSRVBridgeGetHeapPhysMemUsagePkd, NULL);
+
 	return PVRSRV_OK;
 }
 
 /*
  * Unregister all mm functions with services
  */
-PVRSRV_ERROR DeinitMMBridge(void)
+void DeinitMMBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_PMREXPORTPMR);
@@ -3498,5 +3795,8 @@ PVRSRV_ERROR DeinitMMBridge(void)
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_PVRSRVUPDATEOOMSTATS);
 
-	return PVRSRV_OK;
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_PHYSHEAPGETMEMINFOPKD);
+
+	UnsetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_GETHEAPPHYSMEMUSAGEPKD);
+
 }

@@ -88,25 +88,19 @@ typedef enum _PVRSRV_SYS_POWER_STATE_
 /*!
   Device Power State Enum
  */
-typedef enum _PVRSRV_DEV_POWER_STATE_
-{
-	PVRSRV_DEV_POWER_STATE_DEFAULT	= -1,	/*!< Default state for the device */
-	PVRSRV_DEV_POWER_STATE_OFF		= 0,	/*!< Unpowered */
-	PVRSRV_DEV_POWER_STATE_ON		= 1,	/*!< Running */
-
-	PVRSRV_DEV_POWER_STATE_FORCE_I32 = 0x7fffffff	/*!< Force enum to be at least 32-bits wide */
-
-} PVRSRV_DEV_POWER_STATE, *PPVRSRV_DEV_POWER_STATE;	/*!< Typedef for ptr to PVRSRV_DEV_POWER_STATE */ /* PRQA S 3205 */
+typedef IMG_INT32 PVRSRV_DEV_POWER_STATE;
+typedef IMG_INT32 *PPVRSRV_DEV_POWER_STATE;	/*!< Typedef for ptr to PVRSRV_DEV_POWER_STATE */ /* PRQA S 3205 */
+#define PVRSRV_DEV_POWER_STATE_DEFAULT	-1	/*!< Default state for the device */
+#define PVRSRV_DEV_POWER_STATE_OFF		 0	/*!< Unpowered */
+#define PVRSRV_DEV_POWER_STATE_ON		 1	/*!< Running */
 
 /*!
   Power Flags Enum
  */
-typedef enum _PVRSRV_POWER_FLAGS_
-{
-	PVRSRV_POWER_FLAGS_NONE = 0,          /*!< No flags */
-	PVRSRV_POWER_FLAGS_FORCED = 1 << 0,   /*!< Power the transition should not fail */
-	PVRSRV_POWER_FLAGS_SUSPEND = 1 << 1,  /*!< Power transition is due to OS suspend request */
-} PVRSRV_POWER_FLAGS;
+typedef IMG_UINT32 PVRSRV_POWER_FLAGS;
+#define PVRSRV_POWER_FLAGS_NONE		0U			/*!< No flags */
+#define PVRSRV_POWER_FLAGS_FORCED	1U << 0		/*!< Power the transition should not fail */
+#define PVRSRV_POWER_FLAGS_SUSPEND	1U << 1		/*!< Power transition is due to OS suspend request */
 
 /* Clock speed handler prototypes */
 

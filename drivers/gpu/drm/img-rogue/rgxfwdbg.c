@@ -111,7 +111,7 @@ PVRSRVRGXFWDebugSetFWLogKM(
 	 * before requesting the FW to read it
 	 */
 	psDevInfo->psRGXFWIfTraceBufCtl->ui32LogType = ui32RGXFWLogType;
-	OSMemoryBarrier();
+	OSMemoryBarrier(&psDevInfo->psRGXFWIfTraceBufCtl->ui32LogType);
 
 	/* Allocate firmware trace buffer resource(s) if not already done */
 	if (RGXTraceBufferIsInitRequired(psDevInfo))
@@ -139,7 +139,7 @@ PVRSRVRGXFWDebugSetFWLogKM(
 		         "%s: Failed to allocate resource on-demand. Reverting to old value",
 		         __func__));
 		psDevInfo->psRGXFWIfTraceBufCtl->ui32LogType = ui32OldRGXFWLogTpe;
-		OSMemoryBarrier();
+		OSMemoryBarrier(&psDevInfo->psRGXFWIfTraceBufCtl->ui32LogType);
 
 		OSLockRelease(psDevInfo->hRGXFWIfBufInitLock);
 

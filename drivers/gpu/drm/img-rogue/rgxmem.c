@@ -223,7 +223,9 @@ void RGXMMUCacheInvalidate(PVRSRV_DEVICE_NODE *psDeviceNode,
 		case MMU_LEVEL_1:
 			ui32NewCacheFlags = RGXFWIF_MMUCACHEDATA_FLAGS_PT;
 
+#if defined(RGX_FEATURE_SLC_VIVT_BIT_MASK)
 			if (!(RGX_IS_FEATURE_SUPPORTED(psDevInfo, SLC_VIVT)))
+#endif
 			{
 				ui32NewCacheFlags |= RGXFWIF_MMUCACHEDATA_FLAGS_TLB;
 			}
@@ -236,11 +238,13 @@ void RGXMMUCacheInvalidate(PVRSRV_DEVICE_NODE *psDeviceNode,
 			break;
 	}
 
+#if defined(RGX_FEATURE_SLC_VIVT_BIT_MASK)
 	if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, SLC_VIVT))
 	{
 		MMU_AppendCacheFlags(psMMUContext, ui32NewCacheFlags);
 	}
 	else
+#endif
 	{
 		MMU_AppendCacheFlags(psDevInfo->psKernelMMUCtx, ui32NewCacheFlags);
 	}
@@ -310,7 +314,7 @@ PVRSRV_ERROR RGXMMUCacheInvalidateKick(PVRSRV_DEVICE_NODE *psDeviceNode,
 {
 	PVRSRV_ERROR eError;
 	IMG_UINT32 ui32FWCacheFlags;
-
+	PVRSRV_RGXDEV_INFO *psDevInfo = (PVRSRV_RGXDEV_INFO *)psDeviceNode->pvDevice;
 	eError = PVRSRVPowerLock(psDeviceNode);
 	if (eError != PVRSRV_OK)
 	{
@@ -328,15 +332,16 @@ PVRSRV_ERROR RGXMMUCacheInvalidateKick(PVRSRV_DEVICE_NODE *psDeviceNode,
 	}
 
 	/* Ensure device is powered up before sending cache command */
-	PDUMPPOWCMDSTART();
+	PDUMPPOWCMDSTART(psDeviceNode);
 	eError = PVRSRVSetDevicePowerStateKM(psDeviceNode,
 										 PVRSRV_DEV_POWER_STATE_ON,
 										 PVRSRV_POWER_FLAGS_NONE);
-	PDUMPPOWCMDEND();
+	PDUMPPOWCMDEND(psDeviceNode);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_WARNING, "%s: failed to transition RGX to ON (%s)",
 					__func__, PVRSRVGetErrorString(eError)));
+		MMU_AppendCacheFlags(psDevInfo->psKernelMMUCtx, ui32FWCacheFlags);
 		goto _PowerUnlockAndReturnErr;
 	}
 
@@ -345,6 +350,9 @@ PVRSRV_ERROR RGXMMUCacheInvalidateKick(PVRSRV_DEVICE_NODE *psDeviceNode,
 	if (eError != PVRSRV_OK)
 	{
 		/* failed to submit cache operations, return failure */
+		PVR_DPF((PVR_DBG_WARNING, "%s: failed to submit cache command (%s)",
+					__func__, PVRSRVGetErrorString(eError)));
+		MMU_AppendCacheFlags(psDevInfo->psKernelMMUCtx, ui32FWCacheFlags);
 		goto _PowerUnlockAndReturnErr;
 	}
 
@@ -583,7 +591,7 @@ PVRSRV_ERROR RGXRegisterMemoryContext(PVRSRV_DEVICE_NODE	*psDeviceNode,
 		/*
 		 * Set default values for the rest of the structure.
 		 */
-		psFWMemContext->uiPageCatBaseRegID = RGXFW_BIF_INVALID_PCREG;
+		psFWMemContext->uiPageCatBaseRegSet = RGXFW_BIF_INVALID_PCSET;
 		psFWMemContext->uiBreakpointAddr = 0;
 		psFWMemContext->uiBPHandlerAddr = 0;
 		psFWMemContext->uiBreakpointCtl = 0;

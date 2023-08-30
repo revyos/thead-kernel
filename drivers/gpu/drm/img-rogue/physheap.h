@@ -57,6 +57,32 @@ typedef struct _PHYS_HEAP_ PHYS_HEAP;
 
 struct _CONNECTION_DATA_;
 
+typedef struct _PG_HANDLE_
+{
+	union
+	{
+		void *pvHandle;
+		IMG_UINT64 ui64Handle;
+	}u;
+	/* The allocation order is log2 value of the number of pages to allocate.
+	 * As such this is a correspondingly small value. E.g, for order 4 we
+	 * are talking 2^4 * PAGE_SIZE contiguous allocation.
+	 * DevPxAlloc API does not need to support orders higher than 4.
+	 */
+#if defined(SUPPORT_GPUVIRT_VALIDATION)
+	IMG_BYTE    uiOrder;    /* Order of the corresponding allocation */
+	IMG_BYTE    uiOSid;     /* OSid to use for allocation arena.
+	                         * Connection-specific. */
+	IMG_BYTE    uiPad1,
+	            uiPad2;     /* Spare */
+#else
+	IMG_BYTE    uiOrder;    /* Order of the corresponding allocation */
+	IMG_BYTE    uiPad1,
+	            uiPad2,
+	            uiPad3;     /* Spare */
+#endif
+} PG_HANDLE;
+
 /*! Pointer to private implementation specific data */
 typedef void *PHEAP_IMPL_DATA;
 
@@ -90,6 +116,12 @@ typedef PVRSRV_ERROR (*PFN_GET_CPU_PADDR)(PHEAP_IMPL_DATA, IMG_CPU_PHYADDR*);
 @Return         PVRSRV_ERROR       PVRSRV_OK or error code
 */ /**************************************************************************/
 typedef PVRSRV_ERROR (*PFN_GET_SIZE)(PHEAP_IMPL_DATA, IMG_UINT64*);
+/*************************************************************************/ /*!
+@Function       Callback function PFN_GET_PAGE_SHIFT
+@Description    Get heap log2 page shift.
+@Return         IMG_UINT32         Log2 page shift
+*/ /**************************************************************************/
+typedef IMG_UINT32 (*PFN_GET_PAGE_SHIFT)(void);
 
 /*************************************************************************/ /*!
 @Function       Callback function PFN_GET_MEM_STATS
@@ -101,6 +133,29 @@ typedef PVRSRV_ERROR (*PFN_GET_SIZE)(PHEAP_IMPL_DATA, IMG_UINT64*);
 @Return         none
 */ /**************************************************************************/
 typedef void (*PFN_GET_MEM_STATS)(PHEAP_IMPL_DATA, IMG_UINT64 *, IMG_UINT64 *);
+
+#if defined(SUPPORT_GPUVIRT_VALIDATION)
+typedef PVRSRV_ERROR (*PFN_PAGES_ALLOC_GPV)(PHYS_HEAP *psPhysHeap, size_t uiSize,
+                                            PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr,
+                                            IMG_UINT32 ui32OSid, IMG_PID uiPid);
+#endif
+typedef PVRSRV_ERROR (*PFN_PAGES_ALLOC)(PHYS_HEAP *psPhysHeap, size_t uiSize,
+                                        PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr,
+                                        IMG_PID uiPid);
+
+typedef void (*PFN_PAGES_FREE)(PHYS_HEAP *psPhysHeap, PG_HANDLE *psMemHandle);
+
+typedef PVRSRV_ERROR (*PFN_PAGES_MAP)(PHYS_HEAP *psPhysHeap, PG_HANDLE *pshMemHandle,
+                                      size_t uiSize, IMG_DEV_PHYADDR *psDevPAddr,
+                                      void **pvPtr);
+
+typedef void (*PFN_PAGES_UNMAP)(PHYS_HEAP *psPhysHeap,
+                                PG_HANDLE *psMemHandle, void *pvPtr);
+
+typedef PVRSRV_ERROR (*PFN_PAGES_CLEAN)(PHYS_HEAP *psPhysHeap,
+                                        PG_HANDLE *pshMemHandle,
+                                        IMG_UINT32 uiOffset,
+                                        IMG_UINT32 uiLength);
 
 /*************************************************************************/ /*!
 @Function       Callback function PFN_CREATE_PMR
@@ -143,27 +198,31 @@ typedef struct PHEAP_IMPL_FUNCS_TAG
 	PFN_GET_DEV_PADDR pfnGetDevPAddr;
 	PFN_GET_CPU_PADDR pfnGetCPUPAddr;
 	PFN_GET_SIZE pfnGetSize;
+	PFN_GET_PAGE_SHIFT pfnGetPageShift;
 	PFN_GET_MEM_STATS pfnGetPMRFactoryMemStats;
 	PFN_CREATE_PMR pfnCreatePMR;
+#if defined(SUPPORT_GPUVIRT_VALIDATION)
+	PFN_PAGES_ALLOC_GPV pfnPagesAllocGPV;
+#endif
+	PFN_PAGES_ALLOC pfnPagesAlloc;
+	PFN_PAGES_FREE pfnPagesFree;
+	PFN_PAGES_MAP pfnPagesMap;
+	PFN_PAGES_UNMAP pfnPagesUnMap;
+	PFN_PAGES_CLEAN pfnPagesClean;
 } PHEAP_IMPL_FUNCS;
 
 /*************************************************************************/ /*!
-@Function       PhysHeapCreateHeapsFromConfigs
-@Description    Create new heaps from configs.
+@Function       PhysHeapCreateDeviceHeapsFromConfigs
+@Description    Create new heaps for a device from configs.
 @Input          psDevNode      Pointer to device node struct
 @Input          pasConfigs     Pointer to array of Heap configurations.
 @Input          ui32NumConfigs Number of configurations in array.
-@Output         papsPhysHeaps  Pointer to array of phys heap pointers.
-@Output         pui32NumHeaps  Number of heaps created. Can be less than
-                               ui32NumConfigs if error.
 @Return         PVRSRV_ERROR PVRSRV_OK or error code
 */ /**************************************************************************/
 PVRSRV_ERROR
-PhysHeapCreateHeapsFromConfigs(PPVRSRV_DEVICE_NODE psDevNode,
-							  PHYS_HEAP_CONFIG *pasConfigs,
-							  IMG_UINT32 ui32NumConfigs,
-							  PHYS_HEAP **papsPhysHeaps,
-							  IMG_UINT32 *pui32NumHeaps);
+PhysHeapCreateDeviceHeapsFromConfigs(PPVRSRV_DEVICE_NODE psDevNode,
+                                     PHYS_HEAP_CONFIG *pasConfigs,
+                                     IMG_UINT32 ui32NumConfigs);
 
 /*************************************************************************/ /*!
 @Function       PhysHeapCreateHeapFromConfig
@@ -197,6 +256,14 @@ PVRSRV_ERROR PhysHeapCreate(PPVRSRV_DEVICE_NODE psDevNode,
 							PHEAP_IMPL_DATA pvImplData,
 							PHEAP_IMPL_FUNCS *psImplFuncs,
 							PHYS_HEAP **ppsPhysHeap);
+
+/*************************************************************************/ /*!
+@Function       PhysHeapDestroyDeviceHeaps
+@Description    Destroys all heaps referenced by a device.
+@Input          psDevNode Pointer to a device node struct.
+@Return         void
+*/ /**************************************************************************/
+void PhysHeapDestroyDeviceHeaps(PPVRSRV_DEVICE_NODE psDevNode);
 
 void PhysHeapDestroy(PHYS_HEAP *psPhysHeap);
 
@@ -282,6 +349,21 @@ PhysHeapGetMemInfo(PPVRSRV_DEVICE_NODE psDevNode,
 				   PHYS_HEAP_MEM_STATS_PTR paPhysHeapMemStats);
 
 /*************************************************************************/ /*!
+@Function       PhysHeapGetMemInfoPkd
+@Description    Get phys heap memory statistics for a given physical heap ID.
+@Input          psDevNode          Pointer to device node struct
+@Input          ui32PhysHeapCount  Physical heap count
+@Input          paePhysHeapID      Physical heap ID
+@Output         paPhysHeapMemStats Buffer that holds the memory statistics
+@Return         PVRSRV_ERROR PVRSRV_OK or error code
+*/ /**************************************************************************/
+PVRSRV_ERROR
+PhysHeapGetMemInfoPkd(PPVRSRV_DEVICE_NODE psDevNode,
+					  IMG_UINT32 ui32PhysHeapCount,
+					  PVRSRV_PHYS_HEAP *paePhysHeapID,
+					  PHYS_HEAP_MEM_STATS_PKD_PTR paPhysHeapMemStats);
+
+/*************************************************************************/ /*!
 @Function       PhysheapGetPhysMemUsage
 @Description    Get memory statistics for a given physical heap.
 @Input          psPhysHeap      Physical heap
@@ -331,7 +413,7 @@ PVRSRV_ERROR PhysHeapCreatePMR(PHYS_HEAP *psPhysHeap,
 							   IMG_UINT32 ui32PDumpFlags);
 
 PVRSRV_ERROR PhysHeapInit(void);
-PVRSRV_ERROR PhysHeapDeinit(void);
+void PhysHeapDeinit(void);
 
 /*************************************************************************/ /*!
 @Function       PhysHeapDeviceNode
@@ -356,5 +438,60 @@ IMG_BOOL PhysHeapPVRLayerAcquire(PVRSRV_PHYS_HEAP ePhysHeap);
 @Return         IMG_BOOL            return IMG_TRUE if yes
 */ /**************************************************************************/
 IMG_BOOL PhysHeapUserModeAlloc(PVRSRV_PHYS_HEAP ePhysHeap);
+
+/*************************************************************************/ /*!
+@Function       PhysHeapMMUPxSetup
+@Description    Setup MMU Px allocation function pointers.
+@Input          psDeviceNode Pointer to device node struct
+@Return         PVRSRV_ERROR PVRSRV_OK on success.
+*/ /**************************************************************************/
+PVRSRV_ERROR PhysHeapMMUPxSetup(PPVRSRV_DEVICE_NODE psDeviceNode);
+
+/*************************************************************************/ /*!
+@Function       PhysHeapMMUPxDeInit
+@Description    Deinit after PhysHeapMMUPxSetup.
+@Input          psDeviceNode Pointer to device node struct
+*/ /**************************************************************************/
+void PhysHeapMMUPxDeInit(PPVRSRV_DEVICE_NODE psDeviceNode);
+
+#if defined(SUPPORT_GPUVIRT_VALIDATION)
+PVRSRV_ERROR PhysHeapPagesAllocGPV(PHYS_HEAP *psPhysHeap,
+                                   size_t uiSize,
+                                   PG_HANDLE *psMemHandle,
+                                   IMG_DEV_PHYADDR *psDevPAddr,
+                                   IMG_UINT32 ui32OSid, IMG_PID uiPid);
+#endif
+
+PVRSRV_ERROR PhysHeapPagesAlloc(PHYS_HEAP *psPhysHeap,
+                                size_t uiSize,
+                                PG_HANDLE *psMemHandle,
+                                IMG_DEV_PHYADDR *psDevPAddr,
+                                IMG_PID uiPid);
+
+void PhysHeapPagesFree(PHYS_HEAP *psPhysHeap,
+                       PG_HANDLE *psMemHandle);
+
+PVRSRV_ERROR PhysHeapPagesMap(PHYS_HEAP *psPhysHeap,
+                              PG_HANDLE *pshMemHandle,
+                              size_t uiSize,
+                              IMG_DEV_PHYADDR *psDevPAddr,
+                              void **pvPtr);
+
+void PhysHeapPagesUnMap(PHYS_HEAP *psPhysHeap,
+                        PG_HANDLE *psMemHandle,
+                        void *pvPtr);
+
+PVRSRV_ERROR PhysHeapPagesClean(PHYS_HEAP *psPhysHeap,
+                                PG_HANDLE *pshMemHandle,
+                                IMG_UINT32 uiOffset,
+                                IMG_UINT32 uiLength);
+
+/*************************************************************************/ /*!
+@Function       PhysHeapGetPageShift
+@Description    Get phys heap page shift.
+@Input          psPhysHeap   Pointer to physical heap.
+@Return         IMG_UINT32   Log2 page shift
+*/ /**************************************************************************/
+IMG_UINT32 PhysHeapGetPageShift(PHYS_HEAP *psPhysHeap);
 
 #endif /* PHYSHEAP_H */

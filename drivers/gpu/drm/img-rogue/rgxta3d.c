@@ -653,11 +653,7 @@ PVRSRV_ERROR RGXGrowFreeList(RGX_FREELIST *psFreeList,
 
 		/* Copy only the newly added memory */
 		OSCachedMemCopy(pFLMapAddr + ui32FLMaxSize + ui32CopyOffset, pFLMapAddr + ui32CopyOffset , uiLength);
-
-		if (PVRSRV_CHECK_CPU_WRITE_COMBINE(PMR_Flags(psFreeList->psFreeListPMR)))
-		{
-			OSWriteMemoryBarrier();
-		}
+		OSWriteMemoryBarrier(pFLMapAddr);
 
 #if defined(PDUMP)
 		PDUMPCOMMENT(psFreeList->psDevInfo->psDeviceNode, "Initialize shadow freelist");
@@ -674,11 +670,6 @@ PVRSRV_ERROR RGXGrowFreeList(RGX_FREELIST *psFreeList,
 						uiCurrOffset,
 						":SYSMEM:$1",
 						PDUMP_FLAGS_CONTINUOUS);
-			}
-
-			if (PVRSRV_CHECK_CPU_WRITE_COMBINE(PMR_Flags(psFreeList->psFreeListPMR)))
-			{
-				OSWriteMemoryBarrier();
 			}
 		}
 #endif
@@ -954,7 +945,6 @@ void RGXProcessRequestGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
 			eError = RGXScheduleCommand(psDevInfo,
 					RGXFWIF_DM_3D,
 					&s3DCCBCmd,
-					0,
 					PDUMP_FLAGS_NONE);
 			if (eError != PVRSRV_ERROR_RETRY)
 			{
@@ -1264,7 +1254,6 @@ void RGXProcessRequestFreelistsReconstruction(PVRSRV_RGXDEV_INFO *psDevInfo,
 		eError = RGXScheduleCommand(psDevInfo,
 				RGXFWIF_DM_GEOM,
 				&sTACCBCmd,
-				0,
 				PDUMP_FLAGS_NONE);
 		if (eError != PVRSRV_ERROR_RETRY)
 		{
@@ -1531,14 +1520,14 @@ static void RGXDestroyHWRTData_aux(RGX_KM_HW_RT_DATASET *psKMHWRTDataSet)
 /* Create set of HWRTData(s) and bind it with a shared FW HWRTDataCommon */
 PVRSRV_ERROR RGXCreateHWRTDataSet(CONNECTION_DATA      *psConnection,
 		PVRSRV_DEVICE_NODE	*psDeviceNode,
-		IMG_DEV_VIRTADDR	psVHeapTableDevVAddr,
+		IMG_DEV_VIRTADDR	asVHeapTableDevVAddr[RGXMKIF_NUM_GEOMDATAS],
 		IMG_DEV_VIRTADDR		asPMMListDevVAddr[RGXMKIF_NUM_RTDATAS],
-		RGX_FREELIST			*apsFreeLists[RGXFW_MAX_FREELISTS],
+		RGX_FREELIST			*apsFreeLists[RGXMKIF_NUM_RTDATA_FREELISTS],
 		IMG_UINT32           ui32ScreenPixelMax,
 		IMG_UINT64           ui64MultiSampleCtl,
 		IMG_UINT64           ui64FlippedMultiSampleCtl,
 		IMG_UINT32           ui32TPCStride,
-		IMG_DEV_VIRTADDR		sTailPtrsDevVAddr,
+		IMG_DEV_VIRTADDR		asTailPtrsDevVAddr[RGXMKIF_NUM_GEOMDATAS],
 		IMG_UINT32           ui32TPCSize,
 		IMG_UINT32           ui32TEScreen,
 		IMG_UINT32           ui32TEAA,
@@ -1553,7 +1542,7 @@ PVRSRV_ERROR RGXCreateHWRTDataSet(CONNECTION_DATA      *psConnection,
 		IMG_UINT32                 ui32ISPMergeScaleY,
 		IMG_DEV_VIRTADDR	asMacrotileArrayDevVAddr[RGXMKIF_NUM_RTDATAS],
 		IMG_DEV_VIRTADDR	asRgnHeaderDevVAddr[RGXMKIF_NUM_RTDATAS],
-		IMG_DEV_VIRTADDR	sRTCDevVAddr,
+		IMG_DEV_VIRTADDR	asRTCDevVAddr[RGXMKIF_NUM_GEOMDATAS],
 		IMG_UINT32			uiRgnHeaderSize,
 		IMG_UINT32			ui32ISPMtileSize,
 		IMG_UINT16			ui16MaxRTs,
@@ -1637,13 +1626,13 @@ PVRSRV_ERROR RGXCreateHWRTDataSet(CONNECTION_DATA      *psConnection,
 		eError = RGXCreateHWRTData_aux(
 			psConnection,
 			psDeviceNode,
-			psVHeapTableDevVAddr,
+			asVHeapTableDevVAddr[ui32RTDataID % RGXMKIF_NUM_GEOMDATAS],
 			asPMMListDevVAddr[ui32RTDataID],
-			apsFreeLists,
-			sTailPtrsDevVAddr,
+			&apsFreeLists[(ui32RTDataID % RGXMKIF_NUM_GEOMDATAS) * RGXFW_MAX_FREELISTS],
+			asTailPtrsDevVAddr[ui32RTDataID % RGXMKIF_NUM_GEOMDATAS],
 			asMacrotileArrayDevVAddr[ui32RTDataID],
 			asRgnHeaderDevVAddr[ui32RTDataID],
-			sRTCDevVAddr,
+			asRTCDevVAddr[ui32RTDataID % RGXMKIF_NUM_GEOMDATAS],
 			ui16MaxRTs,
 			psHWRTDataCommonCookie,
 			&pasKMHWRTDataSet[ui32RTDataID]);
@@ -1711,7 +1700,7 @@ PVRSRV_ERROR RGXDestroyHWRTDataSet(RGX_KM_HW_RT_DATASET *psKMHWRTDataSet)
 
 	/* Cleanup HWRTData */
 	eError = RGXFWRequestHWRTDataCleanUp(psDevNode, psHWRTData);
-	if (eError == PVRSRV_ERROR_RETRY)
+	if (eError != PVRSRV_OK)
 	{
 		return eError;
 	}
@@ -1821,6 +1810,7 @@ PVRSRV_ERROR RGXCreateFreeList(CONNECTION_DATA      *psConnection,
 	eError = DevmemFwAllocate(psDevInfo,
 			sizeof(*psFWFreeList),
 			PVRSRV_MEMALLOCFLAG_DEVICE_FLAG(PMMETA_PROTECT) |
+			PVRSRV_MEMALLOCFLAG_DEVICE_FLAG(FIRMWARE_CACHED) |
 			PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC |
 			PVRSRV_MEMALLOCFLAG_GPU_READABLE |
 			PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE |
@@ -2133,6 +2123,7 @@ PVRSRV_ERROR RGXCreateZSBufferKM(CONNECTION_DATA * psConnection,
 	eError = DevmemFwAllocate(psDevInfo,
 			sizeof(*psFWZSBuffer),
 			PVRSRV_MEMALLOCFLAG_DEVICE_FLAG(PMMETA_PROTECT) |
+			PVRSRV_MEMALLOCFLAG_DEVICE_FLAG(FIRMWARE_CACHED) |
 			PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC |
 			PVRSRV_MEMALLOCFLAG_GPU_READABLE |
 			PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE |
@@ -2226,7 +2217,7 @@ PVRSRV_ERROR RGXDestroyZSBufferKM(RGX_ZSBUFFER_DATA *psZSBuffer)
 	/* Request ZS Buffer cleanup */
 	eError = RGXFWRequestZSBufferCleanUp(psZSBuffer->psDevInfo,
 			psZSBuffer->sZSBufferFWDevVAddr);
-	if (eError != PVRSRV_ERROR_RETRY)
+	if (eError == PVRSRV_OK)
 	{
 		/* Free the firmware render context. */
 		RGXUnsetFirmwareAddress(psZSBuffer->psFWZSBufferMemDesc);
@@ -2503,7 +2494,6 @@ void RGXProcessRequestZSBufferBacking(PVRSRV_RGXDEV_INFO *psDevInfo,
 			eError = RGXScheduleCommand(psDevInfo,
 					RGXFWIF_DM_GEOM,
 					&sTACCBCmd,
-					0,
 					PDUMP_FLAGS_NONE);
 			if (eError != PVRSRV_ERROR_RETRY)
 			{
@@ -2565,7 +2555,6 @@ void RGXProcessRequestZSBufferUnbacking(PVRSRV_RGXDEV_INFO *psDevInfo,
 			eError = RGXScheduleCommand(psDevInfo,
 					RGXFWIF_DM_GEOM,
 					&sTACCBCmd,
-					0,
 					PDUMP_FLAGS_NONE);
 			if (eError != PVRSRV_ERROR_RETRY)
 			{
@@ -2593,6 +2582,7 @@ PVRSRV_ERROR _CreateTAContext(CONNECTION_DATA *psConnection,
 		IMG_UINT32 ui32AllocatedOffset,
 		DEVMEM_MEMDESC *psFWMemContextMemDesc,
 		IMG_DEV_VIRTADDR sVDMCallStackAddr,
+		IMG_UINT32 ui32CallStackDepth,
 		IMG_UINT32 ui32Priority,
 		IMG_UINT32 ui32MaxDeadlineMS,
 		IMG_UINT64 ui64RobustnessAddress,
@@ -2604,6 +2594,7 @@ PVRSRV_ERROR _CreateTAContext(CONNECTION_DATA *psConnection,
 {
 	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
 	RGXFWIF_TACTX_STATE *psContextState;
+	IMG_UINT32 uiCoreIdx;
 	PVRSRV_ERROR eError;
 	/*
 		Allocate device memory for the firmware GPU context suspend state.
@@ -2635,7 +2626,13 @@ PVRSRV_ERROR _CreateTAContext(CONNECTION_DATA *psConnection,
 				PVRSRVGetErrorString(eError)));
 		goto fail_suspendcpuvirtacquire;
 	}
-	psContextState->uTAReg_VDM_CALL_STACK_POINTER_Init = sVDMCallStackAddr.uiAddr;
+
+	for (uiCoreIdx = 0; uiCoreIdx < RGX_NUM_GEOM_CORES; uiCoreIdx++)
+	{
+		psContextState->asGeomCore[uiCoreIdx].uTAReg_VDM_CALL_STACK_POINTER_Init =
+			sVDMCallStackAddr.uiAddr + (uiCoreIdx * ui32CallStackDepth * sizeof(IMG_UINT64));
+	}
+
 	DevmemReleaseCpuVirtAddr(psTAData->psContextStateMemDesc);
 
 	eError = FWCommonContextAllocate(psConnection,
@@ -2802,6 +2799,7 @@ PVRSRV_ERROR PVRSRVRGXCreateRenderContextKM(CONNECTION_DATA				*psConnection,
 		PVRSRV_DEVICE_NODE			*psDeviceNode,
 		IMG_UINT32					ui32Priority,
 		IMG_DEV_VIRTADDR			sVDMCallStackAddr,
+		IMG_UINT32					ui32CallStackDepth,
 		IMG_UINT32					ui32FrameworkRegisterSize,
 		IMG_PBYTE					pabyFrameworkRegisters,
 		IMG_HANDLE					hMemCtxPrivData,
@@ -2919,6 +2917,7 @@ PVRSRV_ERROR PVRSRVRGXCreateRenderContextKM(CONNECTION_DATA				*psConnection,
 			offsetof(RGXFWIF_FWRENDERCONTEXT, sTAContext),
 			psFWMemContextMemDesc,
 			sVDMCallStackAddr,
+			ui32CallStackDepth,
 			ui32Priority,
 			ui32MaxTADeadlineMS,
 			ui64RobustnessAddress,
@@ -3266,7 +3265,6 @@ static void DumpUfoList(IMG_UINT32 ui32ClientTAFenceCount,
  * PVRSRVRGXKickTA3DKM
  */
 PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
-		IMG_UINT32					ui32ClientCacheOpSeqNum,
 		IMG_UINT32					ui32ClientTAFenceCount,
 		SYNC_PRIMITIVE_BLOCK		**apsClientTAFenceSyncPrimBlock,
 		IMG_UINT32					*paui32ClientTAFenceSyncOffset,
@@ -3796,6 +3794,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 		          __func__, ui32TAFenceCount, ui32TAUpdateCount));
 
 		RGXCmdHelperInitCmdCCB_CommandSize(
+			psDevInfo,
 		    0,
 		    ui32TAFenceCount,
 		    ui32TAUpdateCount,
@@ -3814,6 +3813,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 		          ui323DFenceCount));
 
 		RGXCmdHelperInitCmdCCB_CommandSize(
+			psDevInfo,
 			0,
 		    ui323DFenceCount,
 		    0,
@@ -3832,6 +3832,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 		          ui32PRUpdateCount));
 
 		RGXCmdHelperInitCmdCCB_CommandSize(
+			psDevInfo,
 		    0,
 		    0,
 		    ui32PRUpdateCount,
@@ -3855,6 +3856,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 		}
 
 		RGXCmdHelperInitCmdCCB_CommandSize(
+			psDevInfo,
 			0,
 			bKickTA ? 0 : ui323DFenceCount,
 		    ui323DUpdateCount,
@@ -4926,7 +4928,6 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 				eError2 = RGXScheduleCommand(psRenderContext->psDeviceNode->pvDevice,
 						RGXFWIF_DM_GEOM,
 						&sTAKCCBCmd,
-						ui32ClientCacheOpSeqNum,
 						ui32PDumpFlags);
 				if (eError2 != PVRSRV_ERROR_RETRY)
 				{
@@ -5028,7 +5029,6 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(RGX_SERVER_RENDER_CONTEXT	*psRenderContext,
 			eError2 = RGXScheduleCommand(psRenderContext->psDeviceNode->pvDevice,
 					RGXFWIF_DM_3D,
 					&s3DKCCBCmd,
-					ui32ClientCacheOpSeqNum,
 					ui32PDumpFlags);
 			if (eError2 != PVRSRV_ERROR_RETRY)
 			{
@@ -5329,24 +5329,23 @@ PVRSRV_ERROR PVRSRVRGXSetRenderContextPropertyKM(RGX_SERVER_RENDER_CONTEXT *psRe
                                                  IMG_UINT64 ui64Input,
                                                  IMG_UINT64 *pui64Output)
 {
-	PVRSRV_ERROR eError;
-	PVRSRV_ERROR eError2 = PVRSRV_OK;
+	PVRSRV_ERROR eError = PVRSRV_OK;
 
 	switch (eContextProperty)
 	{
 		case RGX_CONTEXT_PROPERTY_FLAGS:
 		{
+			IMG_UINT32 ui32ContextFlags = (IMG_UINT32)ui64Input;
+
 			OSLockAcquire(psRenderContext->hLock);
 			eError = FWCommonContextSetFlags(psRenderContext->sTAData.psServerCommonContext,
-			                                 (IMG_UINT32)ui64Input);
+			                                 ui32ContextFlags);
 			if (eError == PVRSRV_OK)
 			{
-				eError2 = FWCommonContextSetFlags(psRenderContext->s3DData.psServerCommonContext,
-				                                  (IMG_UINT32)ui64Input);
+				eError = FWCommonContextSetFlags(psRenderContext->s3DData.psServerCommonContext,
+			                                     ui32ContextFlags);
 			}
 			OSLockRelease(psRenderContext->hLock);
-			PVR_LOG_IF_ERROR(eError, "FWCommonContextSetFlags eError");
-			PVR_LOG_IF_ERROR(eError2, "FWCommonContextSetFlags eError2");
 			break;
 		}
 

@@ -200,6 +200,7 @@ PVRSRVBridgeRGXCreateTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 					     hPrivDataInt,
 					     psRGXCreateTransferContextIN->ui32PackedCCBSizeU8888,
 					     psRGXCreateTransferContextIN->ui32ContextFlags,
+					     psRGXCreateTransferContextIN->ui64RobustnessAddress,
 					     &psTransferContextInt,
 					     &psCLIPMRMemInt, &psUSCPMRMemInt);
 	/* Exit early if bridged call fails */
@@ -277,7 +278,7 @@ RGXCreateTransferContext_exit:
 			/* Lock over handle creation cleanup. */
 			LockHandle(psConnection->psHandleBase);
 
-			eError = PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+			eError = PVRSRVDestroyHandleUnlocked(psConnection->psHandleBase,
 							     (IMG_HANDLE)
 							     psRGXCreateTransferContextOUT->
 							     hTransferContext,
@@ -337,12 +338,13 @@ PVRSRVBridgeRGXDestroyTransferContext(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psRGXDestroyTransferContextOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psRGXDestroyTransferContextIN->
-					    hTransferContext,
-					    PVRSRV_HANDLE_TYPE_RGX_SERVER_TQ_CONTEXT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psRGXDestroyTransferContextIN->
+					      hTransferContext,
+					      PVRSRV_HANDLE_TYPE_RGX_SERVER_TQ_CONTEXT);
 	if (unlikely
 	    ((psRGXDestroyTransferContextOUT->eError != PVRSRV_OK)
+	     && (psRGXDestroyTransferContextOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL)
 	     && (psRGXDestroyTransferContextOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -989,7 +991,6 @@ PVRSRVBridgeRGXSubmitTransfer2(IMG_UINT32 ui32DispatchTableEntry,
 
 	psRGXSubmitTransfer2OUT->eError =
 	    PVRSRVRGXSubmitTransferKM(psTransferContextInt,
-				      psRGXSubmitTransfer2IN->ui32ClientCacheOpSeqNum,
 				      psRGXSubmitTransfer2IN->ui32PrepareCount,
 				      ui32ClientUpdateCountInt,
 				      psUpdateUFOSyncPrimBlockInt,
@@ -1152,7 +1153,7 @@ RGXSetTransferContextProperty_exit:
 
 #if defined(SUPPORT_RGXTQ_BRIDGE)
 PVRSRV_ERROR InitRGXTQBridge(void);
-PVRSRV_ERROR DeinitRGXTQBridge(void);
+void DeinitRGXTQBridge(void);
 
 /*
  * Register all RGXTQ functions with services
@@ -1183,7 +1184,7 @@ PVRSRV_ERROR InitRGXTQBridge(void)
 /*
  * Unregister all rgxtq functions with services
  */
-PVRSRV_ERROR DeinitRGXTQBridge(void)
+void DeinitRGXTQBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXTQ, PVRSRV_BRIDGE_RGXTQ_RGXCREATETRANSFERCONTEXT);
@@ -1198,7 +1199,6 @@ PVRSRV_ERROR DeinitRGXTQBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXTQ,
 				PVRSRV_BRIDGE_RGXTQ_RGXSETTRANSFERCONTEXTPROPERTY);
 
-	return PVRSRV_OK;
 }
 #else /* SUPPORT_RGXTQ_BRIDGE */
 /* This bridge is conditional on SUPPORT_RGXTQ_BRIDGE - when not defined,
@@ -1207,7 +1207,6 @@ PVRSRV_ERROR DeinitRGXTQBridge(void)
 #define InitRGXTQBridge() \
 	PVRSRV_OK
 
-#define DeinitRGXTQBridge() \
-	PVRSRV_OK
+#define DeinitRGXTQBridge()
 
 #endif /* SUPPORT_RGXTQ_BRIDGE */

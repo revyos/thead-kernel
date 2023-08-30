@@ -105,6 +105,9 @@ static inline void RGXDEBUG_PRINT_IRQ_COUNT(PVRSRV_RGXDEV_INFO* psRgxDevInfo)
 #endif /* PVRSRV_NEED_PVR_DPF */
 }
 
+extern const IMG_CHAR * const gapszMipsPermissionPTFlags[4];
+extern const IMG_CHAR * const gapszMipsCoherencyPTFlags[8];
+extern const IMG_CHAR * const gapszMipsDirtyGlobalValidPTFlags[8];
 /*!
 *******************************************************************************
 
@@ -153,42 +156,6 @@ void RGXDumpPowerMonitoring(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				PVRSRV_RGXDEV_INFO  *psDevInfo);
 #endif
 
-/*!
-*******************************************************************************
-
- @Function	RGXReadWithSP
-
- @Description
-
- Reads data from a memory location (FW memory map) using the META Slave Port
-
- @Input  psDevInfo  - Pointer to RGX DevInfo to be used while reading
- @Input  ui32FWAddr - 32 bit FW address
- @Input  pui32Value - When the read is successful, value at above FW address
-                      is returned at this location
-
- @Return PVRSRV_ERROR PVRSRV_OK if read success, error code otherwise.
-******************************************************************************/
-PVRSRV_ERROR RGXReadWithSP(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32FWAddr, IMG_UINT32 *pui32Value);
-
-/*!
-*******************************************************************************
-
- @Function	RGXWriteWithSP
-
- @Description
-
- Writes data to a memory location (FW memory map) using the META Slave Port
-
- @Input  psDevInfo  - Pointer to RGX DevInfo to be used while writing
- @Input  ui32FWAddr - 32 bit FW address
-
- @Input  ui32Value  - 32 bit Value to write
-
- @Return PVRSRV_ERROR PVRSRV_OK if write success, error code otherwise.
-******************************************************************************/
-PVRSRV_ERROR RGXWriteWithSP(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32FWAddr, IMG_UINT32 ui32Value);
-
 #if defined(SUPPORT_FW_VIEW_EXTRA_DEBUG)
 /*!
 *******************************************************************************
@@ -196,8 +163,8 @@ PVRSRV_ERROR RGXWriteWithSP(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32FWAddr
  @Function     ValidateFWOnLoad
 
  @Description  Compare the Firmware image as seen from the CPU point of view
-               against the same memory area as seen from the META point of view
-               after first power up.
+               against the same memory area as seen from the firmware point
+               of view after first power up.
 
  @Input        psDevInfo - Device Info
 

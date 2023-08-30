@@ -636,7 +636,7 @@ PVRSRV_ERROR
 DevmemGetReservation(DEVMEM_MEMDESC *psMemDesc,
 		     IMG_HANDLE *hReservation);
 
-IMG_INTERNAL PVRSRV_ERROR
+IMG_INTERNAL void
 DevmemGetPMRData(DEVMEM_MEMDESC *psMemDesc,
 		IMG_HANDLE *hPMR,
 		IMG_DEVMEM_OFFSET_T *puiPMROffset);

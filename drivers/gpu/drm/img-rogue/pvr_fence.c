@@ -660,7 +660,7 @@ const struct dma_fence_ops pvr_fence_ops = {
  */
 struct pvr_fence *
 pvr_fence_create(struct pvr_fence_context *fctx,
-		struct _SYNC_CHECKPOINT_CONTEXT *sync_checkpoint_ctx,
+		struct SYNC_CHECKPOINT_CONTEXT_TAG *sync_checkpoint_ctx,
 		int timeline_fd, const char *name)
 {
 	struct pvr_fence *pvr_fence;
@@ -872,7 +872,7 @@ pvr_fence_foreign_signal_sync(struct dma_fence *fence, struct dma_fence_cb *cb)
 
 struct pvr_fence *
 pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
-			    struct _SYNC_CHECKPOINT_CONTEXT *sync_checkpoint_ctx,
+			    struct SYNC_CHECKPOINT_CONTEXT_TAG *sync_checkpoint_ctx,
 			    struct dma_fence *fence,
 			    PVRSRV_FENCE fence_fd,
 			    const char *name)
@@ -1050,9 +1050,9 @@ pvr_fence_sw_error(struct pvr_fence *pvr_fence)
 
 int
 pvr_fence_get_checkpoints(struct pvr_fence **pvr_fences, u32 nr_fences,
-			  struct _SYNC_CHECKPOINT **fence_checkpoints)
+			  struct SYNC_CHECKPOINT_TAG **fence_checkpoints)
 {
-	struct _SYNC_CHECKPOINT **next_fence_checkpoint = fence_checkpoints;
+	struct SYNC_CHECKPOINT_TAG **next_fence_checkpoint = fence_checkpoints;
 	struct pvr_fence **next_pvr_fence = pvr_fences;
 	int fence_checkpoint_idx;
 
@@ -1072,7 +1072,7 @@ pvr_fence_get_checkpoints(struct pvr_fence **pvr_fences, u32 nr_fences,
 	return 0;
 }
 
-struct _SYNC_CHECKPOINT *
+struct SYNC_CHECKPOINT_TAG *
 pvr_fence_get_checkpoint(struct pvr_fence *update_fence)
 {
 	return update_fence->sync_checkpoint;
@@ -1111,7 +1111,7 @@ u32 pvr_fence_dump_info_on_stalled_ufos(struct pvr_fence_context *fctx,
 		DUMPDEBUG_PRINTF_FUNC *pfnDummy = NULL;
 
 		for (ufo_num = 0; ufo_num < nr_ufos; ufo_num++) {
-			struct _SYNC_CHECKPOINT *checkpoint =
+			struct SYNC_CHECKPOINT_TAG *checkpoint =
 				pvr_fence->sync_checkpoint;
 			const u32 fence_ufo_addr =
 				SyncCheckpointGetFirmwareAddr(checkpoint);

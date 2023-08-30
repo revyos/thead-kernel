@@ -167,7 +167,7 @@ int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
 
 	drm_mode_config_init(ddev);
 
-#if defined(SUPPORT_FWLOAD_ON_PROBE)
+#if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_PROBE)
 	srv_err = PVRSRVCommonDeviceInitialise(priv->dev_node);
 	if (srv_err != PVRSRV_OK) {
 		err = -ENODEV;
@@ -181,7 +181,7 @@ int pvr_drm_load(struct drm_device *ddev, unsigned long flags)
 
 	return 0;
 
-#if defined(SUPPORT_FWLOAD_ON_PROBE)
+#if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_PROBE)
 err_device_deinit:
 	drm_mode_config_cleanup(ddev);
 	PVRSRVDeviceDeinit(priv->dev_node);
@@ -231,19 +231,25 @@ void pvr_drm_unload(struct drm_device *ddev)
 
 static int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 {
+#if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
 	struct pvr_drm_private *priv = ddev->dev_private;
 	int err;
+#endif
 
 	if (!try_module_get(THIS_MODULE)) {
 		DRM_ERROR("failed to get module reference\n");
 		return -ENOENT;
 	}
 
-	err = PVRSRVDeviceOpen(priv->dev_node, dfile);
+#if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
+	err = PVRSRVDeviceServicesOpen(priv->dev_node, dfile);
 	if (err)
 		module_put(THIS_MODULE);
 
 	return err;
+#else
+	return 0;
+#endif
 }
 
 static void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
@@ -260,6 +266,8 @@ static void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
  */
 static struct drm_ioctl_desc pvr_drm_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(PVR_SRVKM_CMD, PVRSRV_BridgeDispatchKM,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(PVR_SRVKM_INIT, drm_pvr_srvkm_init,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 	DRM_IOCTL_DEF_DRV(PVR_SYNC_RENAME_CMD, pvr_sync_rename_ioctl,

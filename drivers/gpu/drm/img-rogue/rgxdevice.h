@@ -198,6 +198,7 @@ typedef struct _PVRSRV_DEVICE_FEATURE_CONFIG_
 	IMG_UINT32 ui32N;
 	IMG_UINT32 ui32C;
 	IMG_UINT32 ui32FeaturesValues[RGX_FEATURE_WITH_VALUES_MAX_IDX];
+	IMG_UINT32 ui32MAXDMCount;
 	IMG_UINT32 ui32MAXDustCount;
 	IMG_UINT32 ui32SLCSizeInBytes;
 	IMG_PCHAR  pszBVNCString;
@@ -517,6 +518,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	DEVMEM_MEMDESC			*psRGXFWIfConnectionCtlMemDesc;
 	RGXFWIF_CONNECTION_CTL	*psRGXFWIfConnectionCtl;
 
+	DEVMEM_MEMDESC			*psRGXFWHeapGuardPageReserveMemDesc;
 	DEVMEM_MEMDESC			*psRGXFWIfSysInitMemDesc;
 	RGXFWIF_SYSINIT			*psRGXFWIfSysInit;
 
@@ -727,6 +729,15 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	/* Firmware gcov buffer */
 	DEVMEM_MEMDESC			*psFirmwareGcovBufferMemDesc;      /*!< mem desc for Firmware gcov dumping buffer */
 	IMG_UINT32				ui32FirmwareGcovSize;
+#endif
+
+#if defined(SUPPORT_VALIDATION) && defined(SUPPORT_SOC_TIMER)
+	struct
+	{
+		IMG_UINT64 ui64timerGray;
+		IMG_UINT64 ui64timerBinary;
+		IMG_UINT64 *pui64uscTimers;
+	} sRGXTimerValues;
 #endif
 
 #if defined(SUPPORT_VALIDATION)

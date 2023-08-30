@@ -96,7 +96,8 @@ PVRSRV_ERROR SyncFbTimelineCreatePVR(IMG_UINT32 uiTimelineNameSize,
                                      const IMG_CHAR *pszTimelineName,
                                      PVRSRV_TIMELINE_SERVER **ppsTimeline);
 
-PVRSRV_ERROR SyncFbFenceCreatePVR(const IMG_CHAR *pszName,
+PVRSRV_ERROR SyncFbFenceCreatePVR(PPVRSRV_DEVICE_NODE psDeviceNode,
+                                  const IMG_CHAR *pszName,
                                   PVRSRV_TIMELINE iTl,
                                   PSYNC_CHECKPOINT_CONTEXT hSyncCheckpointContext,
                                   PVRSRV_FENCE *piOutFence,
