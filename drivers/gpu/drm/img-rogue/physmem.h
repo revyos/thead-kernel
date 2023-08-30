@@ -275,6 +275,20 @@ PVRSRVGetHeapPhysMemUsageKM(CONNECTION_DATA *psConnection,
 			    PHYS_HEAP_MEM_STATS *apPhysHeapMemStats);
 
 /*************************************************************************/ /*!
+@Function       PVRSRVGetHeapPhysMemUsagePkdKM
+@Description    Get the memory usage statistics for all user accessible
+                physical heaps
+@Input          ui32PhysHeapCount      Total user accessible physical heaps
+@Output         apPhysHeapMemStats     Buffer to hold the memory statistics
+@Return         PVRSRV_OK if successful
+*/ /**************************************************************************/
+PVRSRV_ERROR
+PVRSRVGetHeapPhysMemUsagePkdKM(CONNECTION_DATA *psConnection,
+			    PVRSRV_DEVICE_NODE *psDevNode,
+			    IMG_UINT32 ui32PhysHeapCount,
+			    PHYS_HEAP_MEM_STATS_PKD *apPhysHeapMemStats);
+
+/*************************************************************************/ /*!
 @Function       PVRSRVPhysHeapGetMemInfoKM
 @Description    Get the memory usage statistics for a given physical heap ID
 @Input          ui32PhysHeapCount      Physical Heap count
@@ -288,5 +302,20 @@ PVRSRVPhysHeapGetMemInfoKM(CONNECTION_DATA *psConnection,
 			   IMG_UINT32 ui32PhysHeapCount,
 			   PVRSRV_PHYS_HEAP *paePhysHeapID,
 			   PHYS_HEAP_MEM_STATS *paPhysHeapMemStats);
+
+/*************************************************************************/ /*!
+@Function       PVRSRVPhysHeapGetMemInfoPkdKM
+@Description    Get the memory usage statistics for a given physical heap ID
+@Input          ui32PhysHeapCount      Physical Heap count
+@Input          paePhysHeapID          Array of Physical Heap ID's
+@Output         paPhysHeapMemStats     Buffer to hold the memory statistics
+@Return         PVRSRV_OK if successful
+*/ /**************************************************************************/
+PVRSRV_ERROR
+PVRSRVPhysHeapGetMemInfoPkdKM(CONNECTION_DATA *psConnection,
+			   PVRSRV_DEVICE_NODE *psDevNode,
+			   IMG_UINT32 ui32PhysHeapCount,
+			   PVRSRV_PHYS_HEAP *paePhysHeapID,
+			   PHYS_HEAP_MEM_STATS_PKD *paPhysHeapMemStats);
 
 #endif /* SRVSRV_PHYSMEM_H */

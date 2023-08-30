@@ -269,7 +269,8 @@ IMG_UINT32 RGXGetWrapMaskCCB(RGX_CLIENT_CCB *psClientCCB);
 PVRSRV_ERROR RGXSetCCBFlags(RGX_CLIENT_CCB *psClientCCB,
 							IMG_UINT32		ui32Flags);
 
-void RGXCmdHelperInitCmdCCB_CommandSize(IMG_UINT64 ui64FBSCEntryMask,
+void RGXCmdHelperInitCmdCCB_CommandSize(PVRSRV_RGXDEV_INFO *psDevInfo,
+										IMG_UINT64 ui64FBSCEntryMask,
                                         IMG_UINT32 ui32ClientFenceCount,
                                         IMG_UINT32 ui32ClientUpdateCount,
                                         IMG_UINT32 ui32CmdSize,
@@ -299,7 +300,8 @@ void RGXCmdHelperInitCmdCCB_OtherData(RGX_CLIENT_CCB *psClientCCB,
                                       IMG_BOOL bCCBStateOpen,
                                       RGX_CCB_CMD_HELPER_DATA *psCmdHelperData);
 
-void RGXCmdHelperInitCmdCCB(RGX_CLIENT_CCB          *psClientCCB,
+void RGXCmdHelperInitCmdCCB(PVRSRV_RGXDEV_INFO *psDevInfo,
+							RGX_CLIENT_CCB          *psClientCCB,
                             IMG_UINT64              ui64FBSCEntryMask,
                             IMG_UINT32              ui32ClientFenceCount,
                             PRGXFWIF_UFO_ADDR       *pauiFenceUFOAddress,

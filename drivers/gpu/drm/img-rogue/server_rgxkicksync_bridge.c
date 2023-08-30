@@ -179,12 +179,13 @@ PVRSRVBridgeRGXDestroyKickSyncContext(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psRGXDestroyKickSyncContextOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psRGXDestroyKickSyncContextIN->
-					    hKickSyncContext,
-					    PVRSRV_HANDLE_TYPE_RGX_SERVER_KICKSYNC_CONTEXT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psRGXDestroyKickSyncContextIN->
+					      hKickSyncContext,
+					      PVRSRV_HANDLE_TYPE_RGX_SERVER_KICKSYNC_CONTEXT);
 	if (unlikely
 	    ((psRGXDestroyKickSyncContextOUT->eError != PVRSRV_OK)
+	     && (psRGXDestroyKickSyncContextOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL)
 	     && (psRGXDestroyKickSyncContextOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -413,7 +414,6 @@ PVRSRVBridgeRGXKickSync2(IMG_UINT32 ui32DispatchTableEntry,
 
 	psRGXKickSync2OUT->eError =
 	    PVRSRVRGXKickSyncKM(psKickSyncContextInt,
-				psRGXKickSync2IN->ui32ClientCacheOpSeqNum,
 				psRGXKickSync2IN->ui32ClientUpdateCount,
 				psUpdateUFODevVarBlockInt,
 				ui32UpdateDevVarOffsetInt,
@@ -533,7 +533,7 @@ RGXSetKickSyncContextProperty_exit:
  */
 
 PVRSRV_ERROR InitRGXKICKSYNCBridge(void);
-PVRSRV_ERROR DeinitRGXKICKSYNCBridge(void);
+void DeinitRGXKICKSYNCBridge(void);
 
 /*
  * Register all RGXKICKSYNC functions with services
@@ -562,7 +562,7 @@ PVRSRV_ERROR InitRGXKICKSYNCBridge(void)
 /*
  * Unregister all rgxkicksync functions with services
  */
-PVRSRV_ERROR DeinitRGXKICKSYNCBridge(void)
+void DeinitRGXKICKSYNCBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXKICKSYNC,
@@ -576,5 +576,4 @@ PVRSRV_ERROR DeinitRGXKICKSYNCBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_RGXKICKSYNC,
 				PVRSRV_BRIDGE_RGXKICKSYNC_RGXSETKICKSYNCCONTEXTPROPERTY);
 
-	return PVRSRV_OK;
 }

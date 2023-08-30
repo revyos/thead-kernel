@@ -343,6 +343,8 @@ struct plato_device {
 /* 396 MHz (~400 MHz) on HW, around 1MHz on the emulator */
 #if defined(EMULATOR) || defined(VIRTUAL_PLATFORM)
 #define	PLATO_RGX_CORE_CLOCK_SPEED	(1000000)
+#define	PLATO_RGX_MIN_CORE_CLOCK_SPEED	(1000000)
+#define	PLATO_RGX_MAX_CORE_CLOCK_SPEED	(1000000)
 #else
 
 #define	PLATO_RGX_CORE_CLOCK_SPEED	(396000000)

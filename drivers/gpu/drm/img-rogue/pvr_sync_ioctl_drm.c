@@ -84,7 +84,7 @@ pvr_sync_connection_private_data(void *connection_data)
 struct pvr_sync_file_data *
 pvr_sync_get_private_data(struct file *file)
 {
-	CONNECTION_DATA *connection_data = LinuxConnectionFromFile(file);
+	CONNECTION_DATA *connection_data = LinuxSyncConnectionFromFile(file);
 
 	return pvr_sync_connection_private_data(connection_data);
 }
@@ -120,9 +120,13 @@ int pvr_sync_open(void *connection_data, struct drm_file *file)
 	return pvr_sync_open_common(connection_data, file);
 }
 
-int pvr_sync_close(void *connection_data)
+void pvr_sync_close(void *connection_data)
 {
-	return pvr_sync_close_common(connection_data);
+	int iErr = pvr_sync_close_common(connection_data);
+
+	if (iErr < 0)
+		pr_err("%s: ERROR (%d) returned by pvr_sync_close_common()\n",
+		       __func__, iErr);
 }
 
 

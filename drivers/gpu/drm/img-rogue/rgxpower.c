@@ -580,17 +580,22 @@ static INLINE void RGXCheckFWBootStage(PVRSRV_RGXDEV_INFO *psDevInfo)
 {
 	FW_BOOT_STAGE eStage;
 
+#if defined(RGX_FEATURE_META_MAX_VALUE_IDX)
 	if (RGX_IS_FEATURE_VALUE_SUPPORTED(psDevInfo, META))
 	{
 		/* Boot stage temporarily stored to the register below */
 		eStage = OSReadHWReg32(psDevInfo->pvRegsBaseKM,
 		                       RGX_FW_BOOT_STAGE_REGISTER);
 	}
-	else if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, RISCV_FW_PROCESSOR))
+	else
+#endif
+#if defined(RGX_FEATURE_RISCV_FW_PROCESSOR_BIT_MASK)
+	if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, RISCV_FW_PROCESSOR))
 	{
 		eStage = OSReadHWReg32(psDevInfo->pvRegsBaseKM, RGX_CR_SCRATCH14);
 	}
 	else
+#endif
 	{
 		IMG_BYTE *pbBootData;
 
@@ -659,42 +664,12 @@ static INLINE PVRSRV_ERROR RGXDoStart(PVRSRV_DEVICE_NODE *psDeviceNode)
 #if defined(NO_HARDWARE) && defined(PDUMP)
 
 #if 0
-#include "rgxtbdefs.h"
+#include "emu_cr_defs.h"
 #else
-
-/*
-    Register RGX_TB_SYSTEM_STATUS
-*/
-#define RGX_TB_SYSTEM_STATUS                              (0x00E0U)
-#define RGX_TB_SYSTEM_STATUS_MASKFULL                     (IMG_UINT64_C(0x00000000030100FF))
-/*
-directly indicates the status of power_abort flag from the power management controller (RGX_PRCM)
-*/
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_ABORT_SHIFT (25U)
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_ABORT_CLRMSK (IMG_UINT64_C(0XFFFFFFFFFDFFFFFF))
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_ABORT_EN    (IMG_UINT64_C(0X0000000002000000))
-/*
-directly indicates the status of power_complete flag from the power management controller (RGX_PRCM)
-*/
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_COMPLETE_SHIFT (24U)
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_COMPLETE_CLRMSK (IMG_UINT64_C(0XFFFFFFFFFEFFFFFF))
-#define RGX_TB_SYSTEM_STATUS_HOST_POWER_EVENT_COMPLETE_EN (IMG_UINT64_C(0X0000000001000000))
-/*
-directly indicates the status of GPU's hmmu_irq
-*/
-#define RGX_TB_SYSTEM_STATUS_HMMU_IRQ_SHIFT               (16U)
-#define RGX_TB_SYSTEM_STATUS_HMMU_IRQ_CLRMSK              (IMG_UINT64_C(0XFFFFFFFFFFFEFFFF))
-#define RGX_TB_SYSTEM_STATUS_HMMU_IRQ_EN                  (IMG_UINT64_C(0X0000000000010000))
-/*
-directly indicates the status of GPU's irq per OS_ID
-*/
-#define RGX_TB_SYSTEM_STATUS_IRQ_SHIFT                    (1U)
-#define RGX_TB_SYSTEM_STATUS_IRQ_CLRMSK                   (IMG_UINT64_C(0XFFFFFFFFFFFFFE01))
-/*
-old deprecated single irq
-*/
-#define RGX_TB_SYSTEM_STATUS_OLD_IRQ_SHIFT                    (0U)
-#define RGX_TB_SYSTEM_STATUS_OLD_IRQ_CLRMSK                   (IMG_UINT64_C(0XFFFFFFFFFFFFFFFE))
+#define EMU_CR_SYSTEM_IRQ_STATUS                          (0x00E0U)
+/* IRQ is officially defined [8 .. 0] but here we split out the old deprecated single irq. */
+#define EMU_CR_SYSTEM_IRQ_STATUS_IRQ_CLRMSK               (IMG_UINT64_C(0XFFFFFFFFFFFFFE01))
+#define EMU_CR_SYSTEM_IRQ_STATUS_OLD_IRQ_CLRMSK           (IMG_UINT64_C(0XFFFFFFFFFFFFFFFE))
 #endif
 
 static PVRSRV_ERROR
@@ -714,9 +689,9 @@ _ValidateIrqs(PVRSRV_RGXDEV_INFO *psDevInfo)
 	                      "Poll for TB irq status to be set (irqs signalled)...");
 	PDUMPREGPOL(psDevInfo->psDeviceNode,
 	            RGX_TB_PDUMPREG_NAME,
-	            RGX_TB_SYSTEM_STATUS,
-	            ~RGX_TB_SYSTEM_STATUS_IRQ_CLRMSK,
-	            ~RGX_TB_SYSTEM_STATUS_IRQ_CLRMSK,
+	            EMU_CR_SYSTEM_IRQ_STATUS,
+	            ~EMU_CR_SYSTEM_IRQ_STATUS_IRQ_CLRMSK,
+	            ~EMU_CR_SYSTEM_IRQ_STATUS_IRQ_CLRMSK,
 	            ui32PDumpFlags,
 	            PDUMP_POLL_OPERATOR_EQUAL);
 
@@ -780,12 +755,7 @@ static PVRSRV_ERROR RGXVirtualisationPowerupSidebandTest(PVRSRV_DEVICE_NODE	 *ps
 
 	PVR_DPF((PVR_DBG_MESSAGE, "Testing per-os kick registers:"));
 
-	/* Need to get the maximum supported OSid value from the per-device info.
-	 * This can change according to how much memory is physically present and
-	 * what the carve-out mapping looks like (provided by the module load-time
-	 * parameters).
-	 */
-	ui32OsRegBanksMapped = MIN(ui32OsRegBanksMapped, psDeviceNode->ui32NumOSId);
+	ui32OsRegBanksMapped = MIN(ui32OsRegBanksMapped, GPUVIRT_VALIDATION_NUM_OS);
 
 	if (ui32OsRegBanksMapped != RGXFW_MAX_NUM_OS)
 	{
@@ -800,9 +770,16 @@ static PVRSRV_ERROR RGXVirtualisationPowerupSidebandTest(PVRSRV_DEVICE_NODE	 *ps
 	{
 		/* set Test field */
 		psFwSysInit->ui32OSKickTest = (ui32OSid << RGXFWIF_KICK_TEST_OSID_SHIFT) | RGXFWIF_KICK_TEST_ENABLED_BIT;
+
+#if defined(PDUMP)
+		DevmemPDumpLoadMem(psDevInfo->psRGXFWIfSysInitMemDesc,
+						   offsetof(RGXFWIF_SYSINIT, ui32OSKickTest),
+						   sizeof(psFwSysInit->ui32OSKickTest),
+						   PDUMP_FLAGS_CONTINUOUS);
+#endif
+
 		/* Force a read-back to memory to avoid posted writes on certain buses */
-		(void) psFwSysInit->ui32OSKickTest;
-		OSWriteMemoryBarrier();
+		OSWriteMemoryBarrier(&psFwSysInit->ui32OSKickTest);
 
 		/* kick register */
 		ui32ScheduleRegister = RGX_CR_MTS_SCHEDULE + (ui32OSid * RGX_VIRTUALISATION_REG_SIZE_PER_OS);
@@ -810,7 +787,21 @@ static PVRSRV_ERROR RGXVirtualisationPowerupSidebandTest(PVRSRV_DEVICE_NODE	 *ps
 				 ui32OSid,
 				 ui32ScheduleRegister));
 		OSWriteHWReg32(psDevInfo->pvRegsBaseKM, ui32ScheduleRegister, ui32KickType);
-		OSMemoryBarrier();
+		OSMemoryBarrier((IMG_BYTE*) psDevInfo->pvRegsBaseKM + ui32ScheduleRegister);
+
+#if defined(PDUMP)
+		PDUMPCOMMENTWITHFLAGS(psDevInfo->psDeviceNode, PDUMP_FLAGS_CONTINUOUS, "VZ sideband test, kicking MTS register %u", ui32OSid);
+
+		PDUMPREG32(psDeviceNode, RGX_PDUMPREG_NAME,
+				ui32ScheduleRegister, ui32KickType, PDUMP_FLAGS_CONTINUOUS);
+
+		DevmemPDumpDevmemPol32(psDevInfo->psRGXFWIfSysInitMemDesc,
+							   offsetof(RGXFWIF_SYSINIT, ui32OSKickTest),
+							   0,
+							   0xFFFFFFFF,
+							   PDUMP_POLL_OPERATOR_EQUAL,
+							   PDUMP_FLAGS_CONTINUOUS);
+#endif
 
 		/* Wait test enable bit to be unset */
 		if (PVRSRVPollForValueKM(psDeviceNode,
@@ -909,13 +900,13 @@ static void RGXRiscvDebugModuleTest(PVRSRV_RGXDEV_INFO *psDevInfo)
 		ui32Tmp = *pui32FWCode;
 
 		/* Write FW code at address (bootloader) */
-		RGXRiscvWriteMem(psDevInfo, RGXRISCVFW_BOOTLDR_CODE_BASE,     SCRATCH_VALUE);
+		RGXWriteFWModuleAddr(psDevInfo, RGXRISCVFW_BOOTLDR_CODE_BASE,     SCRATCH_VALUE);
 		/* Read FW code at address (bootloader + 4) (compare against value read from Host) */
 		RGXRiscvPollMem(psDevInfo,  RGXRISCVFW_BOOTLDR_CODE_BASE + 4, *(pui32FWCode + 1));
 		/* Read FW code at address (bootloader) (compare against previously written value) */
 		RGXRiscvPollMem(psDevInfo,  RGXRISCVFW_BOOTLDR_CODE_BASE,     SCRATCH_VALUE);
 		/* Restore FW code at address (bootloader) */
-		RGXRiscvWriteMem(psDevInfo, RGXRISCVFW_BOOTLDR_CODE_BASE,     ui32Tmp);
+		RGXWriteFWModuleAddr(psDevInfo, RGXRISCVFW_BOOTLDR_CODE_BASE,     ui32Tmp);
 
 		DevmemReleaseCpuVirtAddr(psDevInfo->psRGXFWCodeMemDesc);
 	}
@@ -934,7 +925,7 @@ static void RGXRiscvDebugModuleTest(PVRSRV_RGXDEV_INFO *psDevInfo)
 	/* Read SCRATCH0 */
 	RGXRiscvPollMem(psDevInfo,  RGXRISCVFW_SOCIF_BASE | RGX_CR_SCRATCH0, SCRATCH_VALUE);
 	/* Write SCRATCH0 */
-	RGXRiscvWriteMem(psDevInfo, RGXRISCVFW_SOCIF_BASE | RGX_CR_SCRATCH0, ~SCRATCH_VALUE);
+	RGXWriteFWModuleAddr(psDevInfo, RGXRISCVFW_SOCIF_BASE | RGX_CR_SCRATCH0, ~SCRATCH_VALUE);
 	/* Read SCRATCH0 from the Host */
 	PDUMPREGPOL(psDevInfo->psDeviceNode, RGX_PDUMPREG_NAME, RGX_CR_SCRATCH0,
 	            ~SCRATCH_VALUE, 0xFFFFFFFFU,
@@ -978,7 +969,7 @@ PVRSRV_ERROR RGXPostPowerState(IMG_HANDLE				hDevHandle,
 				return eError;
 			}
 
-			OSMemoryBarrier();
+			OSMemoryBarrier(NULL);
 
 			/*
 			 * Check whether the FW has started by polling on bFirmwareStarted flag
@@ -1130,17 +1121,14 @@ PVRSRV_ERROR RGXPostClockSpeedChange(IMG_HANDLE				hDevHandle,
 		sCOREClkSpeedChangeCmd.eCmdType = RGXFWIF_KCCB_CMD_CORECLKSPEEDCHANGE;
 		sCOREClkSpeedChangeCmd.uCmdData.sCoreClkSpeedChangeData.ui32NewClockSpeed = ui32NewClockSpeed;
 
-		/* Ensure the new clock speed is written to memory before requesting the FW to read it */
-		OSMemoryBarrier();
-
 		PDUMPCOMMENT(psDeviceNode, "Scheduling CORE clock speed change command");
 
-		PDUMPPOWCMDSTART();
+		PDUMPPOWCMDSTART(psDeviceNode);
 		eError = RGXSendCommandAndGetKCCBSlot(psDeviceNode->pvDevice,
 		                                      &sCOREClkSpeedChangeCmd,
 		                                      PDUMP_FLAGS_NONE,
 		                                      &ui32CmdKCCBSlot);
-		PDUMPPOWCMDEND();
+		PDUMPPOWCMDEND(psDeviceNode);
 
 		if (eError != PVRSRV_OK)
 		{
@@ -1197,7 +1185,7 @@ PVRSRV_ERROR RGXDustCountChange(IMG_HANDLE		hDevHandle,
 	}
 
 	psRuntimeCfg->ui32DefaultDustsNumInit = ui32NumberOfDusts;
-	OSWriteMemoryBarrier();
+	OSWriteMemoryBarrier(&psRuntimeCfg->ui32DefaultDustsNumInit);
 
 #if !defined(NO_HARDWARE)
 	{
@@ -1305,7 +1293,7 @@ PVRSRV_ERROR RGXAPMLatencyChange(IMG_HANDLE		hDevHandle,
 	 */
 	psRuntimeCfg->ui32ActivePMLatencyms = ui32ActivePMLatencyms;
 	psRuntimeCfg->bActivePMLatencyPersistant = bActivePMLatencyPersistant;
-	OSWriteMemoryBarrier();
+	OSWriteMemoryBarrier(&psRuntimeCfg->bActivePMLatencyPersistant);
 
 	eError = PVRSRVGetDevicePowerState(psDeviceNode, &ePowerState);
 
@@ -1380,11 +1368,11 @@ PVRSRV_ERROR RGXActivePowerRequest(IMG_HANDLE hDevHandle)
 		SetFirmwareHandshakeIdleTime(RGXReadHWTimerReg(psDevInfo)-psFwSysData->ui64StartIdleTime);
 #endif
 
-		PDUMPPOWCMDSTART();
+		PDUMPPOWCMDSTART(psDeviceNode);
 		eError = PVRSRVSetDevicePowerStateKM(psDeviceNode,
 		                                     PVRSRV_DEV_POWER_STATE_OFF,
 		                                     PVRSRV_POWER_FLAGS_NONE);
-		PDUMPPOWCMDEND();
+		PDUMPPOWCMDEND(psDeviceNode);
 
 		if (eError == PVRSRV_OK)
 		{

@@ -1768,14 +1768,13 @@ IMG_BOOL PMR_IsMemLayoutFixed(PMR *psPMR)
 	return psPMR->bNoLayoutChange;
 }
 
-PVRSRV_ERROR
+void
 PMR_LogicalSize(const PMR *psPMR,
                 IMG_DEVMEM_SIZE_T *puiLogicalSize)
 {
 	PVR_ASSERT(psPMR != NULL);
 
 	*puiLogicalSize = psPMR->uiLogicalSize;
-	return PVRSRV_OK;
 }
 
 PVRSRV_ERROR
@@ -1917,7 +1916,7 @@ PMR_DevPhysAddr(const PMR *psPMR,
 	if (ui32NumOfPages > PMR_MAX_TRANSLATION_STACK_ALLOC)
 	{
 		puiPhysicalOffset = OSAllocMem(ui32NumOfPages * sizeof(IMG_DEVMEM_OFFSET_T));
-		PVR_GOTO_IF_NOMEM(puiPhysicalOffset, eError, e0);
+		PVR_RETURN_IF_NOMEM(puiPhysicalOffset);
 	}
 
 	_PMRLogicalOffsetToPhysicalOffset(psPMR,
@@ -1936,13 +1935,17 @@ PMR_DevPhysAddr(const PMR *psPMR,
 		                                          puiPhysicalOffset,
 		                                          pbValid,
 		                                          psDevAddrPtr);
-#if defined(PVR_PMR_TRANSLATE_UMA_ADDRESSES)
-		/* Currently excluded from the default build because of performance concerns.
-		 * We do not need this part in all systems because the GPU has the same address view of system RAM as the CPU.
-		 * Alternatively this could be implemented as part of the PMR-factories directly */
+		PVR_GOTO_IF_ERROR(eError, FreeOffsetArray);
 
+#if defined(PVR_PMR_TRANSLATE_UMA_ADDRESSES)
+		/* Currently excluded from the default build because of performance
+		 * concerns.
+		 * We do not need this part in all systems because the GPU has the same
+		 * address view of system RAM as the CPU.
+		 * Alternatively this could be implemented as part of the PMR-factories
+		 * directly */
 		if (PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_UMA ||
-				PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_DMA)
+		    PhysHeapGetType(psPMR->psPhysHeap) == PHYS_HEAP_TYPE_DMA)
 		{
 			IMG_UINT32 i;
 			IMG_DEV_PHYADDR sDevPAddrCorrected;
@@ -1960,17 +1963,12 @@ PMR_DevPhysAddr(const PMR *psPMR,
 #endif
 	}
 
+FreeOffsetArray:
 	if (puiPhysicalOffset != auiPhysicalOffset)
 	{
 		OSFreeMem(puiPhysicalOffset);
 	}
 
-	PVR_GOTO_IF_ERROR(eError, e0);
-
-	return PVRSRV_OK;
-
-e0:
-	PVR_ASSERT(eError != PVRSRV_OK);
 	return eError;
 }
 
@@ -2229,7 +2227,7 @@ PMR_PDumpSymbolicAddr(const PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2287,7 +2285,7 @@ PMRPDumpLoadMemValue32(PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2451,7 +2449,7 @@ PMRPDumpLoadMemValue64(PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2628,7 +2626,7 @@ PMRPDumpLoadMem(PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(psDevNode))
+	if (!PDumpIsDevicePermitted(psDevNode))
 	{
 		return PVRSRV_OK;
 	}
@@ -2788,7 +2786,7 @@ PMRPDumpSaveToFile(const PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2848,7 +2846,7 @@ PMRPDumpPol32(const PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2908,7 +2906,7 @@ PMRPDumpCheck32(const PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -2969,7 +2967,7 @@ PMRPDumpCBP(const PMR *psPMR,
 	/* Confirm that the device node's ui32InternalID matches the bound
 	 * PDump device stored* in PVRSRV_DATA.
 	 */
-	if (!PDumpIsPermitted(PMR_DeviceNode(psPMR)))
+	if (!PDumpIsDevicePermitted(PMR_DeviceNode(psPMR)))
 	{
 		return PVRSRV_OK;
 	}
@@ -3410,7 +3408,7 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
 	 * buffers */
 	if (PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageListPMR->uiFlags))
 	{
-		OSWriteMemoryBarrier();
+		OSWriteMemoryBarrier(NULL);
 	}
 
 #if !defined(NO_HARDWARE)

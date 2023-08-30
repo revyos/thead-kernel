@@ -463,7 +463,7 @@ int nulldisp_gem_object_cpu_prep_ioctl(struct drm_device *dev, void *data,
 	if (wait) {
 		long lerr;
 
-		lerr = dma_resv_wait_timeout_rcu(nulldisp_obj->resv,
+		lerr = dma_resv_wait_timeout(nulldisp_obj->resv,
 						 write,
 						 true,
 						 30 * HZ);
@@ -480,7 +480,7 @@ int nulldisp_gem_object_cpu_prep_ioctl(struct drm_device *dev, void *data,
 		 * Remap return value (false indicates busy state,
 		 * true success).
 		 */
-		if (!dma_resv_test_signaled_rcu(nulldisp_obj->resv,
+		if (!dma_resv_test_signaled(nulldisp_obj->resv,
 						write))
 			err = -EBUSY;
 		else

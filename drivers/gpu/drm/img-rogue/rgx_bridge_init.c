@@ -46,13 +46,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_bridge_init.h"
 #include "rgxdevice.h"
 
+#if defined(RGX_FEATURE_FASTRENDER_DM_BIT_MASK)
 PVRSRV_ERROR InitRGXTQ2Bridge(void);
-PVRSRV_ERROR DeinitRGXTQ2Bridge(void);
+void DeinitRGXTQ2Bridge(void);
+#endif
 PVRSRV_ERROR InitRGXCMPBridge(void);
-PVRSRV_ERROR DeinitRGXCMPBridge(void);
+void DeinitRGXCMPBridge(void);
 #if defined(SUPPORT_RGXRAY_BRIDGE)
 PVRSRV_ERROR InitRGXRAYBridge(void);
-PVRSRV_ERROR DeinitRGXRAYBridge(void);
+void DeinitRGXRAYBridge(void);
 #endif
 
 PVRSRV_ERROR DeviceDepBridgeInit(PVRSRV_RGXDEV_INFO *psDevInfo)
@@ -65,11 +67,13 @@ PVRSRV_ERROR DeviceDepBridgeInit(PVRSRV_RGXDEV_INFO *psDevInfo)
 		PVR_LOG_RETURN_IF_ERROR(eError, "InitRGXCMPBridge");
 	}
 
+#if defined(RGX_FEATURE_FASTRENDER_DM_BIT_MASK)
 	if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, FASTRENDER_DM))
 	{
 		eError = InitRGXTQ2Bridge();
 		PVR_LOG_RETURN_IF_ERROR(eError, "InitRGXTQ2Bridge");
 	}
+#endif
 
 #if defined(SUPPORT_RGXRAY_BRIDGE)
 	if (RGX_IS_FEATURE_VALUE_SUPPORTED(psDevInfo, RAY_TRACING_ARCH) &&
@@ -83,30 +87,25 @@ PVRSRV_ERROR DeviceDepBridgeInit(PVRSRV_RGXDEV_INFO *psDevInfo)
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR DeviceDepBridgeDeInit(PVRSRV_RGXDEV_INFO *psDevInfo)
+void DeviceDepBridgeDeInit(PVRSRV_RGXDEV_INFO *psDevInfo)
 {
-	PVRSRV_ERROR eError;
-
 	if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, COMPUTE))
 	{
-		eError = DeinitRGXCMPBridge();
-		PVR_LOG_RETURN_IF_ERROR(eError, "DeinitRGXCMPBridge");
+		DeinitRGXCMPBridge();
 	}
 
+#if defined(RGX_FEATURE_FASTRENDER_DM_BIT_MASK)
 	if (RGX_IS_FEATURE_SUPPORTED(psDevInfo, FASTRENDER_DM))
 	{
-		eError = DeinitRGXTQ2Bridge();
-		PVR_LOG_RETURN_IF_ERROR(eError, "DeinitRGXTQ2Bridge");
+		DeinitRGXTQ2Bridge();
 	}
+#endif
 
 #if defined(SUPPORT_RGXRAY_BRIDGE)
 	if (RGX_IS_FEATURE_VALUE_SUPPORTED(psDevInfo, RAY_TRACING_ARCH) &&
 		RGX_GET_FEATURE_VALUE(psDevInfo, RAY_TRACING_ARCH) > 0)
 	{
-		eError = DeinitRGXRAYBridge();
-		PVR_LOG_RETURN_IF_ERROR(eError, "DeinitRGXRAYBridge");
+		DeinitRGXRAYBridge();
 	}
 #endif
-
-	return PVRSRV_OK;
 }

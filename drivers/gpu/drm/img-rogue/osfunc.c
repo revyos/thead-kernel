@@ -172,10 +172,11 @@ void OSThreadDumpInfo(DUMPDEBUG_PRINTF_FUNC* pfnDumpDebugPrintf,
 	}
 }
 
-PVRSRV_ERROR OSPhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
+PVRSRV_ERROR OSPhyContigPagesAlloc(PHYS_HEAP *psPhysHeap, size_t uiSize,
 							PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr,
 							IMG_PID uiPid)
 {
+	PVRSRV_DEVICE_NODE *psDevNode = PhysHeapDeviceNode(psPhysHeap);
 	struct device *psDev = psDevNode->psDevConfig->pvOSDevice;
 	IMG_CPU_PHYADDR sCpuPAddr;
 	struct page *psPage;
@@ -226,7 +227,7 @@ PVRSRV_ERROR OSPhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
 	 * Even when more pages are allocated as base MMU object we still need one single physical address because
 	 * they are physically contiguous.
 	 */
-	PhysHeapCpuPAddrToDevPAddr(psDevNode->apsPhysHeap[PVRSRV_PHYS_HEAP_CPU_LOCAL], 1, psDevPAddr, &sCpuPAddr);
+	PhysHeapCpuPAddrToDevPAddr(psPhysHeap, 1, psDevPAddr, &sCpuPAddr);
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
@@ -250,10 +251,12 @@ PVRSRV_ERROR OSPhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
 	return PVRSRV_OK;
 }
 
-void OSPhyContigPagesFree(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle)
+void OSPhyContigPagesFree(PHYS_HEAP *psPhysHeap, PG_HANDLE *psMemHandle)
 {
 	struct page *psPage = (struct page*) psMemHandle->u.pvHandle;
 	IMG_UINT32	uiSize, uiPageCount=0, ui32Order;
+
+	PVR_UNREFERENCED_PARAMETER(psPhysHeap);
 
 	ui32Order = psMemHandle->uiOrder;
 	uiPageCount = (1 << ui32Order);
@@ -274,7 +277,7 @@ void OSPhyContigPagesFree(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle)
 	psMemHandle->uiOrder = 0;
 }
 
-PVRSRV_ERROR OSPhyContigPagesMap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle,
+PVRSRV_ERROR OSPhyContigPagesMap(PHYS_HEAP *psPhysHeap, PG_HANDLE *psMemHandle,
 						size_t uiSize, IMG_DEV_PHYADDR *psDevPAddr,
 						void **pvPtr)
 {
@@ -285,7 +288,7 @@ PVRSRV_ERROR OSPhyContigPagesMap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMem
 
 	PVR_UNREFERENCED_PARAMETER(actualSize); /* If we don't take an #ifdef path */
 	PVR_UNREFERENCED_PARAMETER(uiSize);
-	PVR_UNREFERENCED_PARAMETER(psDevNode);
+	PVR_UNREFERENCED_PARAMETER(psPhysHeap);
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
@@ -309,7 +312,7 @@ PVRSRV_ERROR OSPhyContigPagesMap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMem
 	return PVRSRV_OK;
 }
 
-void OSPhyContigPagesUnmap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle, void *pvPtr)
+void OSPhyContigPagesUnmap(PHYS_HEAP *psPhysHeap, PG_HANDLE *psMemHandle, void *pvPtr)
 {
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
@@ -324,17 +327,18 @@ void OSPhyContigPagesUnmap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle
 #endif
 #endif
 
-	PVR_UNREFERENCED_PARAMETER(psDevNode);
+	PVR_UNREFERENCED_PARAMETER(psPhysHeap);
 	PVR_UNREFERENCED_PARAMETER(pvPtr);
 
 	kunmap((struct page*) psMemHandle->u.pvHandle);
 }
 
-PVRSRV_ERROR OSPhyContigPagesClean(PVRSRV_DEVICE_NODE *psDevNode,
+PVRSRV_ERROR OSPhyContigPagesClean(PHYS_HEAP *psPhysHeap,
                                    PG_HANDLE *psMemHandle,
                                    IMG_UINT32 uiOffset,
                                    IMG_UINT32 uiLength)
 {
+	PVRSRV_DEVICE_NODE *psDevNode = PhysHeapDeviceNode(psPhysHeap);
 	PVRSRV_ERROR eError = PVRSRV_OK;
 	struct page* psPage = (struct page*) psMemHandle->u.pvHandle;
 
@@ -570,9 +574,9 @@ static PVRSRV_ERROR _NativeSyncInit(void)
 
 static void _NativeSyncDeinit(void)
 {
-	if (gpFenceStatusWq) {
-		destroy_workqueue(gpFenceStatusWq);
-	}
+    if (gpFenceStatusWq) {
+        destroy_workqueue(gpFenceStatusWq);
+    }
 }
 
 struct workqueue_struct *NativeSyncGetFenceStatusWq(void)
@@ -616,6 +620,32 @@ void OSDeInitEnvData(void)
 void OSReleaseThreadQuanta(void)
 {
 	schedule();
+}
+
+void OSMemoryBarrier(volatile void *hReadback)
+{
+	mb();
+
+	if (hReadback)
+	{
+		/* Force a read-back to memory to avoid posted writes on certain buses
+		 * e.g. PCI(E)
+		 */
+		(void) OSReadDeviceMem32(hReadback);
+	}
+}
+
+void OSWriteMemoryBarrier(volatile void *hReadback)
+{
+	wmb();
+
+	if (hReadback)
+	{
+		/* Force a read-back to memory to avoid posted writes on certain buses
+		 * e.g. PCI(E)
+		 */
+		(void) OSReadDeviceMem32(hReadback);
+	}
 }
 
 /* Not matching/aligning this API to the Clockus() API above to avoid necessary
@@ -2425,7 +2455,7 @@ PVRSRV_ERROR OSDmaPrepareTransferSparse(PVRSRV_DEVICE_NODE *psDevNode,
 			}
 		}
 
-		if ((unsigned long long)pvNextAddress + transfer_size > PAGE_ALIGN((unsigned long long)pvNextAddress))
+		if (((unsigned long long)pvNextAddress & (ui32PageSize - 1)) + transfer_size > ui32PageSize)
 		{
 			num_pages = 2;
 		}

@@ -2174,7 +2174,7 @@ _CheckIfIndexInRange(IMG_UINT32 ui32Index, IMG_UINT32 *pui32Indices, IMG_UINT32 
 	if (pui32Indices[ui32Index] >= ui32Limit)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Given alloc index %u at %u is larger than page array %u.",
-		        __func__, ui32Index, pui32Indices[ui32Index], ui32Limit));
+		        __func__, pui32Indices[ui32Index], ui32Index, ui32Limit));
 		return PVRSRV_ERROR_DEVICEMEM_OUT_OF_RANGE;
 	}
 
@@ -2187,7 +2187,7 @@ _CheckIfPageNotAllocated(IMG_UINT32 ui32Index, IMG_UINT32 *pui32Indices, struct 
 	if (ppsPageArray[pui32Indices[ui32Index]] != NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Mapping number %u at page array index %u already exists. "
-		        "Page struct %p", __func__, ui32Index, pui32Indices[ui32Index],
+		        "Page struct %p", __func__, pui32Indices[ui32Index], ui32Index,
 		        ppsPageArray[pui32Indices[ui32Index]]));
 		return PVRSRV_ERROR_PMR_MAPPING_ALREADY_EXISTS;
 	}
@@ -2444,7 +2444,12 @@ e_free_pool_pages:
 	{
 		_FreeOSPage(0, BIT_ISSET(ui32AllocFlags, FLAG_UNSET_MEMORY_TYPE),
 		            ppsTempPageArray[i]);
-		ppsPageArray[puiAllocIndices[i]] = NULL;
+
+		/* not using _CheckIfIndexInRange() to not print error message */
+		if (puiAllocIndices[i] < uiDevPagesAllocated)
+		{
+			ppsPageArray[puiAllocIndices[i]] = NULL;
+		}
 	}
 
 e_free_temp_array:
@@ -3008,6 +3013,13 @@ PMRUnlockSysPhysAddressesOSMem(PMR_IMPL_PRIVDATA pvPriv)
 	return eError;
 }
 
+static INLINE IMG_BOOL IsOffsetValid(const PMR_OSPAGEARRAY_DATA *psOSPageArrayData,
+                                     IMG_UINT32 ui32Offset)
+{
+	return (ui32Offset >> psOSPageArrayData->uiLog2AllocPageSize) <
+	    psOSPageArrayData->uiTotalNumOSPages;
+}
+
 /* Determine PA for specified offset into page array. */
 static IMG_DEV_PHYADDR GetOffsetPA(const PMR_OSPAGEARRAY_DATA *psOSPageArrayData,
                                    IMG_UINT32 ui32Offset)
@@ -3017,7 +3029,6 @@ static IMG_DEV_PHYADDR GetOffsetPA(const PMR_OSPAGEARRAY_DATA *psOSPageArrayData
 	IMG_UINT32 ui32InPageOffset = ui32Offset - (ui32PageIndex << ui32Log2AllocPageSize);
 	IMG_DEV_PHYADDR sPA;
 
-	PVR_ASSERT(ui32PageIndex < psOSPageArrayData->uiTotalNumOSPages);
 	PVR_ASSERT(ui32InPageOffset < (1U << ui32Log2AllocPageSize));
 
 	sPA.uiAddr = page_to_phys(psOSPageArrayData->pagearray[ui32PageIndex]);
@@ -3052,6 +3063,9 @@ PMRSysPhysAddrOSMem(PMR_IMPL_PRIVDATA pvPriv,
 	{
 		if (pbValid[uiIdx])
 		{
+			PVR_LOG_RETURN_IF_FALSE(IsOffsetValid(psOSPageArrayData, puiOffset[uiIdx]),
+			                        "puiOffset out of range", PVRSRV_ERROR_OUT_OF_RANGE);
+
 			psDevPAddr[uiIdx] = GetOffsetPA(psOSPageArrayData, puiOffset[uiIdx]);
 
 #if !defined(PVR_LINUX_PHYSMEM_USE_HIGHMEM_ONLY)
@@ -3740,11 +3754,13 @@ static void _EncodeAllocationFlags(IMG_UINT32 uiLog2AllocPageSize,
 		BIT_SET(*ui32AllocFlags, FLAG_POISON_ON_ALLOC);
 	}
 
+#if defined(DEBUG)
 	/* Poison on free? */
 	if (PVRSRV_CHECK_POISON_ON_FREE(uiFlags))
 	{
 		BIT_SET(*ui32AllocFlags, FLAG_POISON_ON_FREE);
 	}
+#endif
 
 	/* Indicate whether this is an allocation with default caching attribute (i.e cached) or not */
 	if (PVRSRV_CHECK_CPU_UNCACHED(uiFlags) ||

@@ -223,10 +223,11 @@ PVRSRVBridgeDIDestroyContext(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psDIDestroyContextOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psDIDestroyContextIN->hContext,
-					    PVRSRV_HANDLE_TYPE_DI_CONTEXT);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psDIDestroyContextIN->hContext,
+					      PVRSRV_HANDLE_TYPE_DI_CONTEXT);
 	if (unlikely((psDIDestroyContextOUT->eError != PVRSRV_OK) &&
+		     (psDIDestroyContextOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psDIDestroyContextOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -593,7 +594,7 @@ DIListAllEntries_exit:
  */
 
 PVRSRV_ERROR InitDIBridge(void);
-PVRSRV_ERROR DeinitDIBridge(void);
+void DeinitDIBridge(void);
 
 /*
  * Register all DI functions with services
@@ -622,7 +623,7 @@ PVRSRV_ERROR InitDIBridge(void)
 /*
  * Unregister all di functions with services
  */
-PVRSRV_ERROR DeinitDIBridge(void)
+void DeinitDIBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_DI, PVRSRV_BRIDGE_DI_DICREATECONTEXT);
@@ -635,5 +636,4 @@ PVRSRV_ERROR DeinitDIBridge(void)
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_DI, PVRSRV_BRIDGE_DI_DILISTALLENTRIES);
 
-	return PVRSRV_OK;
 }

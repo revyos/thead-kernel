@@ -537,7 +537,7 @@ PMR_IsSparse(const PMR *psPMR);
 IMG_BOOL
 PMR_IsUnpinned(const PMR *psPMR);
 
-PVRSRV_ERROR
+void
 PMR_LogicalSize(const PMR *psPMR,
 				IMG_DEVMEM_SIZE_T *puiLogicalSize);
 

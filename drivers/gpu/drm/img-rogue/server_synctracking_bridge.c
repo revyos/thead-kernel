@@ -83,10 +83,11 @@ PVRSRVBridgeSyncRecordRemoveByHandle(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psSyncRecordRemoveByHandleOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psSyncRecordRemoveByHandleIN->hhRecord,
-					    PVRSRV_HANDLE_TYPE_SYNC_RECORD_HANDLE);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psSyncRecordRemoveByHandleIN->hhRecord,
+					      PVRSRV_HANDLE_TYPE_SYNC_RECORD_HANDLE);
 	if (unlikely((psSyncRecordRemoveByHandleOUT->eError != PVRSRV_OK) &&
+		     (psSyncRecordRemoveByHandleOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psSyncRecordRemoveByHandleOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -299,7 +300,7 @@ SyncRecordAdd_exit:
  */
 
 PVRSRV_ERROR InitSYNCTRACKINGBridge(void);
-PVRSRV_ERROR DeinitSYNCTRACKINGBridge(void);
+void DeinitSYNCTRACKINGBridge(void);
 
 /*
  * Register all SYNCTRACKING functions with services
@@ -320,7 +321,7 @@ PVRSRV_ERROR InitSYNCTRACKINGBridge(void)
 /*
  * Unregister all synctracking functions with services
  */
-PVRSRV_ERROR DeinitSYNCTRACKINGBridge(void)
+void DeinitSYNCTRACKINGBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_SYNCTRACKING,
@@ -329,5 +330,4 @@ PVRSRV_ERROR DeinitSYNCTRACKINGBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_SYNCTRACKING,
 				PVRSRV_BRIDGE_SYNCTRACKING_SYNCRECORDADD);
 
-	return PVRSRV_OK;
 }

@@ -136,7 +136,6 @@ PVRSRV_ERROR PVRSRVRGXAddRegConfigKM(CONNECTION_DATA * psConnection,
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 				RGXFWIF_DM_GP,
 				&sRegCfgCmd,
-				0,
 				PDUMP_FLAGS_CONTINUOUS);
 	if (eError != PVRSRV_OK)
 	{
@@ -193,7 +192,6 @@ PVRSRV_ERROR PVRSRVRGXClearRegConfigKM(CONNECTION_DATA * psConnection,
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 				RGXFWIF_DM_GP,
 				&sRegCfgCmd,
-				0,
 				PDUMP_FLAGS_CONTINUOUS);
 	if (eError != PVRSRV_OK)
 	{
@@ -243,7 +241,6 @@ PVRSRV_ERROR PVRSRVRGXEnableRegConfigKM(CONNECTION_DATA * psConnection,
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 				RGXFWIF_DM_GP,
 				&sRegCfgCmd,
-				0,
 				PDUMP_FLAGS_CONTINUOUS);
 	if (eError != PVRSRV_OK)
 	{
@@ -291,7 +288,6 @@ PVRSRV_ERROR PVRSRVRGXDisableRegConfigKM(CONNECTION_DATA * psConnection,
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 				RGXFWIF_DM_GP,
 				&sRegCfgCmd,
-				0,
 				PDUMP_FLAGS_CONTINUOUS);
 	if (eError != PVRSRV_OK)
 	{

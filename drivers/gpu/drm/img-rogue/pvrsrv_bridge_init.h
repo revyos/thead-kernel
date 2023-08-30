@@ -48,6 +48,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_error.h"
 
 PVRSRV_ERROR ServerBridgeInit(void);
-PVRSRV_ERROR ServerBridgeDeInit(void);
+void ServerBridgeDeInit(void);
 
 #endif  /* PVRSRV_BRIDGE_INIT_H */

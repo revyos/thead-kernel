@@ -110,7 +110,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 											(bvnc) = ((L).ui64BVNC == (R).ui64BVNC);						\
 										}																	\
 										(all) = (version) && (bvnc);										\
-									} while (0)
+									} while (false)
 
 
 /**************************************************************************//**

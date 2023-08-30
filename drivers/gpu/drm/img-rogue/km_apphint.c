@@ -436,7 +436,8 @@ static void apphint_action_worker(struct work_struct *work)
 			         __func__, param_lookup[id].data_type, id));
 		}
 
-		if (PVRSRV_OK != result) {
+		/* Do not log errors if running in GUEST mode */
+		if ((PVRSRV_OK != result) && !PVRSRV_VZ_MODE_IS(GUEST)) {
 			PVR_DPF((PVR_DBG_ERROR,
 			         "%s: failed (%s)",
 			         __func__, PVRSRVGetErrorString(result)));
@@ -1008,7 +1009,7 @@ static int apphint_debuginfo_init(const char *sub_dir,
 	const DI_ITERATOR_CB iterator = {
 		.pfnStart = apphint_di_start, .pfnStop = apphint_di_stop,
 		.pfnNext  = apphint_di_next,  .pfnShow = apphint_di_show,
-		.pfnWrite = apphint_set
+		.pfnWrite = apphint_set,      .ui32WriteLenMax = APPHINT_BUFFER_SIZE
 	};
 
 	if (*rootdir) {
@@ -1085,7 +1086,8 @@ static void apphint_pdump_values(void *pvDeviceNode,
 	(void)vsnprintf(km_buffer, APPHINT_BUFFER_SIZE, format, ap);
 	va_end(ap);
 
-	PDumpCommentKM(NULL, (PVRSRV_DEVICE_NODE*)pvDeviceNode, km_buffer, ui32Flags);
+	/* ui32CommentSize set to 0 here as function does not make use of the value. */
+	PDumpCommentKM(NULL, (PVRSRV_DEVICE_NODE*)pvDeviceNode, 0, km_buffer, ui32Flags);
 }
 #endif
 

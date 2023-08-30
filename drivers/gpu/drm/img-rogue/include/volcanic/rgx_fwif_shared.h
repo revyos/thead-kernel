@@ -52,10 +52,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* Indicates the number of RTDATAs per RTDATASET */
 #if defined(SUPPORT_AGP)
+#if defined(SUPPORT_AGP4)
+#define RGXMKIF_NUM_RTDATAS           4U
+#define RGXMKIF_NUM_GEOMDATAS         4U
+#define RGXMKIF_NUM_RTDATA_FREELISTS  20U /* RGXMKIF_NUM_RTDATAS * RGXFW_MAX_FREELISTS */
+#define RGX_NUM_GEOM_CORES           (4U)
+#else
 #define RGXMKIF_NUM_RTDATAS           4U
 #define RGXMKIF_NUM_GEOMDATAS         4U
 #define RGXMKIF_NUM_RTDATA_FREELISTS  12U /* RGXMKIF_NUM_RTDATAS * RGXFW_MAX_FREELISTS */
 #define RGX_NUM_GEOM_CORES           (2U)
+#endif
 #else
 #define RGXMKIF_NUM_RTDATAS           2U
 #define RGXMKIF_NUM_GEOMDATAS         1U
@@ -131,13 +138,17 @@ typedef enum
 	RGXFWIF_PRBUFFER_UNBACKING_PENDING,
 }RGXFWIF_PRBUFFER_STATE;
 
+/*!
+ * @InGroup RenderTarget
+ * @Brief OnDemand Z/S/MSAA Buffers
+ */
 typedef struct
 {
-	IMG_UINT32				ui32BufferID;				/*!< Buffer ID*/
-	IMG_BOOL				bOnDemand;					/*!< Needs On-demand Z/S/MSAA Buffer allocation */
-	RGXFWIF_PRBUFFER_STATE	eState;						/*!< Z/S/MSAA -Buffer state */
-	RGXFWIF_CLEANUP_CTL		sCleanupState;				/*!< Cleanup state */
-	IMG_UINT32				ui32PRBufferFlags;		/*!< Compatibility and other flags */
+	IMG_UINT32		ui32BufferID;		/*!< Buffer ID*/
+	IMG_BOOL		bOnDemand;		/*!< Needs On-demand Z/S/MSAA Buffer allocation */
+	RGXFWIF_PRBUFFER_STATE	eState;			/*!< Z/S/MSAA -Buffer state */
+	RGXFWIF_CLEANUP_CTL	sCleanupState;		/*!< Cleanup state */
+	IMG_UINT32		ui32PRBufferFlags;	/*!< Compatibility and other flags */
 } UNCACHED_ALIGN RGXFWIF_PRBUFFER;
 
 /*
@@ -201,6 +212,10 @@ typedef struct
 	                                      in bytes of the CCB-1 */
 #if defined(SUPPORT_AGP)
 	IMG_UINT32  ui32ReadOffset2;
+#if defined(SUPPORT_AGP4)
+	IMG_UINT32  ui32ReadOffset3;
+	IMG_UINT32  ui32ReadOffset4;
+#endif
 #endif
 } UNCACHED_ALIGN RGXFWIF_CCCB_CTL;
 
@@ -209,7 +224,12 @@ typedef IMG_UINT32 RGXFW_FREELIST_TYPE;
 
 #define RGXFW_LOCAL_FREELIST     IMG_UINT32_C(0)
 #define RGXFW_GLOBAL_FREELIST    IMG_UINT32_C(1)
-#if defined(SUPPORT_AGP)
+#if defined(SUPPORT_AGP4)
+#define RGXFW_GLOBAL2_FREELIST   IMG_UINT32_C(2)
+#define RGXFW_GLOBAL3_FREELIST   IMG_UINT32_C(3)
+#define RGXFW_GLOBAL4_FREELIST   IMG_UINT32_C(4)
+#define RGXFW_MAX_FREELISTS      (RGXFW_GLOBAL4_FREELIST + 1U)
+#elif defined(SUPPORT_AGP)
 #define RGXFW_GLOBAL2_FREELIST   IMG_UINT32_C(2)
 #define RGXFW_MAX_FREELISTS      (RGXFW_GLOBAL2_FREELIST + 1U)
 #else

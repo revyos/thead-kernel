@@ -265,7 +265,7 @@ static PVRSRV_ERROR _CreateNativeEntry(DI_ENTRY *psEntry,
 	                                    psEntry->pvPrivData,
 	                                    psNativeParent->pvHandle,
 	                                    &psNativeEntry->pvHandle);
-	PVR_LOG_GOTO_IF_ERROR(eError, "psImpl->sCb.pfnCreateGroup", free_memory_);
+	PVR_LOG_GOTO_IF_ERROR(eError, "psImpl->sCb.pfnCreateEntry", free_memory_);
 
 	psNativeEntry->psDiImpl = psImpl;
 
@@ -524,6 +524,17 @@ void *DIGetPrivData(const OSDI_IMPL_ENTRY *psEntry)
 	PVR_ASSERT(psEntry != NULL);
 
 	return psEntry->pvPrivData;
+}
+
+void DIWrite(const OSDI_IMPL_ENTRY *psEntry, const void *pvData,
+             IMG_UINT32 uiSize)
+{
+	PVR_ASSERT(psEntry != NULL);
+	PVR_ASSERT(psEntry->psCb != NULL);
+	PVR_ASSERT(psEntry->psCb->pfnWrite != NULL);
+	PVR_ASSERT(psEntry->pvNative != NULL);
+
+	psEntry->psCb->pfnWrite(psEntry->pvNative, pvData, uiSize);
 }
 
 void DIPrintf(const OSDI_IMPL_ENTRY *psEntry, const IMG_CHAR *pszFmt, ...)

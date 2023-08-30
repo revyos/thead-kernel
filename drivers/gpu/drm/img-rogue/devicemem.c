@@ -81,10 +81,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_ricommon.h"
 #include "pvrsrv_apphint.h"
 #include "oskm_apphint.h"
+#include "srvcore.h"
 #if defined(__linux__)
 #include "linux/kernel.h"
 #endif
 #else
+#include "srvcore_intern.h"
 #include "rgxdefs.h"
 #endif
 
@@ -108,8 +110,7 @@ IMG_UINT64 _GetPremappedVA(PMR *psPMR, PVRSRV_DEVICE_NODE *psDevNode)
 
 	IMG_DEV_PHYADDR sDevAddr;
 	IMG_BOOL bValid;
-	PVRSRV_PHYS_HEAP eFirstHeap = (PVRSRV_VZ_MODE_IS(GUEST) ? PVRSRV_PHYS_HEAP_FW_CONFIG : PVRSRV_PHYS_HEAP_FW_MAIN);
-	PHYS_HEAP *psPhysHeap = psDevNode->apsPhysHeap[eFirstHeap];
+	PHYS_HEAP *psPhysHeap = psDevNode->apsPhysHeap[PVRSRV_PHYS_HEAP_FW_MAIN];
 	IMG_DEV_PHYADDR sHeapAddr;
 
 	eError = PhysHeapGetDevPAddr(psPhysHeap, &sHeapAddr);
@@ -881,8 +882,10 @@ DevmemDestroyContext(DEVMEM_CONTEXT *psCtx)
 		goto e1;
 	}
 
-	eError = BridgeDevmemIntCtxDestroy(GetBridgeHandle(psCtx->hDevConnection),
-			psCtx->hDevMemServerContext);
+	eError = DestroyServerResource(psCtx->hDevConnection,
+	                               NULL,
+	                               BridgeDevmemIntCtxDestroy,
+	                               psCtx->hDevMemServerContext);
 	if (bDoCheck)
 	{
 		PVR_LOG_GOTO_IF_ERROR(eError, "BridgeDevMemIntCtxDestroy", e1);
@@ -1293,8 +1296,11 @@ DevmemDestroyHeap(DEVMEM_HEAP *psHeap)
 		}
 	}
 
-	eError = BridgeDevmemIntHeapDestroy(GetBridgeHandle(psHeap->psCtx->hDevConnection),
-			psHeap->hDevMemServerHeap);
+	eError = DestroyServerResource(psHeap->psCtx->hDevConnection,
+	                               NULL,
+	                               BridgeDevmemIntHeapDestroy,
+	                               psHeap->hDevMemServerHeap);
+
 #if defined(PVRSRV_FORCE_UNLOAD_IF_BAD_STATE)
 	if (bDoCheck)
 #endif
@@ -1361,25 +1367,10 @@ DevmemSubAllocateAndMap(IMG_UINT8 uiPreAllocMultiplier,
 fail_map:
 	DevmemFree(*ppsMemDescPtr);
 fail_alloc:
-	ppsMemDescPtr = NULL;
+	*ppsMemDescPtr = NULL;
+	PVR_ASSERT(eError != PVRSRV_OK);
 	return eError;
 
-}
-
-static INLINE void _MemSet(void *pvMem,
-                           IMG_UINT8 uiPattern,
-                           IMG_DEVMEM_SIZE_T uiSize,
-                           PVRSRV_MEMALLOCFLAGS_T uiFlags)
-{
-	if (PVRSRV_CHECK_CPU_UNCACHED(uiFlags))
-	{
-		OSDeviceMemSet(pvMem, uiPattern, uiSize);
-	}
-	else
-	{
-		/* it's safe to use OSCachedMemSet() for cached and wc memory */
-		OSCachedMemSet(pvMem, uiPattern, uiSize);
-	}
 }
 
 IMG_INTERNAL PVRSRV_ERROR
@@ -1524,6 +1515,10 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 			psImport,
 			uiSize);
 
+#if defined(DEBUG)
+	DevmemMemDescSetPoF(psMemDesc, uiFlags);
+#endif
+
 	bImportClean = ((uiProperties & DEVMEM_PROPERTIES_IMPORT_IS_CLEAN) != 0);
 
 	/* Zero the memory */
@@ -1546,7 +1541,7 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 			 */
 			PVR_ASSERT(uiSize < IMG_UINT32_MAX);
 
-			_MemSet(pvAddr, 0, uiSize, uiFlags);
+			DevmemCPUMemSet(pvAddr, 0, uiSize, uiFlags);
 
 #if defined(PDUMP)
 			DevmemPDumpLoadZeroMem(psMemDesc, 0, uiSize, PDUMP_FLAGS_CONTINUOUS);
@@ -1565,7 +1560,7 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 			eError = DevmemAcquireCpuVirtAddr(psMemDesc, &pvAddr);
 			PVR_GOTO_IF_ERROR(eError, failMaintenance);
 
-			_MemSet(pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE, uiSize, uiFlags);
+			DevmemCPUMemSet(pvAddr, PVRSRV_POISON_ON_ALLOC_VALUE, uiSize, uiFlags);
 
 			bPoisonOnAlloc = IMG_TRUE;
 		}
@@ -1574,8 +1569,6 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 	/* Flush or invalidate */
 	if (bCPUCached && !bImportClean && (bZero || bCPUCleanFlag || bPoisonOnAlloc))
 	{
-		/* BridgeCacheOpQueue _may_ be deferred so use BridgeCacheOpExec
-		   to ensure this cache maintenance is actioned immediately */
 		eError = BridgeCacheOpExec (GetBridgeHandle(psMemDesc->psImport->hDevConnection),
 				psMemDesc->psImport->hPMR,
 				(IMG_UINT64)(uintptr_t)
@@ -1695,6 +1688,10 @@ DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
 			psImport,
 			uiSize);
 
+#if defined(DEBUG)
+	DevmemMemDescSetPoF(psMemDesc, uiFlags);
+#endif
+
 	*ppsMemDescPtr = psMemDesc;
 
 	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
@@ -1795,6 +1792,10 @@ DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
 			psImport,
 			uiSize);
 
+#if defined(DEBUG)
+	DevmemMemDescSetPoF(psMemDesc, uiFlags);
+#endif
+
 	/* copy the allocation descriptive name and size so it can be passed to DevicememHistory when
 	 * the allocation gets mapped/unmapped
 	 */
@@ -1858,7 +1859,10 @@ IMG_INTERNAL PVRSRV_ERROR
 DevmemUnmakeLocalImportHandle(SHARED_DEV_CONNECTION hDevConnection,
 		IMG_HANDLE hLocalImportHandle)
 {
-	return BridgePMRUnmakeLocalImportHandle(GetBridgeHandle(hDevConnection), hLocalImportHandle);
+	return DestroyServerResource(hDevConnection,
+	                             NULL,
+	                             BridgePMRUnmakeLocalImportHandle,
+	                             hLocalImportHandle);
 }
 
 /*****************************************************************************
@@ -1925,8 +1929,10 @@ _Mapping_Unexport(DEVMEM_IMPORT *psImport,
 
 	PVR_ASSERT (psImport != NULL);
 
-	eError = BridgePMRUnexportPMR(GetBridgeHandle(psImport->hDevConnection),
-			hPMRExportHandle);
+	eError = DestroyServerResource(psImport->hDevConnection,
+	                               NULL,
+	                               BridgePMRUnexportPMR,
+	                               hPMRExportHandle);
 	PVR_ASSERT(eError == PVRSRV_OK);
 }
 
@@ -2553,45 +2559,12 @@ DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
 		void **ppvCpuVirtAddr)
 {
 	PVRSRV_ERROR eError;
-	DEVMEM_PROPERTIES_T uiProperties;
 
 	PVR_ASSERT(psMemDesc != NULL);
 	PVR_ASSERT(ppvCpuVirtAddr != NULL);
 
-	uiProperties = GetImportProperties(psMemDesc->psImport);
-
-	if (uiProperties &
-			(DEVMEM_PROPERTIES_UNPINNED | DEVMEM_PROPERTIES_SECURE))
-	{
-#if defined(SUPPORT_SECURITY_VALIDATION)
-		if (uiProperties & DEVMEM_PROPERTIES_SECURE)
-		{
-			PVR_DPF((PVR_DBG_WARNING,
-					"%s: Allocation is a secure buffer. "
-					"It should not be possible to map to CPU, but for security "
-					"validation this will be allowed for testing purposes, "
-					"as long as the buffer is pinned.",
-					__func__));
-		}
-
-		if (uiProperties & DEVMEM_PROPERTIES_UNPINNED)
-#endif
-		{
-			PVR_DPF((PVR_DBG_ERROR,
-					"%s: Allocation is currently unpinned or a secure buffer. "
-					"Not possible to map to CPU!",
-					__func__));
-			return PVRSRV_ERROR_INVALID_MAP_REQUEST;
-		}
-	}
-
-	if (uiProperties & DEVMEM_PROPERTIES_NO_CPU_MAPPING)
-	{
-		PVR_DPF((PVR_DBG_ERROR,
-				"%s: CPU Mapping is not possible on this allocation!",
-				__func__));
-		return PVRSRV_ERROR_INVALID_MAP_REQUEST;
-	}
+	eError = DevmemCPUMapCheckImportProperties(psMemDesc);
+	PVR_LOG_RETURN_IF_ERROR(eError, "DevmemCPUMapCheckImportProperties");
 
 	OSLockAcquire(psMemDesc->sCPUMemDesc.hLock);
 	DEVMEM_REFCOUNT_PRINT("%s (%p) %d->%d",
@@ -2758,7 +2731,7 @@ DevmemGetReservation(DEVMEM_MEMDESC *psMemDesc,
  * memdescs of buffers allocated in the FW memory context
  * that is created in the Server
  */
-PVRSRV_ERROR
+void
 DevmemGetPMRData(DEVMEM_MEMDESC *psMemDesc,
 		IMG_HANDLE *phPMR,
 		IMG_DEVMEM_OFFSET_T *puiPMROffset)
@@ -2771,8 +2744,6 @@ DevmemGetPMRData(DEVMEM_MEMDESC *psMemDesc,
 
 	PVR_ASSERT(psImport);
 	*phPMR = psImport->hPMR;
-
-	return PVRSRV_OK;
 }
 
 #if defined(__KERNEL__)

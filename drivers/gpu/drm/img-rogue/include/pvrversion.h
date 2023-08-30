@@ -45,21 +45,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRVERSION_H
 
 #define PVRVERSION_MAJ               1U
-#define PVRVERSION_MIN               16U
+#define PVRVERSION_MIN               17U
 
 #define PVRVERSION_FAMILY           "rogueddk"
-#define PVRVERSION_BRANCHNAME       "1.16"
-#define PVRVERSION_BUILD             6099580
+#define PVRVERSION_BRANCHNAME       "1.17"
+#define PVRVERSION_BUILD             6210866
 #define PVRVERSION_BSCONTROL        "Rogue_DDK_Linux_WS"
 
-#define PVRVERSION_STRING           "Rogue_DDK_Linux_WS rogueddk 1.16@6099580"
-#define PVRVERSION_STRING_SHORT     "1.16@6099580"
+#define PVRVERSION_STRING           "Rogue_DDK_Linux_WS rogueddk 1.17@6210866"
+#define PVRVERSION_STRING_SHORT     "1.17@6210866"
 
 #define COPYRIGHT_TXT               "Copyright (c) Imagination Technologies Ltd. All Rights Reserved."
 
-#define PVRVERSION_BUILD_HI          609
-#define PVRVERSION_BUILD_LO          9580
-#define PVRVERSION_STRING_NUMERIC   "1.16.609.9580"
+#define PVRVERSION_BUILD_HI          621
+#define PVRVERSION_BUILD_LO          866
+#define PVRVERSION_STRING_NUMERIC   "1.17.621.866"
 
 #define PVRVERSION_PACK(MAJOR,MINOR) (((IMG_UINT32)((IMG_UINT32)(MAJOR) & 0xFFFFU) << 16U) | (((MINOR) & 0xFFFFU) << 0U))
 #define PVRVERSION_UNPACK_MAJ(VERSION) (((VERSION) >> 16U) & 0xFFFFU)

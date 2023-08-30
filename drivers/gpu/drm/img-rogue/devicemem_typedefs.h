@@ -137,6 +137,6 @@ typedef IMG_UINT32 SPARSE_MEM_RESIZE_FLAGS;
 /* Defines the max length for PMR, MemDesc, Device memory History and RI debug
  * annotations stored in memory, including the null terminator.
  */
-#define DEVMEM_ANNOTATION_MAX_LEN (PVR_ANNOTATION_MAX_LEN + 1U)
+#define DEVMEM_ANNOTATION_MAX_LEN ((IMG_UINT32)PVR_ANNOTATION_MAX_LEN + 1U)
 
 #endif /* #ifndef DEVICEMEM_TYPEDEFS_H */

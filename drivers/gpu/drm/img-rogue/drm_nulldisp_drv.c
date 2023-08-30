@@ -2064,7 +2064,9 @@ static int nulldisp_early_load(struct drm_device *dev)
 		goto err_workqueue_cleanup;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	dev->irq_enabled = true;
+#endif
 
 	nulldisp_dev->nlpvrdpy = nlpvrdpy_create(dev,
 						 nulldisp_nl_disconnect_cb,
@@ -2087,7 +2089,9 @@ err_vblank_cleanup:
 #endif
 err_workqueue_cleanup:
 	destroy_workqueue(nulldisp_dev->workqueue);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	dev->irq_enabled = false;
+#endif
 err_gem_cleanup:
 #if defined(LMA)
 	pdp_gem_cleanup(nulldisp_dev->pdp_gem_priv);
@@ -2143,7 +2147,9 @@ static void nulldisp_late_unload(struct drm_device *dev)
 #endif
 	destroy_workqueue(nulldisp_dev->workqueue);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	dev->irq_enabled = false;
+#endif
 
 #if defined(LMA)
 	pdp_gem_cleanup(nulldisp_dev->pdp_gem_priv);
@@ -2248,24 +2254,6 @@ static const struct vm_operations_struct nulldisp_gem_vm_ops = {
 #endif
 };
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-const struct drm_gem_object_funcs nulldisp_gem_funcs = {
-#if defined(LMA)
-	.free = pdp_gem_object_free,
-	.export = pdp_gem_prime_export,
-#else
-	.export = drm_gem_prime_export,
-	.pin = nulldisp_gem_prime_pin,
-	.unpin = nulldisp_gem_prime_unpin,
-	.get_sg_table = nulldisp_gem_prime_get_sg_table,
-	.vmap = nulldisp_gem_prime_vmap,
-	.vunmap = nulldisp_gem_prime_vunmap,
-	.free = nulldisp_gem_object_free,
-#endif /* defined(LMA) */
-	.vm_ops = &nulldisp_gem_vm_ops,
-};
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0) */
-
 #if defined(LMA)
 static int pdp_gem_dumb_create(struct drm_file *file,
 			       struct drm_device *dev,
@@ -2366,14 +2354,31 @@ static int nulldisp_gem_object_cpu_fini_ioctl(struct drm_device *dev,
 	return pdp_gem_object_cpu_fini_ioctl(dev, &pdp_args, file);
 }
 
-static void pdp_gem_object_free(struct drm_gem_object *obj)
+static void nulldisp_pdp_gem_object_free(struct drm_gem_object *obj)
 {
 	struct nulldisp_display_device *nulldisp_dev = obj->dev->dev_private;
 
 	pdp_gem_object_free_priv(nulldisp_dev->pdp_gem_priv, obj);
 }
-
 #endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+const struct drm_gem_object_funcs nulldisp_gem_funcs = {
+#if defined(LMA)
+	.free = nulldisp_pdp_gem_object_free,
+	.export = pdp_gem_prime_export,
+#else
+	.export = drm_gem_prime_export,
+	.pin = nulldisp_gem_prime_pin,
+	.unpin = nulldisp_gem_prime_unpin,
+	.get_sg_table = nulldisp_gem_prime_get_sg_table,
+	.vmap = nulldisp_gem_prime_vmap,
+	.vunmap = nulldisp_gem_prime_vunmap,
+	.free = nulldisp_gem_object_free,
+#endif /* defined(LMA) */
+	.vm_ops = &nulldisp_gem_vm_ops,
+};
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0) */
 
 static const struct drm_ioctl_desc nulldisp_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(NULLDISP_GEM_CREATE,
@@ -2462,7 +2467,7 @@ static struct drm_driver nulldisp_drm_driver = {
 
 #if defined(LMA)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0))
-	.gem_free_object		= pdp_gem_object_free,
+	.gem_free_object		= nulldisp_pdp_gem_object_free,
 	.gem_prime_export		= pdp_gem_prime_export,
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0) */
 	.gem_prime_import		= pdp_gem_prime_import,

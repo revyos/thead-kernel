@@ -251,4 +251,15 @@ IMG_INTERNAL PVRSRV_ERROR BridgeDevmemGetFaultAddress(IMG_HANDLE hBridge,
 IMG_INTERNAL PVRSRV_ERROR BridgePVRSRVUpdateOOMStats(IMG_HANDLE hBridge,
 						     IMG_UINT32 ui32ui32StatType, IMG_PID ui32pid);
 
+IMG_INTERNAL PVRSRV_ERROR BridgePhysHeapGetMemInfoPkd(IMG_HANDLE hBridge,
+						      IMG_UINT32 ui32PhysHeapCount,
+						      PVRSRV_PHYS_HEAP * peaPhysHeapID,
+						      PHYS_HEAP_MEM_STATS_PKD *
+						      psapPhysHeapMemStats);
+
+IMG_INTERNAL PVRSRV_ERROR BridgeGetHeapPhysMemUsagePkd(IMG_HANDLE hBridge,
+						       IMG_UINT32 ui32PhysHeapCount,
+						       PHYS_HEAP_MEM_STATS_PKD *
+						       psapPhysHeapMemStats);
+
 #endif /* CLIENT_MM_BRIDGE_H */

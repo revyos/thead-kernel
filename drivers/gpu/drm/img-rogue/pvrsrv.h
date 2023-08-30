@@ -122,18 +122,15 @@ typedef struct PVRSRV_DATA_TAG
 	PVRSRV_DRIVER_MODE    eDriverMode;                    /*!< Driver mode (i.e. native, host or guest) */
 	IMG_BOOL              bForceApphintDriverMode;        /*!< Indicate if driver mode is forced via apphint */
 	DRIVER_INFO           sDriverInfo;
-	IMG_UINT32            ui32RegisteredDevices;
 	IMG_UINT32            ui32DPFErrorCount;                 /*!< Number of Fatal/Error DPFs */
 
+	POSWR_LOCK            hDeviceNodeListLock;            /*!< Read-Write lock to protect the list of devices */
 	PVRSRV_DEVICE_NODE    *psDeviceNodeList;              /*!< List head of device nodes */
+	IMG_UINT32            ui32RegisteredDevices;
 	PVRSRV_DEVICE_NODE    *psHostMemDeviceNode;           /*!< DeviceNode to be used for device independent
 	                                                        host based memory allocations where the DevMem
 	                                                        framework is to be used e.g. TL */
 	PVRSRV_SERVICES_STATE eServicesState;                 /*!< global driver state */
-
-	HASH_TABLE            *psProcessHandleBase_Table;     /*!< Hash table with process handle bases */
-	POS_LOCK              hProcessHandleBase_Lock;        /*!< Lock for the process handle base table */
-	PVRSRV_HANDLE_BASE    *psProcessHandleBaseBeingFreed; /*!< Pointer to process handle base currently being freed */
 
 	IMG_HANDLE            hGlobalEventObject;             /*!< OS Global Event Object */
 	IMG_UINT32            ui32GEOConsecutiveTimeouts;     /*!< OS Global Event Object Timeouts */
@@ -143,6 +140,7 @@ typedef struct PVRSRV_DATA_TAG
 	POS_SPINLOCK          hCleanupThreadWorkListLock;     /*!< Lock protecting the cleanup thread work list */
 	DLLIST_NODE           sCleanupThreadWorkList;         /*!< List of work for the cleanup thread */
 	IMG_PID               cleanupThreadPid;               /*!< Cleanup thread process id */
+	uintptr_t             cleanupThreadTid;               /*!< Cleanup thread id */
 	ATOMIC_T              i32NumCleanupItemsQueued;       /*!< Number of items in cleanup thread work list */
 	ATOMIC_T              i32NumCleanupItemsNotCompleted; /*!< Number of items dropped from cleanup thread work list
 	                                                           after retry limit reached */
@@ -229,35 +227,6 @@ PVRSRV_DATA *PVRSRVGetPVRSRVData(void);
 		!((IMG_UINT32)(_expr)&(IMG_UINT32)0x7FFFFFFF) ? DRIVER_MODE_HOST : \
 			((IMG_UINT32)((IMG_UINT32)(_expr)&(IMG_UINT)0x7FFFFFFF)==(IMG_UINT32)0x1) ? DRIVER_MODE_GUEST : \
 				((IMG_UINT32)(_expr)&(IMG_UINT32)0x7FFFFFFF))
-
-/*!
-******************************************************************************
-
- @Function	LMA memory management API
-
-******************************************************************************/
-#if defined(SUPPORT_GPUVIRT_VALIDATION)
-PVRSRV_ERROR LMA_PhyContigPagesAllocGPV(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
-							PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr,
-							IMG_UINT32 ui32OSid, IMG_PID uiPid);
-#endif
-PVRSRV_ERROR LMA_PhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
-							PG_HANDLE *psMemHandle, IMG_DEV_PHYADDR *psDevPAddr,
-							IMG_PID uiPid);
-
-void LMA_PhyContigPagesFree(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle);
-
-PVRSRV_ERROR LMA_PhyContigPagesMap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle,
-							size_t uiSize, IMG_DEV_PHYADDR *psDevPAddr,
-							void **pvPtr);
-
-void LMA_PhyContigPagesUnmap(PVRSRV_DEVICE_NODE *psDevNode, PG_HANDLE *psMemHandle,
-					void *pvPtr);
-
-PVRSRV_ERROR LMA_PhyContigPagesClean(PVRSRV_DEVICE_NODE *psDevNode,
-                                     PG_HANDLE *psMemHandle,
-                                     IMG_UINT32 uiOffset,
-                                     IMG_UINT32 uiLength);
 
 typedef struct _PHYS_HEAP_ITERATOR_ PHYS_HEAP_ITERATOR;
 
@@ -561,4 +530,13 @@ PVRSRV_DEVICE_NODE* PVRSRVGetDeviceInstance(IMG_UINT32 ui32Instance);
 @Return         PVRSRV_DEVICE_NODE*  Return a device node, or NULL if not found.
 */ /**************************************************************************/
 PVRSRV_DEVICE_NODE *PVRSRVGetDeviceInstanceByOSId(IMG_INT32 i32OSInstance);
+
+/*************************************************************************/ /*!
+@Function       PVRSRVDefaultDomainPower
+@Description    Returns psDevNode->eCurrentSysPowerState
+@Input          PVRSRV_DEVICE_NODE*     Device node
+@Return         PVRSRV_SYS_POWER_STATE  System power state tracked internally
+*/ /**************************************************************************/
+PVRSRV_SYS_POWER_STATE PVRSRVDefaultDomainPower(PVRSRV_DEVICE_NODE *psDevNode);
+
 #endif /* PVRSRV_H */

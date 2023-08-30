@@ -269,12 +269,7 @@ PVRSRVBridgeCacheOpQueue(IMG_UINT32 ui32DispatchTableEntry,
 			 psCacheOpQueueIN->ui32NumCacheOps,
 			 psPMRInt,
 			 ui64AddressInt,
-			 uiOffsetInt,
-			 uiSizeInt,
-			 iuCacheOpInt,
-			 psCacheOpQueueIN->ui32OpTimeline,
-			 psCacheOpQueueIN->ui32CurrentFenceSeqNum,
-			 &psCacheOpQueueOUT->ui32NextFenceSeqNum);
+			 uiOffsetInt, uiSizeInt, iuCacheOpInt, psCacheOpQueueIN->ui32OpTimeline);
 
 CacheOpQueue_exit:
 
@@ -402,9 +397,8 @@ PVRSRVBridgeCacheOpLog(IMG_UINT32 ui32DispatchTableEntry,
 		       psCacheOpLogIN->ui64Address,
 		       psCacheOpLogIN->uiOffset,
 		       psCacheOpLogIN->uiSize,
-		       psCacheOpLogIN->i64QueuedTimeUs,
-		       psCacheOpLogIN->i64ExecuteTimeUs,
-		       psCacheOpLogIN->i32NumRBF, psCacheOpLogIN->iuCacheOp);
+		       psCacheOpLogIN->i64StartTime,
+		       psCacheOpLogIN->i64EndTime, psCacheOpLogIN->iuCacheOp);
 
 CacheOpLog_exit:
 
@@ -428,7 +422,7 @@ CacheOpLog_exit:
  */
 
 PVRSRV_ERROR InitCACHEBridge(void);
-PVRSRV_ERROR DeinitCACHEBridge(void);
+void DeinitCACHEBridge(void);
 
 /*
  * Register all CACHE functions with services
@@ -451,7 +445,7 @@ PVRSRV_ERROR InitCACHEBridge(void)
 /*
  * Unregister all cache functions with services
  */
-PVRSRV_ERROR DeinitCACHEBridge(void)
+void DeinitCACHEBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_CACHE, PVRSRV_BRIDGE_CACHE_CACHEOPQUEUE);
@@ -460,5 +454,4 @@ PVRSRV_ERROR DeinitCACHEBridge(void)
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_CACHE, PVRSRV_BRIDGE_CACHE_CACHEOPLOG);
 
-	return PVRSRV_OK;
 }

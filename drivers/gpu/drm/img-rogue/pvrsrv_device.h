@@ -113,6 +113,29 @@ typedef PVRSRV_ERROR
 						  PVRSRV_SYS_POWER_STATE eCurrentPowerState,
 						  PVRSRV_POWER_FLAGS ePwrFlags);
 
+/*************************************************************************/ /*!
+@Brief          Callback function type PFN_SYS_GET_POWER
+
+@Description    This function queries the SoC power registers to determine
+                if the power domain on which the GPU resides is powered on.
+
+   Implementation of this callback is optional - where it is not provided,
+   the driver will assume the domain power state depending on driver type:
+   regular drivers assume it is unpowered at startup, while drivers with
+   AutoVz support expect the GPU domain to be powered on initially. The power
+   state will be then tracked internally according to the pfnPrePowerState
+   and pfnPostPowerState calls using a fallback function.
+
+@Input          psDevNode                  Pointer to node struct of the
+                                           device being initialised
+
+@Return         PVRSRV_SYS_POWER_STATE_ON  if the respective device's hardware
+                                           domain is powered on
+                PVRSRV_SYS_POWER_STATE_OFF if the domain is powered off
+*/ /**************************************************************************/
+typedef PVRSRV_SYS_POWER_STATE
+(*PFN_SYS_GET_POWER)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
+
 typedef void
 (*PFN_SYS_DEV_INTERRUPT_HANDLED)(PVRSRV_DEVICE_CONFIG *psDevConfig);
 
@@ -272,6 +295,7 @@ struct _PVRSRV_DEVICE_CONFIG_
 	 */
 	PFN_SYS_PRE_POWER pfnPrePowerState;
 	PFN_SYS_POST_POWER pfnPostPowerState;
+	PFN_SYS_GET_POWER  pfnGpuDomainPower;
 
 	/*! Callback to obtain the clock frequency from the device (optional). */
 	PFN_SYS_DEV_CLK_FREQ_GET pfnClockFreqGet;

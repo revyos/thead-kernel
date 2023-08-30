@@ -153,7 +153,7 @@ AllocSyncPrimitiveBlock_exit:
 			/* Lock over handle creation cleanup. */
 			LockHandle(psConnection->psHandleBase);
 
-			eError = PVRSRVReleaseHandleUnlocked(psConnection->psHandleBase,
+			eError = PVRSRVDestroyHandleUnlocked(psConnection->psHandleBase,
 							     (IMG_HANDLE)
 							     psAllocSyncPrimitiveBlockOUT->
 							     hSyncHandle,
@@ -200,10 +200,11 @@ PVRSRVBridgeFreeSyncPrimitiveBlock(IMG_UINT32 ui32DispatchTableEntry,
 	LockHandle(psConnection->psHandleBase);
 
 	psFreeSyncPrimitiveBlockOUT->eError =
-	    PVRSRVReleaseHandleStagedUnlock(psConnection->psHandleBase,
-					    (IMG_HANDLE) psFreeSyncPrimitiveBlockIN->hSyncHandle,
-					    PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE_BLOCK);
+	    PVRSRVDestroyHandleStagedUnlocked(psConnection->psHandleBase,
+					      (IMG_HANDLE) psFreeSyncPrimitiveBlockIN->hSyncHandle,
+					      PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE_BLOCK);
 	if (unlikely((psFreeSyncPrimitiveBlockOUT->eError != PVRSRV_OK) &&
+		     (psFreeSyncPrimitiveBlockOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psFreeSyncPrimitiveBlockOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
 		PVR_DPF((PVR_DBG_ERROR,
@@ -673,7 +674,7 @@ PVRSRVBridgeSyncCheckpointSignalledPDumpPol(IMG_UINT32 ui32DispatchTableEntry,
  */
 
 PVRSRV_ERROR InitSYNCBridge(void);
-PVRSRV_ERROR DeinitSYNCBridge(void);
+void DeinitSYNCBridge(void);
 
 /*
  * Register all SYNC functions with services
@@ -718,7 +719,7 @@ PVRSRV_ERROR InitSYNCBridge(void)
 /*
  * Unregister all sync functions with services
  */
-PVRSRV_ERROR DeinitSYNCBridge(void)
+void DeinitSYNCBridge(void)
 {
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_SYNC, PVRSRV_BRIDGE_SYNC_ALLOCSYNCPRIMITIVEBLOCK);
@@ -742,5 +743,4 @@ PVRSRV_ERROR DeinitSYNCBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_SYNC,
 				PVRSRV_BRIDGE_SYNC_SYNCCHECKPOINTSIGNALLEDPDUMPPOL);
 
-	return PVRSRV_OK;
 }

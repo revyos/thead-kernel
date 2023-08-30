@@ -788,7 +788,7 @@ DevicememHistorySparseChange_exit:
 static POS_LOCK pDEVICEMEMHISTORYBridgeLock;
 
 PVRSRV_ERROR InitDEVICEMEMHISTORYBridge(void);
-PVRSRV_ERROR DeinitDEVICEMEMHISTORYBridge(void);
+void DeinitDEVICEMEMHISTORYBridge(void);
 
 /*
  * Register all DEVICEMEMHISTORY functions with services
@@ -824,9 +824,9 @@ PVRSRV_ERROR InitDEVICEMEMHISTORYBridge(void)
 /*
  * Unregister all devicememhistory functions with services
  */
-PVRSRV_ERROR DeinitDEVICEMEMHISTORYBridge(void)
+void DeinitDEVICEMEMHISTORYBridge(void)
 {
-	PVR_LOG_RETURN_IF_ERROR(OSLockDestroy(pDEVICEMEMHISTORYBridgeLock), "OSLockDestroy");
+	OSLockDestroy(pDEVICEMEMHISTORYBridgeLock);
 
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_DEVICEMEMHISTORY,
 				PVRSRV_BRIDGE_DEVICEMEMHISTORY_DEVICEMEMHISTORYMAP);
@@ -843,5 +843,4 @@ PVRSRV_ERROR DeinitDEVICEMEMHISTORYBridge(void)
 	UnsetDispatchTableEntry(PVRSRV_BRIDGE_DEVICEMEMHISTORY,
 				PVRSRV_BRIDGE_DEVICEMEMHISTORY_DEVICEMEMHISTORYSPARSECHANGE);
 
-	return PVRSRV_OK;
 }

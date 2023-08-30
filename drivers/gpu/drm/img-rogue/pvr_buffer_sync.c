@@ -50,7 +50,6 @@
 #include "pvr_drv.h"
 #include "pvr_fence.h"
 
-
 struct pvr_buffer_sync_context {
 	struct mutex ctx_lock;
 	struct pvr_fence_context *fence_ctx;
@@ -191,8 +190,8 @@ pvr_buffer_sync_pmrs_fence_count(u32 nr_pmrs, struct _PMR_ **pmrs,
 		if (WARN_ON_ONCE(!resv))
 			continue;
 
-		resv_list = dma_resv_get_list(resv);
-		fence = dma_resv_get_excl(resv);
+		resv_list = dma_resv_shared_list(resv);
+		fence = dma_resv_excl_fence(resv);
 
 		if (fence &&
 		    (!exclusive || !resv_list || !resv_list->shared_count))
@@ -250,8 +249,8 @@ pvr_buffer_sync_check_fences_create(struct pvr_fence_context *fence_ctx,
 				goto err_destroy_fences;
 		}
 
-		resv_list = dma_resv_get_list(resv);
-		fence = dma_resv_get_excl(resv);
+		resv_list = dma_resv_shared_list(resv);
+		fence = dma_resv_excl_fence(resv);
 
 		if (fence &&
 		    (!exclusive || !resv_list || !resv_list->shared_count)) {

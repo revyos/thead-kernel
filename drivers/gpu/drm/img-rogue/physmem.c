@@ -109,11 +109,11 @@ PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE	*psDevNode,
 #endif
 
 	/* Allocate the pages */
-	eError = psDevNode->sDevMMUPxSetup.pfnDevPxAlloc(psDevNode,
-	                                                 TRUNCATE_64BITS_TO_SIZE_T(ui32MemSize),
-	                                                 psMemHandle,
-	                                                 &sDevPhysAddr_int,
-	                                                 uiPid);
+	eError = PhysHeapPagesAlloc(psDevNode->psMMUPhysHeap,
+	                            TRUNCATE_64BITS_TO_SIZE_T(ui32MemSize),
+	                            psMemHandle,
+	                            &sDevPhysAddr_int,
+	                            uiPid);
 	PVR_LOG_RETURN_IF_ERROR(eError, "pfnDevPxAlloc:1");
 
 	/* Check to see if the page allocator returned pages with our desired
@@ -123,14 +123,14 @@ PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE	*psDevNode,
 	if (ui32Log2Align && (sDevPhysAddr_int.uiAddr & uiMask))
 	{
 		/* use over allocation instead */
-		psDevNode->sDevMMUPxSetup.pfnDevPxFree(psDevNode, psMemHandle);
+		PhysHeapPagesFree(psDevNode->psMMUPhysHeap, psMemHandle);
 
 		ui32MemSize += (IMG_UINT32) uiMask;
-		eError = psDevNode->sDevMMUPxSetup.pfnDevPxAlloc(psDevNode,
-		                                                 TRUNCATE_64BITS_TO_SIZE_T(ui32MemSize),
-		                                                 psMemHandle,
-		                                                 &sDevPhysAddr_int,
-		                                                 uiPid);
+		eError = PhysHeapPagesAlloc(psDevNode->psMMUPhysHeap,
+		                            TRUNCATE_64BITS_TO_SIZE_T(ui32MemSize),
+		                            psMemHandle,
+		                            &sDevPhysAddr_int,
+		                            uiPid);
 		PVR_LOG_RETURN_IF_ERROR(eError, "pfnDevPxAlloc:2");
 
 		sDevPhysAddr_int.uiAddr += uiMask;
@@ -160,15 +160,15 @@ PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE	*psDevNode,
 	if (bInitPage)
 	{
 		/*Map the page to the CPU VA space */
-		eError = psDevNode->sDevMMUPxSetup.pfnDevPxMap(psDevNode,
-		                                               psMemHandle,
-		                                               ui32MemSize,
-		                                               &sDevPhysAddr_int,
-		                                               &pvCpuVAddr);
+		eError = PhysHeapPagesMap(psDevNode->psMMUPhysHeap,
+		                          psMemHandle,
+		                          ui32MemSize,
+		                          &sDevPhysAddr_int,
+		                          &pvCpuVAddr);
 		if (PVRSRV_OK != eError)
 		{
 			PVR_LOG_ERROR(eError, "DevPxMap");
-			psDevNode->sDevMMUPxSetup.pfnDevPxFree(psDevNode, psMemHandle);
+			PhysHeapPagesFree(psDevNode->psMMUPhysHeap, psMemHandle);
 			return eError;
 		}
 
@@ -176,15 +176,15 @@ PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE	*psDevNode,
 		OSDeviceMemSet(pvCpuVAddr, u8Value, ui32MemSize);
 
 		/*Map the page to the CPU VA space */
-		eError = psDevNode->sDevMMUPxSetup.pfnDevPxClean(psDevNode,
-		                                                 psMemHandle,
-		                                                 0,
-		                                                 ui32MemSize);
+		eError = PhysHeapPagesClean(psDevNode->psMMUPhysHeap,
+		                            psMemHandle,
+		                            0,
+		                            ui32MemSize);
 		if (PVRSRV_OK != eError)
 		{
 			PVR_LOG_ERROR(eError, "DevPxClean");
-			psDevNode->sDevMMUPxSetup.pfnDevPxUnMap(psDevNode, psMemHandle, pvCpuVAddr);
-			psDevNode->sDevMMUPxSetup.pfnDevPxFree(psDevNode, psMemHandle);
+			PhysHeapPagesUnMap(psDevNode->psMMUPhysHeap, psMemHandle, pvCpuVAddr);
+			PhysHeapPagesFree(psDevNode->psMMUPhysHeap, psMemHandle);
 			return eError;
 		}
 
@@ -245,9 +245,9 @@ PVRSRV_ERROR DevPhysMemAlloc(PVRSRV_DEVICE_NODE	*psDevNode,
 #endif
 
 		/* Unmap the page */
-		psDevNode->sDevMMUPxSetup.pfnDevPxUnMap(psDevNode,
-		                                        psMemHandle,
-		                                        pvCpuVAddr);
+		PhysHeapPagesUnMap(psDevNode->psMMUPhysHeap,
+		                   psMemHandle,
+		                   pvCpuVAddr);
 	}
 
 	return PVRSRV_OK;
@@ -262,7 +262,7 @@ void DevPhysMemFree(PVRSRV_DEVICE_NODE *psDevNode,
 	PG_HANDLE *psMemHandle;
 
 	psMemHandle = hMemHandle;
-	psDevNode->sDevMMUPxSetup.pfnDevPxFree(psDevNode, psMemHandle);
+	PhysHeapPagesFree(psDevNode->psMMUPhysHeap, psMemHandle);
 #if defined(PDUMP)
 	if (NULL != hPDUMPMemHandle)
 	{
@@ -742,7 +742,38 @@ PVRSRVGetHeapPhysMemUsageKM(CONNECTION_DATA *psConnection,
 			PhysheapGetPhysMemUsage(psPhysHeap, &apPhysHeapMemStats[i].ui64TotalSize,
 					&apPhysHeapMemStats[i].ui64FreeSize);
 
-			apPhysHeapMemStats[i].ePhysHeapID = uiHeapIndex;
+			i++;
+		}
+	}
+	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR
+PVRSRVGetHeapPhysMemUsagePkdKM(CONNECTION_DATA *psConnection,
+			  PVRSRV_DEVICE_NODE *psDevNode,
+			  IMG_UINT32 ui32PhysHeapCount,
+			  PHYS_HEAP_MEM_STATS_PKD *apPhysHeapMemStats)
+{
+	PHYS_HEAP *psPhysHeap;
+	IMG_UINT uiHeapIndex, i = 0;
+
+	PVR_UNREFERENCED_PARAMETER(psConnection);
+
+	if (ui32PhysHeapCount != psDevNode->ui32UserAllocHeapCount)
+	{
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
+
+	for (uiHeapIndex = PVRSRV_PHYS_HEAP_DEFAULT+1; (uiHeapIndex < PVRSRV_PHYS_HEAP_LAST); uiHeapIndex++)
+	{
+		psPhysHeap = psDevNode->apsPhysHeap[uiHeapIndex];
+
+		if (psPhysHeap && PhysHeapUserModeAlloc(uiHeapIndex))
+		{
+			PVR_ASSERT(i < ui32PhysHeapCount);
+
+			PhysheapGetPhysMemUsage(psPhysHeap, &apPhysHeapMemStats[i].ui64TotalSize,
+					&apPhysHeapMemStats[i].ui64FreeSize);
 
 			i++;
 		}
@@ -759,6 +790,20 @@ PVRSRVPhysHeapGetMemInfoKM(CONNECTION_DATA *psConnection,
 {
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 	return PhysHeapGetMemInfo(psDevNode,
+				  ui32PhysHeapCount,
+				  paePhysHeapID,
+				  paPhysHeapMemStats);
+}
+
+PVRSRV_ERROR
+PVRSRVPhysHeapGetMemInfoPkdKM(CONNECTION_DATA *psConnection,
+			  PVRSRV_DEVICE_NODE *psDevNode,
+			  IMG_UINT32 ui32PhysHeapCount,
+			  PVRSRV_PHYS_HEAP *paePhysHeapID,
+			  PHYS_HEAP_MEM_STATS_PKD *paPhysHeapMemStats)
+{
+	PVR_UNREFERENCED_PARAMETER(psConnection);
+	return PhysHeapGetMemInfoPkd(psDevNode,
 				  ui32PhysHeapCount,
 				  paePhysHeapID,
 				  paPhysHeapMemStats);

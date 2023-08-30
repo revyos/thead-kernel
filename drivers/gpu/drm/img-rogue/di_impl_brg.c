@@ -193,6 +193,12 @@ static void _WriteWithRetires(void *pvNativeHandle, const IMG_CHAR *pszStr,
 	PVR_LOG_IF_ERROR(eError, "TLStreamWrite");
 }
 
+static void _WriteData(void *pvNativeHandle, const void *pvData,
+                       IMG_UINT32 uiSize)
+{
+	_WriteWithRetires(pvNativeHandle, pvData, uiSize);
+}
+
 __printf(2, 0)
 static void _VPrintf(void *pvNativeHandle, const IMG_CHAR *pszFmt,
                      va_list pArgs)
@@ -216,6 +222,7 @@ static IMG_BOOL _HasOverflowed(void *pvNativeHandle)
 }
 
 static OSDI_IMPL_ENTRY_CB _g_sEntryCallbacks = {
+	.pfnWrite = _WriteData,
 	.pfnVPrintf = _VPrintf,
 	.pfnPuts = _Puts,
 	.pfnHasOverflowed = _HasOverflowed,
