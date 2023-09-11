@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2023 Sipeed.
+ */
+
+#include "light-lpi4a-16gb.dts"
+
+/ {
+	model = "T-HEAD Light Lichee Pi 4A configuration for 16GB DDR board on Cluster";
+};
+
+&audio_i2c0 {
+	status = "disabled";
+};
+
+&audio_i2c1 {
+	status = "disabled";
+};
+
+&lightsound {
+	status = "disabled";
+};
+
+&reg_usb_hub_vdd1v2 {
+	/delete-property/ gpio;
+};
