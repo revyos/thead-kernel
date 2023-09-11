@@ -1,0 +1,20 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2023 Sipeed.
+ */
+
+#include "light-lpi4a.dts"
+
+/ {
+	model = "T-HEAD Light Lichee Pi 4A configuration for 8GB DDR board use on laptop";
+
+	power-keys {
+                compatible = "gpio-keys";
+		key-lid {
+			label = "lid status";
+			linux,code = <KEY_DISPLAY_OFF>;
+			debounce-interval = <1>;
+			gpios = <&gpio1_porta 5 0x1>;
+		};
+	};
+};
