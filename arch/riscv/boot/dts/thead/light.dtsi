@@ -41,6 +41,7 @@
         audio_i2c1 = &audio_i2c1;
 		mmc0 = &emmc;
 		mmc1 = &sdhci0;
+		mmc2 = &sdhci1;
 		serial0 = &uart0;
 		serial1 = &uart1;
 		serial2 = &uart2;
