@@ -326,7 +326,7 @@
 		};
 	};
 
-	display-subsystem {
+	display_subsystem: display-subsystem {
 		compatible = "verisilicon,display-subsystem";
 		ports = <&dpu_disp0>, <&dpu_disp1>;
 		status = "disabled";
