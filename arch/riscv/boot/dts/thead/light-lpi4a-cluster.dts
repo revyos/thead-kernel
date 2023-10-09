@@ -24,3 +24,7 @@
 &reg_usb_hub_vdd1v2 {
 	/delete-property/ gpio;
 };
+
+&reg_usb_hub_vcc5v {
+	/delete-property/ gpio;
+};
