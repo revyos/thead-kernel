@@ -15,7 +15,9 @@
 #define DRV_AUTHOR            "AICSemi"
 #define DRV_VERS_MOD          "1.0"
 
-int aicwf_dbg_level_bsp = LOGERROR|LOGINFO|LOGDEBUG|LOGTRACE;
+/* int aicwf_dbg_level_bsp = LOGERROR|LOGINFO|LOGDEBUG|LOGTRACE; */
+int aicwf_dbg_level_bsp = LOGERROR;
+module_param(aicwf_dbg_level_bsp, int, 0660);
 
 static struct platform_device *aicbsp_pdev;
 
