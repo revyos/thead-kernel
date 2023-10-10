@@ -60,11 +60,10 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd kernel
-                # make revyos_defconfig
                 if [ x"${{ matrix.board }}" = x"lpi4a" ]; then
                   make revyos_defconfig
                 elif [ x"${{ matrix.board }}" = x"ahead" ]; then
-                  make beaglev_defconfig
+                  make revyos_beaglev_defconfig
                 fi
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 if [ x"${{ matrix.name }}" = x"gcc-12" ]; then
@@ -75,10 +74,6 @@ jobs:
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
                 make -j$(nproc) dtbs
-                # if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                #   sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
-                # fi
-                # sudo make INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install -j$(nproc)
 
                 # Copy deb
                 sudo dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
@@ -88,21 +83,15 @@ jobs:
                 # sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/sbin/
                 # sudo cp -v tools/perf/perf ${GITHUB_WORKSPACE}/rootfs/sbin/perf-thead
 
-                # Install Kernel
-                # sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
-
                 # record commit-id
-                git rev-parse HEAD > kernel-commitid
-                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
+                git rev-parse HEAD > ${{ matrix.board }}-kernel-commitid
+                sudo cp -v ${{ matrix.board }}-kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
                 sudo cp -v arch/riscv/boot/dts/thead/{light-lpi4a.dtb,light-lpi4a-16gb.dtb,light-beagle.dtb} ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 ls -al ${GITHUB_WORKSPACE}/rootfs/
               popd
-
-      # - name: compress
-      #   run: tar -zcvf thead-kernel-${{ matrix.name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
