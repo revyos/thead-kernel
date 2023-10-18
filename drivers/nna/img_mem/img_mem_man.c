@@ -48,6 +48,7 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/delay.h>
 
 #include <img_mem_man.h>
 #include <vha_drv_common.h>
@@ -511,8 +512,8 @@ EXPORT_SYMBOL(img_mem_alloc);
 
 static int _img_mem_import(struct device *device,
 				struct mem_ctx *ctx, struct heap *heap,
-				size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-				struct buffer **buffer_new)
+				size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+				struct page **pages, struct buffer **buffer_new)
 {
 	struct mem_man *mem_man = &mem_man_data;
 	struct buffer *buffer;
@@ -583,7 +584,7 @@ static int _img_mem_import(struct device *device,
 	}
 
 	ret = heap->ops->import(device, heap, buffer->actual_size, attr,
-				buf_hnd, buffer);
+				buf_fd, pages, buffer);
 	if (ret) {
 		pr_err("%s: heap %d import failed\n", __func__, heap->id);
 		goto heap_import_failed;
@@ -608,41 +609,134 @@ idr_alloc_failed:
 	return ret;
 }
 
+static void _img_mem_put_pages(size_t size, struct page **pages)
+{
+	int num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+	int i;
+
+	for (i = 0; i < num_pages; i++)
+		if (pages[i])
+			put_page(pages[i]);		
+	kfree(pages);
+}
+
+static int _img_mem_get_user_pages(size_t size, uint64_t cpu_ptr,
+				struct page **pages[])
+{
+	struct page **tmp_pages = NULL;
+	int num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+	int ret;
+	int cnt = 0;
+
+	/* Check alignment */
+	if (cpu_ptr & (PAGE_SIZE-1)) {
+		pr_err("%s wrong alignment of %#llx address!\n",
+				__func__, cpu_ptr);
+		return -EFAULT;
+	}
+
+	tmp_pages = kmalloc_array(num_pages, sizeof(struct page *),
+			GFP_KERNEL | __GFP_ZERO);
+	if (!tmp_pages) {
+		pr_err("%s failed to allocate memory for pages\n", __func__);
+		return -ENOMEM;
+	}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+	down_read(&current->mm->mmap_sem);
+#else
+	mmap_read_lock(current->mm);
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+	ret = get_user_pages(
+			cpu_ptr, num_pages,
+			0,
+			tmp_pages, NULL);
+#else
+	pr_err("%s get_user_pages not supported for this kernel version\n",
+					__func__);
+	ret = -1;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+	up_read(&current->mm->mmap_sem);
+#else
+	mmap_read_unlock(current->mm);
+#endif
+	if (ret != num_pages) {
+		pr_err("%s failed to get_user_pages count:%d for %#llx address\n",
+				__func__, num_pages, cpu_ptr);
+		ret = -ENOMEM;
+		goto out_get_user_pages;
+	}
+
+	*pages = tmp_pages;
+
+	return 0;
+
+out_get_user_pages:
+	_img_mem_put_pages(size, tmp_pages);
+
+	return ret;	
+}
+
 int img_mem_import(struct device *device, struct mem_ctx *ctx, int heap_id,
-			size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-			int *buf_id)
+			size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+			uint64_t cpu_ptr, int *buf_id)
 {
 	struct mem_man *mem_man = &mem_man_data;
 	struct heap *heap;
 	struct buffer *buffer;
+	struct page **pages = NULL;
 	int ret;
 
-	pr_debug("%s heap %d ctx %p hnd %#llx\n", __func__, heap_id, ctx, buf_hnd);
+	pr_debug("%s heap %d ctx %p hnd %#llx\n", __func__, heap_id, ctx, buf_fd);
+
+	if (cpu_ptr) {
+		ret = _img_mem_get_user_pages(size, cpu_ptr, &pages);
+		if (ret) {
+			pr_err("%s:%d getting user pages failed\n", __func__, __LINE__);
+			return ret;
+		}
+	}
 
 	ret = mutex_lock_interruptible(&mem_man->mutex);
-	if (ret)
-		return ret;
+	if (ret) {
+		pr_err("%s:%d lock interrupted: mem_man->mutex\n", __func__, __LINE__);
+
+		goto lock_interrupted;
+	}
 
 	heap = idr_find(&mem_man->heaps, heap_id);
 	if (!heap) {
 		pr_err("%s: heap id %d not found\n", __func__, heap_id);
-		mutex_unlock(&mem_man->mutex);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto idr_find_failed;
 	}
 
-	ret = _img_mem_import(device, ctx, heap, size, attr, buf_hnd, &buffer);
-	if (ret) {
-		mutex_unlock(&mem_man->mutex);
-		return ret;
-	}
+	ret = _img_mem_import(device, ctx, heap, size, attr, buf_fd, pages, &buffer);
+	if (ret)
+		goto mem_import_failed;
 
 	*buf_id = buffer->id;
 	mutex_unlock(&mem_man->mutex);
 
-	pr_debug("%s buf_hnd %#llx heap %d (%s) buffer %d size %zu\n", __func__,
-		buf_hnd, heap_id, get_heap_name(heap->type), *buf_id, size);
+	if (cpu_ptr)
+		_img_mem_put_pages(size, pages);
+
+	pr_debug("%s buf_fd %#llx heap %d (%s) buffer %d size %zu\n", __func__,
+		buf_fd, heap_id, get_heap_name(heap->type), *buf_id, size);
 	pr_debug("%s heap %d ctx %p created buffer %d (%p) size %zu\n",
 		__func__, heap_id, ctx, *buf_id, buffer, size);
+
+	return 0;
+
+mem_import_failed:
+idr_find_failed:
+	mutex_unlock(&mem_man->mutex);
+lock_interrupted:
+	if (cpu_ptr)
+		_img_mem_put_pages(size, pages);
+
 	return ret;
 }
 EXPORT_SYMBOL(img_mem_import);
@@ -1136,6 +1230,7 @@ uint64_t img_mem_get_single_page(struct mem_ctx *mem_ctx, int buf_id,
 		if (ret) {
 			pr_err("%s: heap %d buffer %d no sg_table!\n",
 						__func__, heap->id, buffer->id);
+			mutex_unlock(&mem_man->mutex);
 			return -1;
 		}
 		sgl = sgt->sgl;
@@ -1152,6 +1247,7 @@ uint64_t img_mem_get_single_page(struct mem_ctx *mem_ctx, int buf_id,
 		if (!sgl) {
 			pr_err("%s: heap %d buffer %d wrong offset %d!\n",
 					__func__, heap->id, buffer->id, offset);
+			mutex_unlock(&mem_man->mutex);
 			return -1;
 		}
 
@@ -1168,12 +1264,14 @@ uint64_t img_mem_get_single_page(struct mem_ctx *mem_ctx, int buf_id,
 		if (ret) {
 			pr_err("%s: heap %d buffer %d no page array!\n",
 						__func__, heap->id, buffer->id);
+			mutex_unlock(&mem_man->mutex);
 			return -1;
 		}
 
 		if (offset > buffer->actual_size) {
 			pr_err("%s: heap %d buffer %d wrong offset %d!\n",
 						__func__, heap->id, buffer->id, offset);
+			mutex_unlock(&mem_man->mutex);
 			return -1;
 		}
 		addr = addrs[page_idx];

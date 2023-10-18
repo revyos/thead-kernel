@@ -65,68 +65,23 @@ struct buffer_data {
 };
 
 static int anonymous_heap_import(struct device *device, struct heap *heap,
-						size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-						struct buffer *buffer)
+						size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+						struct page **pages, struct buffer *buffer)
 {
 	struct buffer_data *data;
-	unsigned long cpu_addr = (unsigned long)buf_hnd;
 	struct sg_table *sgt;
-	struct page **pages;
 	struct scatterlist *sgl;
 	int num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 	int ret;
 	int i;
 
-	pr_debug("%s:%d buffer %d (0x%p) cpu_addr %#lx for PID:%d\n",
+	pr_debug("%s:%d buffer %d (0x%p) for PID:%d\n",
 			__func__, __LINE__, buffer->id, buffer,
-			cpu_addr, task_pid_nr(current));
-
-	/* Check alignment */
-	if (cpu_addr & (PAGE_SIZE-1)) {
-		pr_err("%s wrong alignment of %#lx address!\n",
-				__func__, cpu_addr);
-		return -EFAULT;
-	}
-
-	pages = kmalloc_array(num_pages, sizeof(struct page *),
-			GFP_KERNEL | __GFP_ZERO);
-	if (!pages) {
-		pr_err("%s failed to allocate memory for pages\n", __func__);
-		return -ENOMEM;
-	}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
-	down_read(&current->mm->mmap_sem);
-#else
-	down_read(&current->mm->mmap_lock);
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
-	ret = get_user_pages(
-			cpu_addr, num_pages,
-			FOLL_WRITE,
-			pages, NULL);
-#else
-	pr_err("%s get_user_pages not supported for this kernel version\n",
-				__func__);
-	ret = -1;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
-	up_read(&current->mm->mmap_sem);
-#else
-	up_read(&current->mm->mmap_lock);
-#endif
-	if (ret != num_pages) {
-		pr_err("%s failed to get_user_pages count:%d for %#lx address\n",
-				__func__, num_pages, cpu_addr);
-		ret = -ENOMEM;
-		goto get_user_pages_failed;
-	}
+			task_pid_nr(current));
 
 	sgt = kmalloc(sizeof(struct sg_table), GFP_KERNEL);
-	if (!sgt) {
-		ret = -ENOMEM;
-		goto alloc_sgt_failed;
-	}
+	if (!sgt) 
+		return -ENOMEM;
 
 	ret = sg_alloc_table(sgt, num_pages, GFP_KERNEL);
 	if (ret) {
@@ -144,6 +99,11 @@ static int anonymous_heap_import(struct device *device, struct heap *heap,
 		struct page *page = pages[i];
 		sg_set_page(sgl, page, PAGE_SIZE, 0);
 
+		if (trace_physical_pages)
+			pr_info("%s:%d phys %#llx length %d\n",
+				 __func__, __LINE__,
+				 (unsigned long long)sg_phys(sgl), sgl->length);
+
 		/* Sanity check if physical address is
 		 * accessible from the device PoV */
 		if (~dma_get_mask(device) & sg_phys(sgl)) {
@@ -153,11 +113,6 @@ static int anonymous_heap_import(struct device *device, struct heap *heap,
 			ret = -ERANGE;
 			goto dma_mask_check_failed;
 		}
-
-		if (trace_physical_pages)
-			pr_info("%s:%d phys %#llx length %d\n",
-				 __func__, __LINE__,
-				 (unsigned long long)sg_phys(sgl), sgl->length);
 	}
 
 	pr_debug("%s:%d buffer %d orig_nents %d\n", __func__, __LINE__,
@@ -174,7 +129,11 @@ static int anonymous_heap_import(struct device *device, struct heap *heap,
 		goto dma_mask_check_failed;
 	}
 
-	kfree(pages);
+	/* Increase ref count for each page used */
+	for (i = 0; i < num_pages; i++)
+		if (pages[i])
+			get_page(pages[i]);
+
 	return 0;
 
 dma_mask_check_failed:
@@ -183,12 +142,7 @@ alloc_priv_failed:
 	sg_free_table(sgt);
 alloc_sgt_pages_failed:
 	kfree(sgt);
-get_user_pages_failed:
-	for (i = 0; i < num_pages; i++)
-		if (pages[i])
-			put_page(pages[i]);
-alloc_sgt_failed:
-	kfree(pages);
+
 	return ret;
 }
 

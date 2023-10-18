@@ -167,8 +167,8 @@ void img_mem_destroy_proc_ctx(struct mem_ctx *ctx);
 int img_mem_alloc(struct device *device, struct mem_ctx *ctx, int heap_id,
 			size_t size, enum img_mem_attr attributes, int *buf_id);
 int img_mem_import(struct device *device, struct mem_ctx *ctx, int heap_id,
-			 size_t size, enum img_mem_attr attributes, uint64_t buf_hnd,
-			 int *buf_id);
+			 size_t size, enum img_mem_attr attributes, uint64_t buf_fd,
+			 uint64_t cpu_ptr, int *buf_id);
 int img_mem_export(struct device *device, struct mem_ctx *ctx, int buf_id,
 			 size_t size, enum img_mem_attr attributes, uint64_t *buf_hnd);
 void img_mem_free(struct mem_ctx *ctx, int buf_id);

@@ -15,6 +15,8 @@
 #include <linux/platform_device.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
+#include <linux/reset.h>
+#include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/pm.h>
 #include <linux/version.h>
@@ -54,6 +56,10 @@ static struct poll_timer {
 	bool enabled;
 
 } irq_poll_timer;
+
+struct vha_prvdata {
+	struct reset_control *rst;
+};
 
 static ssize_t info_show(struct device_driver *drv, char *buf);
 
@@ -107,6 +113,7 @@ static int vha_plat_probe(struct platform_device *ofdev)
 	struct resource res;
 	void __iomem *reg_addr;
 	uint32_t reg_size, core_size;
+	struct vha_prvdata *data;
 	char info[256];
 
 	info_show(ofdev->dev.driver, info);
@@ -164,9 +171,22 @@ static int vha_plat_probe(struct platform_device *ofdev)
 		goto out_add_dev;
 	}
 
+	data = devm_kzalloc(&ofdev->dev, sizeof(*data), GFP_KERNEL);
+	if (!data) {
+		dev_err(&ofdev->dev, "vha private data allocate error\n");
+		ret = -ENOMEM;
+		goto out_add_dev;
+	}
+
+	data->rst = devm_reset_control_get_optional_shared(&ofdev->dev, NULL);
+	if (IS_ERR(data->rst)) {
+		ret = PTR_ERR(data->rst);
+		return ret;
+	}
+
 	/* no 'per device' memory heaps used */
 	ret = vha_add_dev(&ofdev->dev, NULL, 0,
-			  NULL /* plat priv data */, reg_addr, core_size);
+			  data, reg_addr, core_size);
 	if (ret) {
 		dev_err(&ofdev->dev, "failed to intialize driver core!\n");
 		goto out_add_dev;

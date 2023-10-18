@@ -63,24 +63,24 @@ struct buffer_data {
 };
 
 static int ion_heap_import(struct device *device, struct heap *heap,
-				size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-				struct buffer *buffer)
+				size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+				struct page **pages, struct buffer *buffer)
 {
 	struct buffer_data *data;
 	int ret;
-	int buf_fd = (int)buf_hnd;
+	int ion_buf_fd = (int)buf_fd;
 
-	pr_debug("%s:%d buffer %d (0x%p) buf_fd %d\n", __func__, __LINE__,
-		 buffer->id, buffer, buf_fd);
+	pr_debug("%s:%d buffer %d (0x%p) ion_buf_fd %d\n", __func__, __LINE__,
+		 buffer->id, buffer, ion_buf_fd);
 
 	data = kmalloc(sizeof(struct buffer_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 	data->client = heap->priv;
 
-	data->handle = ion_import_dma_buf(data->client, buf_fd);
+	data->handle = ion_import_dma_buf(data->client, ion_buf_fd);
 	if (IS_ERR_OR_NULL(data->handle)) {
-		pr_err("%s ion_import_dma_buf fd %d\n", __func__, buf_fd);
+		pr_err("%s ion_import_dma_buf fd %d\n", __func__, ion_buf_fd);
 		ret = -EINVAL;
 		goto ion_import_dma_buf_failed;
 	}
@@ -89,7 +89,7 @@ static int ion_heap_import(struct device *device, struct heap *heap,
 
 	data->sgt = ion_sg_table(data->client, data->handle);
 	if (IS_ERR(data->sgt)) {
-		pr_err("%s ion_sg_table fd %d\n", __func__, buf_fd);
+		pr_err("%s ion_sg_table fd %d\n", __func__, ion_buf_fd);
 		ret = -EINVAL;
 		goto ion_sg_table_failed;
 	}

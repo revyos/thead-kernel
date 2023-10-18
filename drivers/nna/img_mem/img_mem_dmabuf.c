@@ -76,23 +76,23 @@ struct buffer_data {
 };
 
 static int dmabuf_heap_import(struct device *device, struct heap *heap,
-						size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-						struct buffer *buffer)
+						size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+						struct page **pages, struct buffer *buffer)
 {
 	struct buffer_data *data;
 	int ret;
-	int buf_fd = (int)buf_hnd;
+	int dmabuf_fd = (int)buf_fd;
 
-	pr_debug("%s:%d buffer %d (0x%p) buf_fd %d\n", __func__, __LINE__,
-		buffer->id, buffer, buf_fd);
+	pr_debug("%s:%d buffer %d (0x%p) dmabuf_fd %d\n", __func__, __LINE__,
+		buffer->id, buffer, dmabuf_fd);
 
 	data = kmalloc(sizeof(struct buffer_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
-	data->dma_buf = dma_buf_get(buf_fd);
+	data->dma_buf = dma_buf_get(dmabuf_fd);
 	if (IS_ERR_OR_NULL(data->dma_buf)) {
-		pr_err("%s dma_buf_get fd %d\n", __func__, buf_fd);
+		pr_err("%s dma_buf_get fd %d\n", __func__, dmabuf_fd);
 		ret = -EINVAL;
 		goto dma_buf_get_failed;
 	}
@@ -101,14 +101,14 @@ static int dmabuf_heap_import(struct device *device, struct heap *heap,
 
 	data->attach = dma_buf_attach(data->dma_buf, device);
 	if (IS_ERR(data->attach)) {
-		pr_err("%s dma_buf_attach fd %d\n", __func__, buf_fd);
+		pr_err("%s dma_buf_attach fd %d\n", __func__, dmabuf_fd);
 		ret = -EINVAL;
 		goto dma_buf_attach_failed;
 	}
 
 	data->sgt = dma_buf_map_attachment(data->attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(data->sgt)) {
-		pr_err("%s dma_buf_map_attachment fd %d\n", __func__, buf_fd);
+		pr_err("%s dma_buf_map_attachment fd %d\n", __func__, dmabuf_fd);
 		ret = -EINVAL;
 		goto dma_buf_map_failed;
 	}

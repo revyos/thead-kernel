@@ -514,12 +514,12 @@ static long vha_ioctl_import(struct vha_session *session, void __user *buf)
 	if (copy_from_user(&data, buf, sizeof(data)))
 		return -EFAULT;
 
-	dev_dbg(miscdev->this_device, "%s: session %u, buf_hnd 0x%016llx, size %llu, heap_id %u\n",
-			__func__, session->id, data.buf_hnd, data.size, data.heap_id);
+	dev_dbg(miscdev->this_device, "%s: session %u, buf_fd 0x%016llx, size %llu, heap_id %u\n",
+			__func__, session->id, data.buf_fd, data.size, data.heap_id);
 
 	ret = img_mem_import(session->vha->dev, session->mem_ctx, data.heap_id,
-					(size_t)data.size, data.attributes, data.buf_hnd,
-					&data.buf_id);
+					(size_t)data.size, data.attributes, data.buf_fd,
+					data.cpu_ptr, &data.buf_id);
 	if (ret)
 		return ret;
 

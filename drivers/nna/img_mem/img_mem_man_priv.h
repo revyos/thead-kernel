@@ -144,8 +144,8 @@ struct heap_ops {
 				 size_t size, enum img_mem_attr attr,
 				 struct buffer *buffer);
 	int (*import)(struct device *device, struct heap *heap,
-					size_t size, enum img_mem_attr attr, uint64_t buf_hnd,
-					struct buffer *buffer);
+					size_t size, enum img_mem_attr attr, uint64_t buf_fd,
+					struct page **pages, struct buffer *buffer);
 	int (*export)(struct device *device, struct heap *heap,
 					size_t size, enum img_mem_attr attr, struct buffer *buffer,
 					uint64_t *buf_hnd);

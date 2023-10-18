@@ -254,8 +254,8 @@ struct vha_alloc_data {
 /* parameters to import a device buffer */
 struct vha_import_data {
 	uint64_t size;				/* [IN] Size of device memory (in bytes)    */
-	uint64_t buf_hnd;			/* [IN] File descriptor/cpu pointer
-														of buffer to import */
+	uint64_t buf_fd;			/* [IN] File descriptor */
+	uint64_t cpu_ptr;			/* [IN] Cpu pointer of buffer to import */
 	uint32_t heap_id;			/* [IN] Heap ID of allocator                */
 	uint32_t attributes;	/* [IN] Attributes of buffer                */
 	char     name[8];			/* [IN] short name for buffer               */
