@@ -811,7 +811,6 @@
 		};
 
 		pwm: pwm@ffec01c000 {
-			status = "disabled";
 			compatible = "thead,pwm-light";
 			reg = <0xff 0xec01c000 0x0 0x4000>;
 			#pwm-cells = <2>;
@@ -1025,7 +1024,6 @@
 		};
 
 		qspi0: spi@ffea000000 {
-			status = "disabled";
 			compatible = "snps,dw-apb-ssi-quad";
 			reg = <0xff 0xea000000 0x0 0x1000>;
 			pinctrl-names = "default";
@@ -1038,7 +1036,6 @@
 		};
 
 		qspi1: spi@fff8000000 {
-			status = "disabled";
 			compatible = "snps,dw-apb-ssi-quad";
 			reg = <0xff 0xf8000000 0x0 0x1000>;
 			pinctrl-names = "default";
