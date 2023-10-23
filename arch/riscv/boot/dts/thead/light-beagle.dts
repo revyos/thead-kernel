@@ -16,6 +16,18 @@
 	};
 };
 
+&pwm {
+	status = "disabled";
+};
+
+&qspi0 {
+	status = "disabled";
+};
+
+&qspi1 {
+	status = "disabled";
+};
+
 &vvcam_sensor4 { // beagle board J5 CSI0 connector
 	sensor_name = "IMX219";
 	sensor_pdn = <&gpio2_porta 23 0>; //powerdown pin / shutdown pin 
