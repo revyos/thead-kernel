@@ -66,7 +66,7 @@ EXTRA_CFLAGS += $(DEBFLAGS)
 ifneq ($(KERNELRELEASE),)
 # recursive call from kernel build system
 
-ccflags-y := -I$(src)/../dwl
+ccflags-y := -I$(srctree)/$(src)/../dwl
 
 hantrodec-objs := hantro_dec.o hantro_mmu.o hantro_axife.o hantro_vcmd.o bidirect_list.o vcmdswhwregisters.o subsys.o kernel_allocator.o
 obj-m         += hantrodec.o
