@@ -163,6 +163,14 @@
 	};
 };
 
+&qspi0 {
+	status = "disabled";
+};
+
+&qspi1 {
+	status = "disabled";
+};
+
 &dsi0_panel0 {
 	backlight = <&lcd0_backlight>;
 	reset-gpio = <&pcal6408ahk_d 7 0>; /* active low */
