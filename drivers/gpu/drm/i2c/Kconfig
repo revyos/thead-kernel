@@ -33,4 +33,7 @@ config DRM_I2C_NXP_TDA9950
 	select CEC_NOTIFIER
 	select CEC_CORE
 
+config DRM_I2C_LT8911EXB
+	tristate "LT8911 MIPI2EDP CHIP"
+
 endmenu
