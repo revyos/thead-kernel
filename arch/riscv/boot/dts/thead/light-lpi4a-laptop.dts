@@ -91,6 +91,12 @@
 	BT,power_gpio = <&pcal6408ahk_c 5 0>;
 };
 
+&usb_1 {
+        /delete-property/ vbus-supply;
+        /delete-property/ hub1v2-supply;
+        hub5v-supply = <&reg_usb_vcc_5v>;
+};
+
 &reg_usb_hub_vcc5v {
 	/delete-property/ gpio;
 };
