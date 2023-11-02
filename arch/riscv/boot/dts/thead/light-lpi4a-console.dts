@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2023 Sipeed.
+ */
+
+#include "light-lpi4a-laptop.dts"
+
+/ {
+        model = "T-HEAD Light Lichee Pi 4A configuration for LicheeConsole4A";
+};
+
+&dsi0_panel0 {
+	compatible = "mingjun,mj070bi30ia2";
+};
+
+&i2c0 {
+	ydx@15 {
+		compatible = "ydx";
+		reg = <0x15>;
+	};
+};
