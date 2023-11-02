@@ -115,7 +115,7 @@ static const struct snd_kcontrol_new es8156_snd_controls[] = {
 	4,0,15,0),
 	/* DAC Digital controls */
 	SOC_SINGLE_TLV("DAC Playback Volume", ES8156_VOLUME_CONTROL_REG14,
-			  0, 0xff, 0, dac_vol_tlv),
+			  0, 0x99, 0, dac_vol_tlv),
 	SOC_SINGLE("HP Switch",ES8156_ANALOG_SYS3_REG22,3,1,0),
 
 
@@ -188,7 +188,7 @@ static const struct snd_soc_dapm_route es8156_dapm_routes[] = {
 #define MCLK_SOURCE			SCLK_PIN		// select MCLK source, MCLK_PIN or SCLK_PIN
 #define EQ7bandOn			0
 #define VDDA_VOLTAGE		VDDA_3V3
-#define DAC_Volume			191				// DAC digital gain
+#define DAC_Volume			0x99				// mute
 #define DACHPModeOn			0				// disable:0, enable:1
 
 /**************************************************/
