@@ -37,6 +37,13 @@
 
 #define LIGHT_MBOX_ACK_MAGIC		0xdeadbeaf
 
+#ifdef CONFIG_PM_SLEEP
+/* store MBOX context across system-wide suspend/resume transitions */
+struct light_mbox_context{
+	u32 intr_mask[LIGHT_MBOX_CHANS - 1];
+};
+
+#endif
 enum light_mbox_chan_type {
 	LIGHT_MBOX_TYPE_TXRX,	/* Tx & Rx chan */
 	LIGHT_MBOX_TYPE_DB,	/* Tx & Rx doorbell */
@@ -70,9 +77,12 @@ struct light_mbox_priv {
 	struct mbox_controller		mbox;
 	struct mbox_chan		mbox_chans[LIGHT_MBOX_CHANS];
 
-	struct light_mbox_con_priv  	con_priv[LIGHT_MBOX_CHANS];
+	struct light_mbox_con_priv	con_priv[LIGHT_MBOX_CHANS];
 	struct clk			*clk;
 	int				irq;
+#ifdef CONFIG_PM_SLEEP
+	struct light_mbox_context	*ctx;
+#endif
 };
 
 static struct light_mbox_priv *to_light_mbox_priv(struct mbox_controller *mbox)
@@ -327,11 +337,17 @@ static const struct mbox_chan_ops light_mbox_ops = {
 	.shutdown = light_mbox_shutdown,
 };
 
-static void light_mbox_init_generic(struct light_mbox_priv *priv)
+static int light_mbox_init_generic(struct light_mbox_priv *priv)
 {
+#ifdef CONFIG_PM_SLEEP
+	priv->ctx = devm_kzalloc(priv->dev, sizeof(*priv->ctx), GFP_KERNEL);
+	if(!priv->ctx)
+		return -ENOMEM;
+#endif
 	/* Set default configuration */
 	light_mbox_write(priv, 0xff, LIGHT_MBOX_CLR);
 	light_mbox_write(priv, 0x0, LIGHT_MBOX_MASK);
+	return 0;
 }
 
 static struct mbox_chan *light_mbox_xlate(struct mbox_controller *mbox,
@@ -472,7 +488,11 @@ static int light_mbox_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, priv);
 
-	light_mbox_init_generic(priv);
+	ret = light_mbox_init_generic(priv);
+	if (ret) {
+		dev_err(dev, "Failed to init mailbox context\n");
+		return ret;
+	}
 
 	return devm_mbox_controller_register(dev, &priv->mbox);
 }
@@ -492,12 +512,75 @@ static const struct of_device_id light_mbox_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, light_mbox_dt_ids);
 
+#ifdef CONFIG_PM_SLEEP
+static int __maybe_unused light_mbox_suspend_noirq(struct device *dev)
+{
+	struct light_mbox_priv *priv = dev_get_drvdata(dev);
+	struct light_mbox_context *ctx = priv->ctx;
+	u32 i;
+	/*
+	 * ONLY interrupt mask bit should be stored and restores.
+	 * INFO data all assumed to be lost.
+	 */
+	for(i = 0 ; i < LIGHT_MBOX_CHANS; i++) {
+		ctx->intr_mask[i] = ioread32(priv->local_icu[i] + LIGHT_MBOX_MASK);
+	}
+	return 0;
+}
+
+static int __maybe_unused light_mbox_resume_noirq(struct device *dev)
+{
+	struct light_mbox_priv *priv = dev_get_drvdata(dev);
+	struct light_mbox_context *ctx = priv->ctx;
+	u32 i;
+
+	for(i = 0 ; i < LIGHT_MBOX_CHANS; i++) {
+		iowrite32(ctx->intr_mask[i], priv->local_icu[i] + LIGHT_MBOX_MASK);
+	}
+	return 0;
+}
+
+#endif
+
+
+static int __maybe_unused light_mbox_runtime_suspend(struct device *dev)
+{
+	struct light_mbox_priv *priv = dev_get_drvdata(dev);
+
+	clk_disable_unprepare(priv->clk);
+
+	return 0;
+}
+
+static int __maybe_unused light_mbox_runtime_resume(struct device *dev)
+{
+	struct light_mbox_priv *priv = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_prepare_enable(priv->clk);
+	if (ret)
+		dev_err(dev, "failed to enable clock\n");
+
+	return ret;
+}
+
+static const struct dev_pm_ops light_mbox_pm_ops = {
+#ifdef CONFIG_PM_SLEEP
+        SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(light_mbox_suspend_noirq,
+                                      light_mbox_resume_noirq)
+#endif
+        SET_RUNTIME_PM_OPS(light_mbox_runtime_suspend,
+                           light_mbox_runtime_resume, NULL)
+};
+
+
 static struct platform_driver light_mbox_driver = {
 	.probe		= light_mbox_probe,
 	.remove		= light_mbox_remove,
 	.driver = {
 		.name	= "light_mbox",
 		.of_match_table = light_mbox_dt_ids,
+		.pm = &light_mbox_pm_ops,
 	},
 };
 module_platform_driver(light_mbox_driver);

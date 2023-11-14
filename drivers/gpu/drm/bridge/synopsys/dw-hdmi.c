@@ -20,7 +20,6 @@
 #include <linux/regmap.h>
 #include <linux/dma-mapping.h>
 #include <linux/spinlock.h>
-
 #include <media/cec-notifier.h>
 
 #include <uapi/linux/media-bus-format.h>
@@ -3399,13 +3398,6 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 		goto err_res;
 	}
 
-	hdmi->i2s_clk = devm_clk_get_optional(hdmi->dev, "i2s");
-	if (IS_ERR(hdmi->i2s_clk)) {
-		ret = PTR_ERR(hdmi->i2s_clk);
-		dev_err(hdmi->dev, "Unable to get HDMI i2s clk: %d\n", ret);
-		goto err_res;
-	}
-
 	clk_prepare_enable(hdmi->iahb_clk);
 	clk_prepare_enable(hdmi->isfr_clk);
 
@@ -3618,16 +3610,15 @@ EXPORT_SYMBOL_GPL(dw_hdmi_unbind);
 void dw_hdmi_resume(struct dw_hdmi *hdmi)
 {
 	dw_hdmi_init_hw(hdmi);
+	hdmi_init_clk_regenerator(hdmi);
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_resume);
 
 #ifdef CONFIG_PM
 int dw_hdmi_runtime_suspend(struct dw_hdmi *hdmi)
 {
-	clk_disable_unprepare(hdmi->i2s_clk);
 	clk_disable_unprepare(hdmi->pix_clk);
 	clk_disable_unprepare(hdmi->cec_clk);
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_runtime_suspend);
@@ -3636,12 +3627,11 @@ int dw_hdmi_runtime_resume(struct dw_hdmi *hdmi)
 {
 	clk_prepare_enable(hdmi->cec_clk);
 	clk_prepare_enable(hdmi->pix_clk);
-	clk_prepare_enable(hdmi->i2s_clk);
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_runtime_resume);
 #endif
+
 
 MODULE_AUTHOR("Sascha Hauer <s.hauer@pengutronix.de>");
 MODULE_AUTHOR("Andy Yan <andy.yan@rock-chips.com>");

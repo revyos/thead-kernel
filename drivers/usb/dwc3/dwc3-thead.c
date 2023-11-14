@@ -28,7 +28,7 @@
 #define USB_CLK_GATE_STS		0x0
 #define USB_LOGIC_ANALYZER_TRACE_STS0	0x4
 #define USB_LOGIC_ANALYZER_TRACE_STS1	0x8
-#define USB_GPIO			0xc
+#define USB_GPIO				0xc
 #define USB_DEBUG_STS0			0x10
 #define USB_DEBUG_STS1			0x14
 #define USB_DEBUG_STS2			0x18
@@ -38,10 +38,10 @@
 #define USBPHY_TEST_CTRL1		0x28
 #define USBPHY_TEST_CTRL2		0x2c
 #define USBPHY_TEST_CTRL3		0x30
-#define USB_SSP_EN			0x34
+#define USB_SSP_EN				0x34
 #define USB_HADDR_SEL			0x38
-#define USB_SYS			0x3c
-#define USB_HOST_STATUS		0x40
+#define USB_SYS					0x3c
+#define USB_HOST_STATUS			0x40
 #define USB_HOST_CTRL			0x44
 #define USBPHY_HOST_CTRL		0x48
 #define USBPHY_HOST_STATUS		0x4c
@@ -54,10 +54,10 @@
 /* USB_SYS */
 #define TEST_POWERDOWN_SSP	BIT(2)
 #define TEST_POWERDOWN_HSP	BIT(1)
-#define COMMONONN		BIT(0)
+#define COMMONONN			BIT(0)
 
 /* USB_SSP_EN */
-#define REF_SSP_EN		BIT(0)
+#define REF_SSP_EN			BIT(0)
 
 /* USBPHY_HOST_CTRL */
 #define HOST_U2_PORT_DISABLE	BIT(6)
@@ -83,170 +83,64 @@ MODULE_PARM_DESC(usb_role, "USB role");
 
 struct dwc3_thead {
 	struct device		*dev;
-	struct platform_device	*dwc3;
+	struct clk_bulk_data	*clks;
+	int			num_clocks;
 
-	struct regmap		*usb0_apb;
+	struct regmap		*usb3_drd;
 	struct regmap		*misc_sysreg;
-
-	struct extcon_dev	*edev;
-	struct extcon_dev	*host_edev;
-	struct notifier_block	vbus_nb;
-	struct notifier_block	host_nb;
 
 	struct gpio_desc	*hubswitch;
 	struct regulator	*hub1v2;
 	struct regulator	*hub5v;
 	struct regulator	*vbus;
-
-	enum usb_dr_mode	mode;
-	bool			is_suspended;
-	bool			pm_suspended;
 };
 
-static int dwc3_thead_vbus_notifier(struct notifier_block *nb,
-				   unsigned long event, void *ptr)
+static void dwc3_thead_deassert(struct dwc3_thead *thead)
 {
-	struct dwc3_thead *thead = container_of(nb, struct dwc3_thead, vbus_nb);
-
-	/* enable vbus override for device mode */
-	thead->mode = event ? USB_DR_MODE_PERIPHERAL : USB_DR_MODE_HOST;
-
-	return NOTIFY_DONE;
-}
-
-static int dwc3_thead_host_notifier(struct notifier_block *nb,
-				   unsigned long event, void *ptr)
-{
-	struct dwc3_thead *thead = container_of(nb, struct dwc3_thead, host_nb);
-
-	/* disable vbus override in host mode */
-	thead->mode = event ? USB_DR_MODE_HOST : USB_DR_MODE_PERIPHERAL;
-
-	return NOTIFY_DONE;
-}
-
-static int dwc3_thead_register_extcon(struct dwc3_thead *thead)
-{
-	struct device		*dev = thead->dev;
-	struct extcon_dev	*host_edev;
-	int			ret;
-
-	if (!of_property_read_bool(dev->of_node, "extcon"))
-		return 0;
-
-	thead->edev = extcon_get_edev_by_phandle(dev, 0);
-	if (IS_ERR(thead->edev))
-		return PTR_ERR(thead->edev);
-
-	thead->vbus_nb.notifier_call = dwc3_thead_vbus_notifier;
-
-	thead->host_edev = extcon_get_edev_by_phandle(dev, 1);
-	if (IS_ERR(thead->host_edev))
-		thead->host_edev = NULL;
-
-	ret = devm_extcon_register_notifier(dev, thead->edev, EXTCON_USB,
-					    &thead->vbus_nb);
-	if (ret < 0) {
-		dev_err(dev, "VBUS notifier register failed\n");
-		return ret;
-	}
-
-	if (thead->host_edev)
-		host_edev = thead->host_edev;
-	else
-		host_edev = thead->edev;
-
-	thead->host_nb.notifier_call = dwc3_thead_host_notifier;
-	ret = devm_extcon_register_notifier(dev, host_edev, EXTCON_USB_HOST,
-					    &thead->host_nb);
-	if (ret < 0) {
-		dev_err(dev, "Host notifier register failed\n");
-		return ret;
-	}
-
-	/* Update initial VBUS override based on extcon state */
-	if (extcon_get_state(thead->edev, EXTCON_USB) ||
-	    !extcon_get_state(host_edev, EXTCON_USB_HOST))
-		dwc3_thead_vbus_notifier(&thead->vbus_nb, true, thead->edev);
-	else
-		dwc3_thead_vbus_notifier(&thead->vbus_nb, false, thead->edev);
-
-	return 0;
-}
-
-static int dwc3_thead_suspend(struct dwc3_thead *thead)
-{
-	return 0;
-}
-
-static int dwc3_thead_resume(struct dwc3_thead *thead)
-{
-	return 0;
-}
-
-static int dwc3_thead_of_register_core(struct platform_device *pdev)
-{
-	struct dwc3_thead	*thead = platform_get_drvdata(pdev);
-	struct device_node	*np = pdev->dev.of_node, *dwc3_np;
-	struct device		*dev = &pdev->dev;
-	int			ret;
-
-	dwc3_np = of_get_child_by_name(np, "dwc3");
-	if (!dwc3_np) {
-		dev_err(dev, "failed to find dwc3 core child\n");
-		return -ENODEV;
-	}
-
-	ret = of_platform_populate(np, NULL, NULL, dev);
-	if (ret) {
-		dev_err(dev, "failed to register dwc3 core - %d\n", ret);
-		goto node_put;
-	}
-
-	thead->dwc3 = of_find_device_by_node(dwc3_np);
-	if (!thead->dwc3) {
-		ret = -ENODEV;
-		dev_err(dev, "failed to get dwc3 platform device\n");
-	}
-
-node_put:
-	of_node_put(dwc3_np);
-
-	return ret;
-}
-
-static void dwc3_thead_savepower_u3phy(struct dwc3_thead *thead)
-{
-	struct device *dev = thead->dev;
-	int reg;
-
-	/* config usb top within USB ctrl & PHY reset */
+	/* 1. reset assert */
 	regmap_update_bits(thead->misc_sysreg, USB3_DRD_SWRST,
 				USB3_DRD_MASK, USB3_DRD_PRST);
 
-	/*
-	 * dwc reg also need to be configed to save power
-	 * 1 set USB_SYS[COMMONONN] while GCTL[SOFITPSYNC]=1
-	 *   notice GCTL[SOFITPSYNC] should be mutex with GFLADJ[LPM_SEL].
-	 * 2 enable GUSB3PIPECLT[SUSPENDEN]
+	/* 
+	 *	2. Common Block Power-Down Control.
+	 *	Controls the power-down signals in the PLL block
+	 *	when the USB 3.0 femtoPHY is in Suspend or Sleep mode.
 	 */
-	regmap_update_bits(thead->usb0_apb, USB_SYS,
+	regmap_update_bits(thead->usb3_drd, USB_SYS,
 				COMMONONN, COMMONONN);
-	regmap_update_bits(thead->usb0_apb, USB_SSP_EN,
-				REF_SSP_EN, REF_SSP_EN);
-	regmap_write(thead->usb0_apb, USB_HOST_CTRL, 0x1101);
 
+	/*
+	 *	3. Reference Clock Enable for SS function.
+	 *	Enables the reference clock to the prescaler. 
+	 *	The ref_ssp_en signal must remain de-asserted until
+	 *	the reference clock is running at the appropriate frequency,
+	 *	at which point ref_ssp_en can be asserted.
+	 *	For lower power states, ref_ssp_en can also be de-asserted.
+	 */
+	regmap_update_bits(thead->usb3_drd, USB_SSP_EN,
+				REF_SSP_EN, REF_SSP_EN);
+
+	/* 4. set host ctrl */
+	regmap_write(thead->usb3_drd, USB_HOST_CTRL, 0x1101);
+
+	/* 5. reset deassert */
 	regmap_update_bits(thead->misc_sysreg, USB3_DRD_SWRST,
 				USB3_DRD_MASK, USB3_DRD_MASK);
 
-	regmap_read(thead->usb0_apb, USB_SYS, &reg);
-	dev_dbg(dev, "usb_sys:0x%x\n", reg);
+	/* 6. wait deassert complete */
+	udelay(10);
+}
 
-	regmap_read(thead->usb0_apb, USB_HOST_CTRL, &reg);
-	dev_dbg(dev, "host_ctrl:0x%x\n", reg);
+static void dwc3_thead_assert(struct dwc3_thead *thead)
+{
+	/* close ssp */
+	regmap_update_bits(thead->usb3_drd, USB_SSP_EN,
+				REF_SSP_EN, 0);
 
-	regmap_read(thead->misc_sysreg, USB3_DRD_SWRST, &reg);
-	dev_dbg(dev, "drd_swrst:0x%x\n", reg);
+	/* reset assert usb */
+	regmap_update_bits(thead->misc_sysreg, USB3_DRD_SWRST,
+				USB3_DRD_MASK, 0);
+
 }
 
 static int dwc3_thead_probe(struct platform_device *pdev)
@@ -271,111 +165,130 @@ static int dwc3_thead_probe(struct platform_device *pdev)
 	thead->vbus = devm_regulator_get(dev, "vbus");
 	if (IS_ERR(thead->vbus))
 		dev_dbg(dev, "no need to get vbus\n");
-	else
-		regulator_enable(thead->vbus);
+	else {
+		ret = regulator_enable(thead->vbus);
+
+		if (ret) {
+			dev_err(dev, "failed to enable regulator vbus %d\n", ret);
+		}
+	}
 
 	thead->hub1v2 = devm_regulator_get(dev, "hub1v2");
 	if (IS_ERR(thead->hub1v2))
 		dev_dbg(dev, "no need to set hub1v2\n");
-	else
-		regulator_enable(thead->hub1v2);
+	else {
+		ret = regulator_enable(thead->hub1v2);
+
+		if (ret) {
+			dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
+		}
+	}
 
 	thead->hub5v = devm_regulator_get(dev, "hub5v");
 	if (IS_ERR(thead->hub5v))
 		dev_dbg(dev, "no need to set hub5v\n");
-	else
-		regulator_enable(thead->hub5v);
+	else {
+		ret = regulator_enable(thead->hub5v);
+
+		if (ret) {
+			dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
+		}
+	}
 
 	thead->misc_sysreg = syscon_regmap_lookup_by_phandle(np, "usb3-misc-regmap");
 	if (IS_ERR(thead->misc_sysreg))
 		return PTR_ERR(thead->misc_sysreg);
 
-	thead->usb0_apb = syscon_regmap_lookup_by_phandle(np, "usb3-drd-regmap");
-	if (IS_ERR(thead->usb0_apb))
-		return PTR_ERR(thead->usb0_apb);
+	thead->usb3_drd = syscon_regmap_lookup_by_phandle(np, "usb3-drd-regmap");
+	if (IS_ERR(thead->usb3_drd))
+		return PTR_ERR(thead->usb3_drd);
 
-	dwc3_thead_savepower_u3phy(thead);
+	ret = clk_bulk_get_all(thead->dev, &thead->clks);
+	if (ret < 0)
+		goto err;
 
-	ret = dwc3_thead_of_register_core(pdev);
-	if (ret) {
-		dev_err(dev, "failed to register DWC3 Core, err=%d\n", ret);
-		goto depopulate;
-	}
+	thead->num_clocks = ret;
 
-	/* fixme: need to verify because hw can't support detect event */
-	ret = dwc3_thead_register_extcon(thead);
+	ret = clk_bulk_prepare_enable(thead->num_clocks, thead->clks);
 	if (ret)
 		goto err;
 
+	dwc3_thead_deassert(thead);
 
-	device_init_wakeup(&pdev->dev, 1);
-	thead->is_suspended = false;
+	ret = of_platform_populate(np, NULL, NULL, dev);
+	if (ret) {
+		dev_err(dev, "failed to register dwc3 core - %d\n", ret);
+		goto err_clk_put;
+	}
+
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-	pm_runtime_forbid(dev);
+	pm_runtime_get_sync(dev);
+
 	dev_info(dev, "light dwc3 probe ok!\n");
 
 	return 0;
 
-depopulate:
-	of_platform_depopulate(&pdev->dev);
+err_clk_put:
+	clk_bulk_disable_unprepare(thead->num_clocks, thead->clks);
+	clk_bulk_put_all(thead->num_clocks, thead->clks);
 err:
 	return ret;
 }
 
 static int dwc3_thead_remove(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
+	struct dwc3_thead	*thead = platform_get_drvdata(pdev);
 
-	pm_runtime_allow(dev);
-	pm_runtime_disable(dev);
+	dwc3_thead_assert(thead);
+
+	of_platform_depopulate(thead->dev);
+
+	clk_bulk_disable_unprepare(thead->num_clocks, thead->clks);
+	clk_bulk_put_all(thead->num_clocks, thead->clks);
+
+	pm_runtime_disable(thead->dev);
+	pm_runtime_set_suspended(thead->dev);
 
 	return 0;
 }
 
-static int __maybe_unused dwc3_thead_pm_suspend(struct device *dev)
+#ifdef CONFIG_PM_SLEEP
+static int dwc3_thead_pm_suspend(struct device *dev)
 {
 	struct dwc3_thead *thead = dev_get_drvdata(dev);
-	int ret = 0;
 
-	ret = dwc3_thead_suspend(thead);
-	if (!ret)
-		thead->pm_suspended = true;
+	dwc3_thead_assert(thead);
 
-	return ret;
+	clk_bulk_disable(thead->num_clocks, thead->clks);
+
+	return 0;
 }
 
-static int __maybe_unused dwc3_thead_pm_resume(struct device *dev)
+
+static int dwc3_thead_pm_resume(struct device *dev)
 {
 	struct dwc3_thead *thead = dev_get_drvdata(dev);
 	int ret;
 
-	ret = dwc3_thead_resume(thead);
-	if (!ret)
-		thead->pm_suspended = false;
+	ret = clk_bulk_prepare_enable(thead->num_clocks, thead->clks);
+	if (ret) {
+		dev_err(dev, "failed to enable clk ret=%d\n", ret);
+		return ret;
+	}
+
+	dwc3_thead_deassert(thead);
 
 	return ret;
 }
 
-static int __maybe_unused dwc3_thead_runtime_suspend(struct device *dev)
-{
-	struct dwc3_thead *thead = dev_get_drvdata(dev);
-
-	return dwc3_thead_suspend(thead);
-}
-
-static int __maybe_unused dwc3_thead_runtime_resume(struct device *dev)
-{
-	struct dwc3_thead *thead = dev_get_drvdata(dev);
-
-	return dwc3_thead_resume(thead);
-}
-
 static const struct dev_pm_ops dwc3_thead_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(dwc3_thead_pm_suspend, dwc3_thead_pm_resume)
-	SET_RUNTIME_PM_OPS(dwc3_thead_runtime_suspend, dwc3_thead_runtime_resume,
-			   NULL)
 };
+#define DEV_PM_OPS	(&dwc3_thead_dev_pm_ops)
+#else
+#define DEV_PM_OPS	NULL
+#endif /* CONFIG_PM_SLEEP */
 
 static const struct of_device_id dwc3_thead_of_match[] = {
 	{ .compatible = "thead,dwc3" },
@@ -388,10 +301,7 @@ static struct platform_driver dwc3_thead_driver = {
 	.remove		= dwc3_thead_remove,
 	.driver		= {
 		.name	= "dwc3-thead",
-	/*
-	 * fixme: need to verify because hw can't support plug event
-	 */
-//		.pm	= &dwc3_thead_dev_pm_ops,
+		.pm	= DEV_PM_OPS,
 		.of_match_table	= dwc3_thead_of_match,
 	},
 };

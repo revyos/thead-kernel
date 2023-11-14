@@ -30,7 +30,7 @@ struct jadard_panel_desc {
 	unsigned long mode_flags;
 	enum mipi_dsi_pixel_format format;
 	unsigned int lanes;
-//	const struct jadard_panel_cmd *on_cmds;
+	//const struct jadard_panel_cmd *on_cmds;
 	unsigned int on_cmds_num;
 };
 
@@ -52,20 +52,20 @@ static inline struct panel_info *to_panel_info(struct drm_panel *panel)
 	return container_of(panel, struct panel_info, base);
 }
 
-//static int jadard_send_mipi_cmds(struct drm_panel *panel, const struct jadard_panel_cmd *cmds)
-//{
-//	struct panel_info *pinfo = to_panel_info(panel);
-//	unsigned int i = 0;
-//	int err;
-//
-//	for (i = 0; i < pinfo->desc->on_cmds_num; i++) {
-//		err = mipi_dsi_dcs_write_buffer(pinfo->link, &(cmds[i].cmddata[0]), cmds[i].cmdlen);
-//		if (err < 0)
-//			return err;
-//	}
-//
-//	return 0;
-//}
+// static int jadard_send_mipi_cmds(struct drm_panel *panel, const struct jadard_panel_cmd *cmds)
+// {
+// 	struct panel_info *pinfo = to_panel_info(panel);
+// 	unsigned int i = 0;
+// 	int err;
+
+// 	for (i = 0; i < pinfo->desc->on_cmds_num; i++) {
+// 		err = mipi_dsi_dcs_write_buffer(pinfo->link, &(cmds[i].cmddata[0]), cmds[i].cmdlen);
+// 		if (err < 0)
+// 			return err;
+// 	}
+
+// 	return 0;
+// }
 
 static int jadard_disable(struct drm_panel *panel)
 {

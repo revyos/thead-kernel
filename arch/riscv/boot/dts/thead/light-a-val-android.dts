@@ -30,45 +30,54 @@
 
 &lightsound {
 	status = "okay";
-	
-	simple-audio-card,widgets =
-		"Microphone", "Mic Jack",
-		"Speaker", "Speaker",
-		"Headphone", "Headphone Jack";
-	simple-audio-card,routing =
-		"Headphone Jack", "HP_L",
-		"Headphone Jack", "HP_R",
-		"Speaker", "SPK_LP",
-		"Speaker", "SPK_LN",
-		"Speaker", "SPK_RP",
-		"Speaker", "SPK_RN",
-		"Mic Jack","MICB",
-		"LINPUT1", "Mic Jack",
-		"LINPUT3", "Mic Jack";
 
-	simple-audio-card,dai-link@0 {          /* I2S - CODEC */
-		reg = <0>;
-		format = "i2s";
-		cpu {
-			sound-dai = <&light_i2s 0>;
-		};
-		codec {
-			sound-dai = <&codec>;
-		};
-	};
-	simple-audio-card,dai-link@1 {          /* I2S - HDMI */
+        simple-audio-card,dai-link@0 {          /* I2S - AUDIO SYS CODEC 8156*/
+                reg = <0>;
+                format = "i2s";
+                cpu {
+                        sound-dai = <&i2s0 0>;
+                };
+                codec {
+                        sound-dai = <&es8156_audio_codec>;
+                };
+        };
+
+        simple-audio-card,dai-link@1 {          /* I2S - AUDIO SYS CODEC 7210*/
                 reg = <1>;
                 format = "i2s";
                 cpu {
-                        sound-dai = <&light_i2s 1>;
+                        sound-dai = <&i2s_8ch_sd2 2>;
                 };
                 codec {
-                        sound-dai = <&dummy_codec>;
+                        sound-dai = <&es7210_audio_codec_adc0>;
                 };
-    };
+        };
+
+	simple-audio-card,dai-link@2 {          /* I2S - HDMI */
+		reg = <2>;
+		format = "i2s";
+		cpu {
+			sound-dai = <&light_i2s 1>;
+		};
+		codec {
+			sound-dai = <&dummy_codec>;
+		};
+	};
 };
 
 &light_i2s {
+	status = "okay";
+};
+
+&i2s0 {
+        status = "okay";
+};
+
+&i2s_8ch_sd2 {
+        status = "okay";
+};
+
+&es7210_audio_codec_adc0 {
         status = "okay";
 };
 

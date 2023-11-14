@@ -206,6 +206,7 @@ static const struct dmi_system_id dw_i2c_hwmon_class_dmi[] = {
 
 static int dw_i2c_plat_probe(struct platform_device *pdev)
 {
+	dev_info(&pdev->dev, "going to probe light i2c driver\n");
 	struct dw_i2c_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	struct i2c_adapter *adap;
 	struct dw_i2c_dev *dev;
@@ -377,6 +378,7 @@ static void dw_i2c_plat_complete(struct device *dev)
 #ifdef CONFIG_PM
 static int dw_i2c_plat_suspend(struct device *dev)
 {
+	dev_info(dev, "light i2c suspend\n");
 	struct dw_i2c_dev *i_dev = dev_get_drvdata(dev);
 
 	i_dev->suspended = true;
@@ -391,6 +393,35 @@ static int dw_i2c_plat_suspend(struct device *dev)
 }
 
 static int dw_i2c_plat_resume(struct device *dev)
+{
+	dev_info(dev, "light i2c resume\n");
+	struct dw_i2c_dev *i_dev = dev_get_drvdata(dev);
+
+	if (!i_dev->shared_with_punit)
+		i2c_dw_prepare_clk(i_dev, true);
+
+	i_dev->init(i_dev);
+	i_dev->suspended = false;
+
+	return 0;
+}
+
+static int dw_i2c_plat_runtime_suspend(struct device *dev)
+{
+	struct dw_i2c_dev *i_dev = dev_get_drvdata(dev);
+
+	i_dev->suspended = true;
+
+	if (i_dev->shared_with_punit)
+		return 0;
+
+	i_dev->disable(i_dev);
+	i2c_dw_prepare_clk(i_dev, false);
+
+	return 0;
+}
+
+static int dw_i2c_plat_runtime_resume(struct device *dev)
 {
 	struct dw_i2c_dev *i_dev = dev_get_drvdata(dev);
 
@@ -407,7 +438,7 @@ static const struct dev_pm_ops dw_i2c_dev_pm_ops = {
 	.prepare = dw_i2c_plat_prepare,
 	.complete = dw_i2c_plat_complete,
 	SET_LATE_SYSTEM_SLEEP_PM_OPS(dw_i2c_plat_suspend, dw_i2c_plat_resume)
-	SET_RUNTIME_PM_OPS(dw_i2c_plat_suspend, dw_i2c_plat_resume, NULL)
+	SET_RUNTIME_PM_OPS(dw_i2c_plat_runtime_suspend, dw_i2c_plat_runtime_resume, NULL)
 };
 
 #define DW_I2C_DEV_PMOPS (&dw_i2c_dev_pm_ops)

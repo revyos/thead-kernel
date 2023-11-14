@@ -118,9 +118,10 @@ static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
 {
 	u32 dma_en = 0;
 	u32 i2s_en = 0;
-	u32 i2s_status = 0;
 	u32 i2s_imr = 0;
 
+	/* get current dma status, save rx configuration */
+	dma_en = readl(chip->regs + I2S_DMACR);
 	if (on) {
 		dma_en |= DMACR_TDMAE_EN;
 		i2s_en |= IISEN_I2SEN;
@@ -128,36 +129,57 @@ static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
 		writel(i2s_en, chip->regs + I2S_IISEN);
 	} else {
 		dma_en &= ~DMACR_TDMAE_EN;
-		i2s_en &= ~IISEN_I2SEN;
 		i2s_imr  = readl(chip->regs + I2S_IMR);
 		i2s_imr &= ~(IMR_TXUIRM_INTR_MSK);
 		i2s_imr &= ~(IMR_TXEIM_INTR_MSK);
 		writel(i2s_imr, chip->regs + I2S_IMR);
 		writel(dma_en, chip->regs + I2S_DMACR);
-		writel(i2s_en, chip->regs + I2S_IISEN);
+
+		if (!chip->mclk_keepon) {
+			/*
+			* The enablement of I2S can onlybe truned off when
+			* the DMA configuration for RX and TX is completely disabled.
+			*/
+			if ( ((DMACR_TDMAE_MSK | DMACR_RDMAE_MSK) & dma_en) == 0) {
+				i2s_en &= ~IISEN_I2SEN;
+				writel(i2s_en, chip->regs + I2S_IISEN);
+			}
+		}
 	}
 }
 
 static inline void light_snd_rxctrl(struct light_i2s_priv *chip, bool on)
 {
-        u32 dma_en;
+    u32 dma_en;
 	u32 i2s_en;
 
+	/* get current dma status, save tx configuration */
+	dma_en = readl(chip->regs + I2S_DMACR);
 	if (on) {
 		dma_en |= DMACR_RDMAE_EN;
 		i2s_en |= IISEN_I2SEN;
-	} else {
-		dma_en &= ~DMACR_RDMAE_EN;
-		i2s_en &= ~IISEN_I2SEN;
-	}
-
         writel(dma_en, chip->regs + I2S_DMACR);
         writel(i2s_en, chip->regs + I2S_IISEN);
+	} else {
+		dma_en &= ~DMACR_RDMAE_EN;
+        writel(dma_en, chip->regs + I2S_DMACR);
+		if (!chip->mclk_keepon) {
+			/*
+			* The enablement of I2S can onlybe truned off when
+			* the DMA confgiguratio for RX and TX is completely disabled.
+			*/
+			if ( ((DMACR_TDMAE_MSK | DMACR_RDMAE_MSK) & dma_en) == 0) {
+				i2s_en &= ~IISEN_I2SEN;
+				writel(i2s_en, chip->regs + I2S_IISEN);
+			}
+		}
+	}
 }
 
 static int light_i2s_dai_startup(struct snd_pcm_substream *substream,
 			   struct snd_soc_dai *dai)
 {
+	//printk("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
 	return 0;
 }
 
@@ -166,11 +188,10 @@ static void light_i2s_dai_shutdown(struct snd_pcm_substream *substream,
 {
 	struct light_i2s_priv *i2s_private = snd_soc_dai_get_drvdata(dai);
 
+	//printk("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		light_snd_rxctrl(i2s_private, 0);
-
-	clk_disable_unprepare(i2s_private->clk);
 }
 
 /**
@@ -184,29 +205,46 @@ static int light_i2s_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 {
 	int ret = 0;
 
-	struct light_i2s_priv *i2s_private = snd_soc_dai_get_drvdata(dai);
+	struct light_i2s_priv *priv = snd_soc_dai_get_drvdata(dai);
         bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
+
+	//printk("%s: %s %s cmd=%d tx=%d\n", __func__, substream->pcm->name, dai->name, cmd, tx);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		if (tx)
-			light_snd_txctrl(i2s_private, 1);
-		else
-			light_snd_rxctrl(i2s_private, 1);
+		if (tx) {
+			light_snd_txctrl(priv, 1);
+			priv->state |= I2S_STATE_TX_RUNNING;
+		}
+		else {
+			light_snd_rxctrl(priv, 1);
+			priv->state |= I2S_STATE_RX_RUNNING;
+		}
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		if (tx) {
 			dmaengine_terminate_async(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
-			light_snd_txctrl(i2s_private, 0);
+			light_snd_txctrl(priv, 0);
+			priv->state &= ~I2S_STATE_TX_RUNNING;
+		} else {
+			light_snd_rxctrl(priv, 0);
+			priv->state &= ~I2S_STATE_RX_RUNNING;
+		}
+		break;
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+    	regmap_read(priv->regmap, I2S_FUNCMODE, &priv->suspend_funcmode);
+		if (tx) {
+			dmaengine_pause(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
+			light_snd_txctrl(priv, 0);
+		} else {
+			light_snd_rxctrl(priv, 0);
 		}
 		break;
     default:
         return -EINVAL;
-
 	}
 
 	return ret;
@@ -217,6 +255,8 @@ static int light_i2s_set_fmt_dai(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 	struct light_i2s_priv *i2s_private = snd_soc_dai_get_drvdata(cpu_dai);
 	u32 cnfout = 0;
 	u32 cnfin = 0;
+
+    pm_runtime_resume_and_get(i2s_private->dev);
 
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_I2S:
@@ -238,9 +278,12 @@ static int light_i2s_set_fmt_dai(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 			cnfout);
 
 	cnfin |= CNFIN_I2S_RXMODE_MASTER_MODE;
+
 	regmap_update_bits(i2s_private->regmap, I2S_IISCNF_IN,
 			CNFIN_I2S_RXMODE_Msk,
 			cnfin);
+
+	pm_runtime_put_sync(i2s_private->dev);
 
 	return 0;
 }
@@ -256,7 +299,7 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 	u32 funcmode;
 	u32 iiscnf_out;
 	u32 iiscnf_in;
-	u32 i2s_en;
+	u32 i2s_en = 0;
 
 	u32 channels = params_channels(params);
 
@@ -307,6 +350,10 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 		return -EINVAL;
 	}
 
+	/* 
+	 * FUNCMODE,I2S_IISCNF_OUT,I2S_IISCNF_IN registers,
+	 * it is impossible to write to this register when I2S is enabled
+	 */
 	i2s_en &= ~IISEN_I2SEN;
 	writel(i2s_en, i2s_private->regs + I2S_IISEN);
 
@@ -316,23 +363,18 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 	funcmode = readl(i2s_private->regs + I2S_FUNCMODE);
 	if (tx) {
 		funcmode |= FUNCMODE_TMODE_WEN;
-		funcmode &= ~FUNCMODE_CH1_ENABLE;
-		funcmode |= FUNCMODE_RMODE_WEN;
-		funcmode &= ~FUNCMODE_RMODE;
 		funcmode &= ~FUNCMODE_TMODE;
 		funcmode |= FUNCMODE_TMODE;
 	} else {
 		funcmode |= FUNCMODE_RMODE_WEN;
-		funcmode |= FUNCMODE_CH0_ENABLE;
-		funcmode |= FUNCMODE_CH1_ENABLE;
-		funcmode |= FUNCMODE_CH2_ENABLE;
-		funcmode |= FUNCMODE_TMODE_WEN;
-		funcmode &= ~FUNCMODE_TMODE;
 		funcmode &= ~FUNCMODE_RMODE;
 		funcmode |= FUNCMODE_RMODE;
 	}
+	funcmode |= FUNCMODE_CH0_ENABLE;
 
 	writel(funcmode, i2s_private->regs + I2S_FUNCMODE);
+
+	//printk("%s: %s %s channels=%d rate=%d fm=%x\n", __func__, substream->pcm->name, dai->name, channels, rate, funcmode);
 
 	if (channels == MONO_SOURCE) {
 		iiscnf_out |= IISCNFOUT_TX_VOICE_EN_MONO;
@@ -350,6 +392,13 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 		writel(iiscnf_in, i2s_private->regs + I2S_IISCNF_IN);
 
 	light_i2s_set_div_sclk(i2s_private, rate, DIV_DEFAULT);
+
+    /* Turn on the I2S enable switch ahead of time, 
+     * and start the MCLK before the PA is turned on
+	 * to solve the pop noise caused by the sudden change in I2S startup.
+	 */
+	i2s_en |= IISEN_I2SEN;
+	writel(i2s_en, i2s_private->regs + I2S_IISEN);
 
 	return 0;
 }
@@ -421,6 +470,8 @@ static int light_i2s_dai_probe(struct snd_soc_dai *dai)
 {
 	struct light_i2s_priv *i2s = snd_soc_dai_get_drvdata(dai);
 
+	//printk("%s: %p %p\n", __func__, i2s->base, i2s->regs);
+
 	if(i2s)
 		snd_soc_dai_init_dma_data(dai, &i2s->dma_params_tx,
 				&i2s->dma_params_rx);
@@ -461,6 +512,7 @@ static struct snd_soc_dai_driver light_i2s_soc_dai[] = {
 			.channels_max	= 2,
 		},
 		.ops = &light_i2s_dai_ops,
+		.symmetric_rates = 1,
 	},
 	{
 		.probe = light_i2s_dai_probe,
@@ -495,32 +547,12 @@ static int light_pcm_probe(struct platform_device *pdev,struct light_i2s_priv *i
 
 static bool light_i2s_wr_reg(struct device *dev, unsigned int reg)
 {
-        switch (reg) {
-        case I2S_IISEN:
-        case I2S_FUNCMODE:
-        case I2S_IISCNF_IN:
-        case I2S_FSSTA:
-        case I2S_IISCNF_OUT:
-        case I2S_DMACR:
-                return true;
-        default:
-                return false;
-        }
+    return true;
 }
 
 static bool light_i2s_rd_reg(struct device *dev, unsigned int reg)
 {
-        switch (reg) {
-        case I2S_IISEN:
-        case I2S_FUNCMODE:
-        case I2S_IISCNF_IN:
-        case I2S_FSSTA:
-        case I2S_IISCNF_OUT:
-        case I2S_DMACR:
-                return true;
-        default:
-                return false;
-        }
+	return true;
 }
 
 static const struct regmap_config light_i2s_regmap_config = {
@@ -530,7 +562,7 @@ static const struct regmap_config light_i2s_regmap_config = {
         .max_register = I2S_DR4,
         .writeable_reg = light_i2s_wr_reg,
         .readable_reg = light_i2s_rd_reg,
-        .cache_type = REGCACHE_FLAT,
+        .cache_type = REGCACHE_NONE,
 };
 
 static int light_audio_pinconf_set(struct device *dev, unsigned int pin_id, unsigned int val)
@@ -581,29 +613,114 @@ static int light_audio_pinctrl(struct device *dev)
 
 static int light_i2s_runtime_suspend(struct device *dev)
 {
-        struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
+	struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
 
-        regcache_cache_only(i2s_priv->regmap, true);
-        clk_disable_unprepare(i2s_priv->clk);
+	//printk("%s: %s\n", __func__, i2s_priv->name);
+
+	if (!i2s_priv->mclk_keepon) {
+		regcache_cache_only(i2s_priv->regmap, true);
+		clk_disable_unprepare(i2s_priv->clk);
+	}
 
 	return 0;
 }
 
 static int light_i2s_runtime_resume(struct device *dev)
 {
-        struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
-        int ret;
+	struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
+	int ret;
 
-        ret = clk_prepare_enable(i2s_priv->clk);
-        if (ret) {
-                dev_err(i2s_priv->dev, "clock enable failed %d\n", ret);
-                return ret;
-        }
+	//printk("%s: %s\n", __func__, i2s_priv->name);
 
-        regcache_cache_only(i2s_priv->regmap, false);
+	if (!i2s_priv->mclk_keepon) {
+		ret = clk_prepare_enable(i2s_priv->clk);
+		if (ret) {
+			dev_err(i2s_priv->dev, "clock enable failed %d\n", ret);
+			return ret;
+		}
 
-        return ret;
+		regcache_cache_only(i2s_priv->regmap, false);
+	}
+
+	return ret;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int light_i2s_suspend(struct device *dev)
+{
+    struct light_i2s_priv *priv = dev_get_drvdata(dev);
+
+	if (priv->state == I2S_STATE_IDLE)
+		return 0;
+
+	regmap_read(priv->regmap, I2S_DIV0_LEVEL, &priv->suspend_div0_level);
+	regmap_read(priv->regmap, I2S_DIV3_LEVEL, &priv->suspend_div3_level);
+	regmap_read(priv->regmap, I2S_IISCNF_IN, &priv->suspend_iiscnf_in);
+	regmap_read(priv->regmap, I2S_FSSTA, &priv->suspend_fssta);
+	regmap_read(priv->regmap, I2S_IISCNF_OUT, &priv->suspend_ii2cnf_out);
+	regmap_read(priv->regmap, I2S_FADTLR, &priv->suspend_fadtlr);
+	regmap_read(priv->regmap, I2S_SCCR, &priv->suspend_sccr);
+	regmap_read(priv->regmap, I2S_TXFTLR, &priv->suspend_txftlr);
+	regmap_read(priv->regmap, I2S_RXFTLR, &priv->suspend_rxftlr);
+	regmap_read(priv->regmap, I2S_IMR, &priv->suspend_imr);
+	regmap_read(priv->regmap, I2S_DMATDLR, &priv->suspend_dmatdlr);
+	regmap_read(priv->regmap, I2S_DMARDLR, &priv->suspend_dmardlr);
+
+	if (strcmp(priv->name, AP_I2S)) {
+		regmap_read(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, &priv->cpr_peri_div_sel);
+		regmap_read(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, &priv->cpr_peri_ctrl);
+		regmap_read(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, &priv->cpr_peri_clk_sel);
+
+		if (!strcmp(priv->name, AUDIO_I2S0))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S0_SRST_N_SEL_MSK, CPR_I2S0_SRST_N_SEL(0));
+		else if (!strcmp(priv->name, AUDIO_I2S1))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S1_SRST_N_SEL_MSK, CPR_I2S1_SRST_N_SEL(0));
+		else if (!strcmp(priv->name, AUDIO_I2S2))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S2_SRST_N_SEL_MSK, CPR_I2S2_SRST_N_SEL(0));
+	}
+
+    clk_disable_unprepare(priv->clk);
+
+	return 0;
+}
+
+static int light_i2s_resume(struct device *dev)
+{
+    struct light_i2s_priv *priv = dev_get_drvdata(dev);
+    int ret;
+
+	if (priv->state == I2S_STATE_IDLE)
+		return 0;
+
+    ret = clk_prepare_enable(priv->clk);
+    if (ret) {
+            dev_err(priv->dev, "clock enable failed %d\n", ret);
+            return ret;
+    }
+
+	if (strcmp(priv->name, AP_I2S)) {
+		if (!strcmp(priv->name, AUDIO_I2S0))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S0_SRST_N_SEL_MSK, CPR_I2S0_SRST_N_SEL(1));
+		else if (!strcmp(priv->name, AUDIO_I2S1))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S1_SRST_N_SEL_MSK, CPR_I2S1_SRST_N_SEL(1));
+		else if (!strcmp(priv->name, AUDIO_I2S2))
+			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S2_SRST_N_SEL_MSK, CPR_I2S2_SRST_N_SEL(1));
+		regmap_write(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, priv->cpr_peri_ctrl);
+		regmap_write(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, priv->cpr_peri_clk_sel);
+		regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
+	}
+
+	regmap_write(priv->regmap, I2S_IISEN, 0);
+	regmap_write(priv->regmap, I2S_FSSTA, priv->suspend_fssta);
+	regmap_write(priv->regmap, I2S_FUNCMODE, priv->suspend_funcmode | FUNCMODE_TMODE_WEN | FUNCMODE_RMODE_WEN);
+	regmap_write(priv->regmap, I2S_IISCNF_IN, priv->suspend_iiscnf_in);
+	regmap_write(priv->regmap, I2S_IISCNF_OUT, priv->suspend_ii2cnf_out);
+	regmap_write(priv->regmap, I2S_DIV0_LEVEL, priv->suspend_div0_level);
+	regmap_write(priv->regmap, I2S_DIV3_LEVEL, priv->suspend_div3_level);
+
+    return ret;
+}
+#endif
 
 static const struct of_device_id light_i2s_of_match[] = {
 	{ .compatible = "light,light-i2s"},
@@ -636,7 +753,7 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 		if (!strcmp(sprop, "i2s-master"))
 			i2s_priv->dai_fmt = SND_SOC_DAIFMT_I2S;
 		else
-			printk("mode is not i2s-master");
+			printk("mode is not i2s-master\n");
 	}
 
 	sprop = of_get_property(np, "light,sel", NULL);
@@ -650,20 +767,30 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 	else
 		i2s_priv->dma_maxburst = 8;
 
+
+	iprop = of_get_property(np, "light,mclk_keepon", NULL);
+	if (iprop)
+		i2s_priv->mclk_keepon = be32_to_cpup(iprop);
+	else
+		i2s_priv->mclk_keepon = 0;
+
 	dev_set_drvdata(&pdev->dev, i2s_priv);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	i2s_priv->regs = devm_ioremap_resource(dev, res);
+
+	//printk("%s: %p %p\n", __func__, i2s_priv->base, i2s_priv->regs);
+
 	if (IS_ERR(i2s_priv->regs))
 		return PTR_ERR(i2s_priv->regs);
 
-        i2s_priv->regmap = devm_regmap_init_mmio(&pdev->dev, i2s_priv->regs,
-                                            &light_i2s_regmap_config);
-        if (IS_ERR(i2s_priv->regmap)) {
-                dev_err(&pdev->dev,
-                        "Failed to initialise managed register map\n");
-                return PTR_ERR(i2s_priv->regmap);
-        }
+	i2s_priv->regmap = devm_regmap_init_mmio(&pdev->dev, i2s_priv->regs,
+										&light_i2s_regmap_config);
+	if (IS_ERR(i2s_priv->regmap)) {
+			dev_err(&pdev->dev,
+					"Failed to initialise managed register map\n");
+			return PTR_ERR(i2s_priv->regmap);
+	}
 
 	if (!strcmp(i2s_priv->name, AUDIO_I2S0) || !strcmp(i2s_priv->name, AUDIO_I2S1) || !strcmp(i2s_priv->name, AUDIO_I2S2)) {
 		i2s_priv->audio_pin_regmap = syscon_regmap_lookup_by_phandle(np, "audio-pin-regmap");
@@ -682,13 +809,6 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 		light_audio_cpr_set(i2s_priv, CPR_PERI_CTRL_REG, CPR_I2S_SYNC_MSK, CPR_I2S_SYNC_EN);
 	}
 
-	pm_runtime_enable(&pdev->dev);
-        if (!pm_runtime_enabled(&pdev->dev)) {
-                ret = light_i2s_runtime_resume(&pdev->dev);
-                if (ret)
-                        goto err_pm_disable;
-        }
-
 	irq = platform_get_irq(pdev, 0);
 
 	if (!res || (int)irq <= 0) {
@@ -700,9 +820,9 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 	if (IS_ERR(i2s_priv->clk))
                 return PTR_ERR(i2s_priv->clk);
 
-	ret = clk_prepare_enable(i2s_priv->clk);
-        if (ret < 0)
-                return ret;
+    pm_runtime_enable(&pdev->dev);
+    pm_runtime_resume_and_get(&pdev->dev); // clk gate is enabled by hardware as default register value
+    pm_runtime_put_sync(&pdev->dev);
 
 	i2s_priv->dma_params_tx.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
 	i2s_priv->dma_params_rx.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
@@ -721,6 +841,10 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 	}
 
 	light_pcm_probe(pdev, i2s_priv);
+
+	if (i2s_priv->mclk_keepon) {
+		clk_prepare_enable(i2s_priv->clk);
+	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &light_i2s_soc_component,
 				    light_i2s_soc_dai, ARRAY_SIZE(light_i2s_soc_dai));
@@ -753,6 +877,8 @@ static int light_i2s_remove(struct platform_device *pdev)
 static const struct dev_pm_ops light_i2s_pm_ops = {
         SET_RUNTIME_PM_OPS(light_i2s_runtime_suspend, light_i2s_runtime_resume,
                            NULL)
+		SET_SYSTEM_SLEEP_PM_OPS(light_i2s_suspend,
+				     light_i2s_resume)
 };
 
 static struct platform_driver light_i2s_driver = {

@@ -540,6 +540,7 @@ struct dc_hw {
     struct dc_hw_qos     qos;
     struct dc_hw_funcs   *func;
     struct vs_dc_info    *info;
+    struct regmap *vosys_regmap;
 };
 
 int dc_hw_init(struct dc_hw *hw);

@@ -29,6 +29,7 @@ struct dw_spi_mmio {
 	struct dw_spi  dws;
 	struct clk     *clk;
 	struct clk     *pclk;
+	struct clk     *sclk;
 	void           *priv;
 	struct reset_control *rstc;
 };
@@ -222,6 +223,54 @@ static int dw_spi_keembay_init(struct platform_device *pdev,
 	return 0;
 }
 
+static int spi_clk_prepare_enable(struct dw_spi_mmio *dwsmmio)
+{
+	int ret;
+
+	ret = clk_prepare_enable(dwsmmio->pclk);
+	if (ret)
+		return ret;
+
+	ret = clk_prepare_enable(dwsmmio->sclk);
+	if (ret) {
+		clk_disable_unprepare(dwsmmio->pclk);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void spi_clk_disable_unprepare(struct dw_spi_mmio *dwsmmio)
+{
+	clk_disable_unprepare(dwsmmio->pclk);
+	clk_disable_unprepare(dwsmmio->sclk);
+}
+
+static int __maybe_unused dw_spi_mmio_suspend(struct device *dev)
+{
+    int ret;
+	struct dw_spi_mmio *dwsmmio = dev_get_drvdata(dev);
+
+	ret = dw_spi_suspend_host(&dwsmmio->dws);
+	spi_clk_disable_unprepare(dwsmmio);
+
+	return ret;
+}
+
+static int __maybe_unused dw_spi_mmio_resume(struct device *dev)
+{
+	struct dw_spi_mmio *dwsmmio = dev_get_drvdata(dev);
+	int ret;
+
+	ret = spi_clk_prepare_enable(dwsmmio);
+	if (ret) {
+		dev_err(dev, "failed to enable spi clock(%d)\n", ret);
+		return ret;
+	}
+
+	return dw_spi_resume_host(&dwsmmio->dws);
+}
+
 static int dw_spi_mmio_probe(struct platform_device *pdev)
 {
 	int (*init_func)(struct platform_device *pdev,
@@ -267,6 +316,15 @@ static int dw_spi_mmio_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_clk;
 
+	dwsmmio->sclk = devm_clk_get_optional(&pdev->dev, "sclk");
+	if (IS_ERR(dwsmmio->sclk)) {
+		ret = PTR_ERR(dwsmmio->sclk);
+		goto out_clk;
+	}
+	ret = clk_prepare_enable(dwsmmio->sclk);
+	if (ret)
+		goto out_clk;
+
 	/* find an optional reset controller */
 	dwsmmio->rstc = devm_reset_control_get_optional_exclusive(&pdev->dev, "spi");
 	if (IS_ERR(dwsmmio->rstc)) {
@@ -306,6 +364,7 @@ static int dw_spi_mmio_probe(struct platform_device *pdev)
 out:
 	pm_runtime_disable(&pdev->dev);
 	clk_disable_unprepare(dwsmmio->pclk);
+	clk_disable_unprepare(dwsmmio->sclk);
 out_clk:
 	clk_disable_unprepare(dwsmmio->clk);
 	reset_control_assert(dwsmmio->rstc);
@@ -320,6 +379,7 @@ static int dw_spi_mmio_remove(struct platform_device *pdev)
 	dw_spi_remove_host(&dwsmmio->dws);
 	pm_runtime_disable(&pdev->dev);
 	clk_disable_unprepare(dwsmmio->pclk);
+	clk_disable_unprepare(dwsmmio->sclk);
 	clk_disable_unprepare(dwsmmio->clk);
 	reset_control_assert(dwsmmio->rstc);
 
@@ -347,6 +407,10 @@ static const struct acpi_device_id dw_spi_mmio_acpi_match[] = {
 MODULE_DEVICE_TABLE(acpi, dw_spi_mmio_acpi_match);
 #endif
 
+static const struct dev_pm_ops spi_mmio_pm_ops = {
+    SET_SYSTEM_SLEEP_PM_OPS(dw_spi_mmio_suspend, dw_spi_mmio_resume)
+};
+
 static struct platform_driver dw_spi_mmio_driver = {
 	.probe		= dw_spi_mmio_probe,
 	.remove		= dw_spi_mmio_remove,
@@ -354,6 +418,7 @@ static struct platform_driver dw_spi_mmio_driver = {
 		.name	= DRIVER_NAME,
 		.of_match_table = dw_spi_mmio_of_match,
 		.acpi_match_table = ACPI_PTR(dw_spi_mmio_acpi_match),
+        .pm = &spi_mmio_pm_ops,
 	},
 };
 module_platform_driver(dw_spi_mmio_driver);

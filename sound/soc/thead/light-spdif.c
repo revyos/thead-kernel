@@ -45,24 +45,20 @@ static int light_spdif_dai_probe(struct snd_soc_dai *dai)
 static int light_spdif_dai_startup(struct snd_pcm_substream *substream,
 			   struct snd_soc_dai *dai)
 {
-    struct light_spdif_priv *priv = snd_soc_dai_get_drvdata(dai);
+    //struct light_spdif_priv *priv = snd_soc_dai_get_drvdata(dai);
 
     pm_runtime_get_sync(dai->dev);
-    regmap_update_bits(priv->regmap, SPDIF_EN,
-                SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(1));
-    atomic_inc(&priv->spdif_ref_cnt);
 
 	return 0;
 }
 
 static void light_spdif_snd_txctrl(struct light_spdif_priv *priv, char on)
 {
-    unsigned int reg[24];
-    int i;
     regmap_update_bits(priv->regmap, SPDIF_TX_DMA_EN,
             SPDIF_TDMA_EN_MSK, SPDIF_TDMA_EN_SEL(on));
     regmap_update_bits(priv->regmap, SPDIF_TX_EN,
             SPDIF_TXEN_MSK, SPDIF_TXEN_SEL(on));
+    regmap_read(priv->regmap, SPDIF_TX_FIFO_TH, &priv->suspend_tx_fifo_th);
 
     return;
 }
@@ -83,16 +79,12 @@ static void light_spdif_dai_shutdown(struct snd_pcm_substream *substream,
 {
 	struct light_spdif_priv *priv = snd_soc_dai_get_drvdata(dai);
 
-    if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+    if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 	    light_spdif_snd_rxctrl(priv, 0);
-    else
+    } else {
         light_spdif_snd_txctrl(priv, 0);
-    
-    atomic_dec(&priv->spdif_ref_cnt);
-    if (atomic_read(&priv->spdif_ref_cnt) == 0) {
-        regmap_update_bits(priv->regmap, SPDIF_EN,
-                    SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(0));
     }
+
 	pm_runtime_put(dai->dev);
 }
 
@@ -106,16 +98,30 @@ static int light_spdif_dai_trigger(struct snd_pcm_substream *substream, int cmd,
         case SNDRV_PCM_TRIGGER_START:
         case SNDRV_PCM_TRIGGER_RESUME:
         case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-            if (tx)
+            if (tx) {
                 light_spdif_snd_txctrl(priv, 1);
-            else
+                priv->state |= SPDIF_STATE_TX_RUNNING;
+            }
+            else {
                 light_spdif_snd_rxctrl(priv, 1);
+                priv->state |= SPDIF_STATE_RX_RUNNING;
+            }
             break;
         case SNDRV_PCM_TRIGGER_STOP:
-        case SNDRV_PCM_TRIGGER_SUSPEND:
         case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
             if (tx) {
                 dmaengine_terminate_async(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
+                light_spdif_snd_txctrl(priv, 0);
+                priv->state &= ~SPDIF_STATE_TX_RUNNING;
+            }
+            else {
+                light_spdif_snd_rxctrl(priv, 0);
+                priv->state &= ~SPDIF_STATE_RX_RUNNING;
+            }
+            break;
+        case SNDRV_PCM_TRIGGER_SUSPEND:
+            if (tx) {
+                dmaengine_pause(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
                 light_spdif_snd_txctrl(priv, 0);
             }
             else
@@ -123,7 +129,7 @@ static int light_spdif_dai_trigger(struct snd_pcm_substream *substream, int cmd,
             break;
         default:
             return -EINVAL;
-    }    
+    }
 
     return ret;
 }
@@ -138,7 +144,7 @@ static int light_spdif_dai_hw_params(struct snd_pcm_substream *substream, struct
     u32 datawidth, chn_num, i;
     u32 sample_rate = params_rate(params);
     bool is_divclk1 = false; //audio_divclk1 for 44.1k...etc. audio_divclk0 for 48k....etc
-    u32 src_clk, tx_div, rx_div;
+    u32 src_clk, tx_div;
 
     switch (params_channels(params)) {
         case 1:
@@ -183,9 +189,6 @@ static int light_spdif_dai_hw_params(struct snd_pcm_substream *substream, struct
                         CPR_PERI_CLK_SEL_REG, CPR_SPDIF_SRC_SEL_MSK, CPR_SPDIF_SRC_SEL(1));
         src_clk = AUDIO_DIVCLK1;
     }
-    //printk("selected src_clk=%d substream->stream=%d sample_rate=%d\n", src_clk, substream->stream, sample_rate);
-    regmap_update_bits(priv->regmap, SPDIF_EN,
-            SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(1));
 
     if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
         tx_div = src_clk / (sample_rate * (32 * 2) * 2);
@@ -253,6 +256,7 @@ static const struct snd_soc_component_driver light_spdif_soc_component = {
 	.name		= "light_spdif",
 };
 
+#if 0
 static void light_spdif_pinctrl(struct light_spdif_priv *priv)
 {
     //GPIO_SEL      AUDIO_PA21~24
@@ -266,40 +270,134 @@ static void light_spdif_pinctrl(struct light_spdif_priv *priv)
 				0x38,0xF000F, 0x70007); // AUDIO_PA22	SPDIF0_DOUT / AUDIO_PA23	SPDIF1_DOUT
     return;
 }
+#endif
 
 static const struct regmap_config light_spdif_regmap_config = {
         .reg_bits = 32,
         .reg_stride = 4,
         .val_bits = 32,
         .max_register = SPDIF_RX_USER_B5,
-        .cache_type = REGCACHE_FLAT,
+        .cache_type = REGCACHE_NONE,
 };
 
 static int light_spdif_runtime_suspend(struct device *dev)
 {
-        struct light_spdif_priv *priv = dev_get_drvdata(dev);
+    struct light_spdif_priv *priv = dev_get_drvdata(dev);
 
-        regcache_cache_only(priv->regmap, true);
-        clk_disable_unprepare(priv->clk);
+    regmap_update_bits(priv->regmap, SPDIF_EN,
+                SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(0));
+
+    if (priv->id == 0) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF0_SRST_N_SEL_MSK, CPR_SPDIF0_SRST_N_SEL(0));
+    } else if (priv->id == 1) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF1_SRST_N_SEL_MSK, CPR_SPDIF1_SRST_N_SEL(0));
+    }
+
+    clk_disable_unprepare(priv->clk);
 
 	return 0;
 }
 
 static int light_spdif_runtime_resume(struct device *dev)
 {
-        struct light_spdif_priv *priv = dev_get_drvdata(dev);
-        int ret;
+    struct light_spdif_priv *priv = dev_get_drvdata(dev);
+    int ret;
 
-        ret = clk_prepare_enable(priv->clk);
-        if (ret) {
-                dev_err(priv->dev, "clock enable failed %d\n", ret);
-                return ret;
-        }
+    ret = clk_prepare_enable(priv->clk);
+    if (ret) {
+            dev_err(priv->dev, "clock enable failed %d\n", ret);
+            return ret;
+    }
+    
+    if (priv->id == 0) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF0_SRST_N_SEL_MSK, CPR_SPDIF0_SRST_N_SEL(1));
+    } else if (priv->id == 1) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF1_SRST_N_SEL_MSK, CPR_SPDIF1_SRST_N_SEL(1));
+    }
 
-        regcache_cache_only(priv->regmap, false);
+    regmap_update_bits(priv->regmap, SPDIF_EN,
+        SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(1));
 
-        return ret;
+    return ret;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int light_spdif_suspend(struct device *dev)
+{
+    struct light_spdif_priv *priv = dev_get_drvdata(dev);
+
+	if (priv->state == SPDIF_STATE_IDLE)
+		return 0;
+
+    regmap_read(priv->regmap, SPDIF_TX_EN, &priv->suspend_tx_en);
+    regmap_read(priv->regmap, SPDIF_TX_CTL, &priv->suspend_tx_ctl);
+    regmap_read(priv->regmap, SPDIF_TX_DMA_EN, &priv->suspend_tx_dma_en);
+    regmap_read(priv->regmap, SPDIF_RX_EN, &priv->suspend_rx_en);
+    regmap_read(priv->regmap, SPDIF_RX_CTL, &priv->suspend_rx_ctl);
+    regmap_read(priv->regmap, SPDIF_RX_DMA_EN, &priv->suspend_rx_dma_en);
+    regmap_read(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, &priv->cpr_peri_div_sel);
+    regmap_read(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, &priv->cpr_peri_ctrl);
+    regmap_read(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, &priv->cpr_peri_clk_sel);
+
+    regmap_update_bits(priv->regmap, SPDIF_EN,
+                SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(0));
+
+    if (priv->id == 0) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF0_SRST_N_SEL_MSK, CPR_SPDIF0_SRST_N_SEL(0));
+    } else if (priv->id == 1) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF1_SRST_N_SEL_MSK, CPR_SPDIF1_SRST_N_SEL(0));
+    }
+
+    clk_disable_unprepare(priv->clk);
+
+	return 0;
+}
+
+static int light_spdif_resume(struct device *dev)
+{
+    struct light_spdif_priv *priv = dev_get_drvdata(dev);
+    int ret;
+
+	if (priv->state == SPDIF_STATE_IDLE)
+		return 0;
+
+    ret = clk_prepare_enable(priv->clk);
+    if (ret) {
+            dev_err(priv->dev, "clock enable failed %d\n", ret);
+            return ret;
+    }
+
+    regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
+    regmap_write(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, priv->cpr_peri_ctrl);
+    regmap_write(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, priv->cpr_peri_clk_sel);
+
+    if (priv->id == 0) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF0_SRST_N_SEL_MSK, CPR_SPDIF0_SRST_N_SEL(1));
+    } else if (priv->id == 1) {
+        regmap_update_bits(priv->audio_cpr_regmap,
+                                CPR_IP_RST_REG, CPR_SPDIF1_SRST_N_SEL_MSK, CPR_SPDIF1_SRST_N_SEL(1));
+    }
+
+    regmap_update_bits(priv->regmap, SPDIF_EN,
+        SPDIF_SPDIFEN_MSK, SPDIF_SPDIFEN_SEL(1));
+
+    regmap_write(priv->regmap, SPDIF_TX_EN, priv->suspend_tx_en);
+    regmap_write(priv->regmap, SPDIF_TX_CTL, priv->suspend_tx_ctl);
+    regmap_write(priv->regmap, SPDIF_TX_DMA_EN, priv->suspend_tx_dma_en);
+    regmap_write(priv->regmap, SPDIF_RX_EN, priv->suspend_rx_en);
+    regmap_write(priv->regmap, SPDIF_RX_CTL, priv->suspend_rx_ctl);
+    regmap_write(priv->regmap, SPDIF_RX_DMA_EN, priv->suspend_rx_dma_en);
+
+    return ret;
+}
+#endif
 
 static const struct of_device_id light_spdif_of_match[] = {
 	{ .compatible = "light,light-spdif"},
@@ -309,20 +407,18 @@ MODULE_DEVICE_TABLE(of, light_spdif_of_match);
 
 irqreturn_t spdif_interrupt(int irq, void* dev_id)
 {
-    struct light_spdif_priv* priv = (struct light_spdif_priv*)dev_id;
+    //struct light_spdif_priv* priv = (struct light_spdif_priv*)dev_id;
     return IRQ_HANDLED;
 }
 
 static int light_spdif_probe(struct platform_device *pdev)
 {
     struct device_node *np = pdev->dev.of_node;
-    const char *sprop;
     const uint32_t *iprop;
     struct light_spdif_priv *priv;
     struct resource *res;
     struct device *dev = &pdev->dev;
-    unsigned int irq;
-    int data_register, ret = 0;
+    int ret = 0;
 
     priv = devm_kzalloc(&pdev->dev, sizeof(struct light_spdif_priv), GFP_KERNEL);
     if (!priv) {
@@ -336,6 +432,10 @@ static int light_spdif_probe(struct platform_device *pdev)
 		priv->dma_maxburst = be32_to_cpup(iprop);
 	else
 		priv->dma_maxburst = 8;
+
+    iprop = of_get_property(np, "id", NULL);
+	if (iprop)
+		priv->id = be32_to_cpup(iprop);
 
     dev_set_drvdata(dev, priv);
 
@@ -370,6 +470,11 @@ static int light_spdif_probe(struct platform_device *pdev)
         dev_err(dev, "cannot find regmap for audio cpr register\n");
         return -EINVAL;
     }
+
+    pm_runtime_enable(&pdev->dev);
+    pm_runtime_resume_and_get(&pdev->dev); // clk gate is enabled by hardware as default register value
+    pm_runtime_put_sync(&pdev->dev);
+
     //AUDIO_DIV1 set to 1/6. 812.8512MHz / 6 = 135.4752MHz
     regmap_update_bits(priv->audio_cpr_regmap,
                             CPR_PERI_DIV_SEL_REG, CPR_AUDIO_DIV1_SEL_MSK, CPR_AUDIO_DIV1_SEL(5));
@@ -383,10 +488,6 @@ static int light_spdif_probe(struct platform_device *pdev)
     //enable spdif0/1 sync
     regmap_update_bits(priv->audio_cpr_regmap,
                             CPR_PERI_CTRL_REG, CPR_SPDIF_SYNC_MSK, CPR_SPDIF_SYNC_EN);
-
-    pm_runtime_enable(&pdev->dev);
-    pm_runtime_resume_and_get(&pdev->dev); // clk gate is enabled by hardware as default register value
-    pm_runtime_put_sync(&pdev->dev);
 
     priv->irq = platform_get_irq(pdev, 0);
     if (priv->irq== 0) {
@@ -435,6 +536,8 @@ static int light_spdif_remove(struct platform_device *pdev)
 
 static const struct dev_pm_ops light_spdif_pm_ops = {
     SET_RUNTIME_PM_OPS(light_spdif_runtime_suspend, light_spdif_runtime_resume, NULL)
+    SET_SYSTEM_SLEEP_PM_OPS(light_spdif_suspend,
+				     light_spdif_resume)
 };
 
 static struct platform_driver light_spdif_driver = {

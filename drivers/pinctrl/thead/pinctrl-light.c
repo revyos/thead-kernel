@@ -3,6 +3,7 @@
  * Copyright (C) 2021 Alibaba Group Holding Limited.
  *
  */
+#include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -67,10 +68,29 @@ struct light_pinctrl_soc_info {
 	int (*covert_pin_off)(const unsigned int pin_id);
 };
 
+#ifdef CONFIG_PM_SLEEP
+#define MAX_CFG_REG_NUMS	32
+#define MAX_MUX_REG_NUMS	8
+#define LIGHT_PADCTRL0_CFG_REG_NUMS	28
+#define LIGHT_PADCTRL0_MUX_REG_NUMS	7
+#define LIGHT_PADCTRL1_CFG_REG_NUMS	32
+#define LIGHT_PADCTRL1_MUX_REG_NUMS	8
+#define LIGHT_AUDIO_CFG_REG_NUMS	16
+#define LIGHT_AUDIO_MUX_REG_NUMS	2
+#define LIGHT_AUDIO_IO_SEL_IDX		2
+#define LIGHT_PM_PAD_CFG(idx)		(priv->base + priv->info->cfg_off + idx * 4)
+#define LIGHT_PM_PAD_MUX(idx)		(priv->base +  priv->info->mux_off + idx * 4)
+#endif
+
 struct light_pinctrl {
 	struct device *dev;
 	struct pinctrl_dev *pctl;
 	void __iomem *base;
+	struct clk	*clk;
+#ifdef CONFIG_PM_SLEEP
+	unsigned int	cfg_bak[MAX_CFG_REG_NUMS];
+	unsigned int	mux_bak[MAX_MUX_REG_NUMS];
+#endif
 	const struct light_pinctrl_soc_info *info;
 };
 
@@ -598,6 +618,20 @@ static int light_pinctrl_probe(struct platform_device *pdev)
 
 	priv->info = info;
 	priv->dev = info->dev;
+	if ((priv->info->type == LIGHT_FM_LEFT) ||
+			(priv->info->type == LIGHT_FM_RIGHT)) {
+		priv->clk = devm_clk_get_optional(&pdev->dev, "pclk");
+		if(priv->clk == NULL) {
+			dev_err(&pdev->dev, "could not get padctrl clk\n");
+			return -EINVAL;
+		}
+		ret = clk_prepare_enable(priv->clk);
+		if (ret) {
+			dev_err(&pdev->dev, "could not enable padctrl clk\n");
+			return -EINVAL;
+		}
+	}
+
 	platform_set_drvdata(pdev, priv);
 	priv->pctl = pinctrl_register(info->desc, &pdev->dev, priv);
 	if (!priv->pctl) {
@@ -609,6 +643,98 @@ static int light_pinctrl_probe(struct platform_device *pdev)
 
 	return 0;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int light_pinctrl_backup_regs(struct light_pinctrl *priv, unsigned int cfg_reg_nums,
+					unsigned int mux_reg_nums)
+{
+	int i;
+
+	for (i = 0; i < cfg_reg_nums; i++)
+		priv->cfg_bak[i] = readl(LIGHT_PM_PAD_CFG(i));
+	for (i = 0; i < mux_reg_nums; i++)
+		priv->mux_bak[i] = readl(LIGHT_PM_PAD_MUX(i));
+
+	return 0;
+}
+
+static int light_pinctrl_restore_regs(struct light_pinctrl *priv, unsigned int cfg_reg_nums,
+				unsigned int mux_reg_nums)
+{
+	int i;
+
+	for (i = 0; i < cfg_reg_nums; i++)
+		writel(priv->cfg_bak[i], LIGHT_PM_PAD_CFG(i));
+	for (i = 0; i < mux_reg_nums; i++)
+		writel(priv->mux_bak[i], LIGHT_PM_PAD_MUX(i));
+
+	return 0;
+}
+
+static int light_pinctrl_suspend(struct device *dev)
+{
+	dev_info(dev, "light pinctrl suspend\n");
+	struct light_pinctrl *priv = dev_get_drvdata(dev);
+	int ret = 0;
+
+	switch(priv->info->type) {
+		case LIGHT_FM_RIGHT:
+			ret = light_pinctrl_backup_regs(priv, LIGHT_PADCTRL0_CFG_REG_NUMS, LIGHT_PADCTRL0_MUX_REG_NUMS);
+			clk_disable_unprepare(priv->clk);
+			break;
+		case LIGHT_FM_LEFT:
+			ret = light_pinctrl_backup_regs(priv, LIGHT_PADCTRL1_CFG_REG_NUMS, LIGHT_PADCTRL1_MUX_REG_NUMS);
+			clk_disable_unprepare(priv->clk);
+			break;
+		case LIGHT_FM_AON:
+			break;
+		case LIGHT_FM_AUDIO:
+			ret = light_pinctrl_backup_regs(priv, LIGHT_AUDIO_CFG_REG_NUMS, LIGHT_AUDIO_MUX_REG_NUMS);
+			priv->mux_bak[LIGHT_AUDIO_IO_SEL_IDX] = readl(priv->base);
+			break;
+		default:
+			break;
+	}
+
+	return ret;
+}
+
+static int light_pinctrl_resume(struct device *dev)
+{
+	dev_info(dev, "light pinctrl resume\n");
+	struct light_pinctrl *priv = dev_get_drvdata(dev);
+	int ret = 0;
+
+	switch(priv->info->type) {
+		case LIGHT_FM_RIGHT:
+			ret = clk_prepare_enable(priv->clk);
+			if (ret) {
+				dev_err(dev, "could not enable padctrl clk\n");
+				return -EINVAL;
+			}
+			ret = light_pinctrl_restore_regs(priv, LIGHT_PADCTRL0_CFG_REG_NUMS, LIGHT_PADCTRL0_MUX_REG_NUMS);
+			break;
+		case LIGHT_FM_LEFT:
+			ret = clk_prepare_enable(priv->clk);
+			if (ret) {
+				dev_err(dev, "could not enable padctrl clk\n");
+				return -EINVAL;
+			}
+			ret = light_pinctrl_restore_regs(priv, LIGHT_PADCTRL1_CFG_REG_NUMS, LIGHT_PADCTRL1_MUX_REG_NUMS);
+			break;
+		case LIGHT_FM_AON:
+			break;
+		case LIGHT_FM_AUDIO:
+			ret = light_pinctrl_restore_regs(priv, LIGHT_AUDIO_CFG_REG_NUMS, LIGHT_AUDIO_MUX_REG_NUMS);
+			writel(priv->mux_bak[LIGHT_AUDIO_IO_SEL_IDX], priv->base);
+			break;
+		default:
+			break;
+	}
+
+	return ret;
+}
+#endif	//CONFIG_PM_SLEEP
 
 /* Pad names for the pinmux subsystem */
 static const struct pinctrl_pin_desc light_mpw_pinctrl_pads[] = {
@@ -977,6 +1103,13 @@ static struct light_pinctrl_soc_info light_fm_audio_pinctrl_info = {
 	.mux_off = 0x4,
 };
 
+//static SIMPLE_DEV_PM_OPS(light_pinctrl_dev_pm_ops,
+//			 light_pinctrl_suspend, light_pinctrl_resume);
+
+static const struct dev_pm_ops light_pinctrl_dev_pm_ops = {
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(light_pinctrl_suspend, light_pinctrl_resume)
+};
+
 static const struct of_device_id light_pinctrl_of_match[] = {
 	{ .compatible = "thead,light-mpw-pinctrl", .data = &light_mpw_pinctrl_info},
 	{ .compatible = "thead,light-fm-right-pinctrl",	.data = &light_fm_right_pinctrl_info},
@@ -991,6 +1124,7 @@ static struct platform_driver light_pinctrl_driver = {
 	.driver = {
 		.name = "light-pinctrl",
 		.owner = THIS_MODULE,
+		.pm = &light_pinctrl_dev_pm_ops,
 		.of_match_table = light_pinctrl_of_match,
 		.suppress_bind_attrs = true,
 	},

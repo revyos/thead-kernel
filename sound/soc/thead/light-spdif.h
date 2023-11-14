@@ -157,6 +157,7 @@
 #define CPR_PERI_CLK_SEL_REG  0x008 /*audio sys clock selection Register*/
 #define CPR_PERI_CTRL_REG  0x00C /*Peripheral control signal configuration register*/
 #define CPR_IP_CG_REG   0x010 /* ip clock gate register */
+#define CPR_IP_RST_REG  0x014
 
 /* AUDIO SYS DIV SEL REG, offset: 0x4 */
 #define CPR_AUDIO_DIV1_CG_POS                     (17U)
@@ -186,9 +187,18 @@
 #define CPR_SPDIF1_CG_SEL_POS                      (24U)
 #define CPR_SPDIF1_CG_SEL_MSK                       (0x1U << CPR_SPDIF1_CG_SEL_POS)
 #define CPR_SPDIF1_CG_SEL(X)                            (X << CPR_SPDIF1_CG_SEL_POS)
-
+/* CPR_IP_RST_REG */
+#define CPR_SPDIF0_SRST_N_SEL_POS                      (23U)
+#define CPR_SPDIF0_SRST_N_SEL_MSK                       (0x1U << CPR_SPDIF0_SRST_N_SEL_POS)
+#define CPR_SPDIF0_SRST_N_SEL(X)                            (X << CPR_SPDIF0_SRST_N_SEL_POS)
+#define CPR_SPDIF1_SRST_N_SEL_POS                      (24U)
+#define CPR_SPDIF1_SRST_N_SEL_MSK                       (0x1U << CPR_SPDIF1_SRST_N_SEL_POS)
+#define CPR_SPDIF1_SRST_N_SEL(X)                            (X << CPR_SPDIF1_SRST_N_SEL_POS)
 
 #define LIGHT_TDM_DMABUF_SIZE     (64 * 1024)
+#define SPDIF_STATE_IDLE				0
+#define SPDIF_STATE_TX_RUNNING	    1
+#define SPDIF_STATE_RX_RUNNING	    2
 
 struct light_spdif_priv {
     void __iomem *regs;
@@ -202,7 +212,24 @@ struct light_spdif_priv {
     u32 dma_maxburst;
     struct device *dev; 
     unsigned int irq;
-    atomic_t spdif_ref_cnt;
+    u32 suspend_tx_en;
+    u32 suspend_tx_ctl;
+    u32 suspend_tx_fifo_th;
+    u32 suspend_tx_fifo_dl;
+    u32 suspend_tx_dma_en;
+    u32 suspend_tx_dma_th;
+    u32 suspend_spdif_imr;
+    u32 suspend_rx_en;
+    u32 suspend_rx_ctl;
+    u32 suspend_rx_fifo_th;
+    u32 suspend_rx_fifo_dl;
+    u32 suspend_rx_dma_en;
+    u32 suspend_rx_dma_th;
+    u32 cpr_peri_div_sel;
+    u32 cpr_peri_ctrl;
+    u32 cpr_peri_clk_sel;
+    u32 id;
+    u32 state;
 };
 
 

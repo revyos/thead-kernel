@@ -63,14 +63,14 @@ static int light_event_aon_reservemem(struct light_event *event)
 	struct light_aon_ipc *ipc = event->ipc_handle;
 	int ret = 0;
 
-	dev_dbg(light_event->dev, "aon reservemem...\n");
+	dev_dbg(event->dev, "aon reservemem...\n");
 
 	light_event_msg_hdr_fill(&event->msg.hdr, LIGHT_AON_MISC_FUNC_AON_RESERVE_MEM);
 	event->msg.reserve_offset = LIGHT_EVENT_OFFSET;
 
 	ret = light_aon_call_rpc(ipc, &event->msg, true);
 	if (ret)
-		dev_err(light_event->dev, "failed to set aon reservemem\n");
+		dev_err(event->dev, "failed to set aon reservemem\n");
 
 	return ret;
 }
@@ -79,7 +79,7 @@ int light_event_set_rebootmode(enum light_rebootmode_index mode)
 {
 	int ret;
 
-	if (!light_event->init)
+	if (!light_event || !light_event->init)
 		return -EINVAL;
 
 	ret = regmap_write(light_event->aon_iram, LIGHT_EVENT_OFFSET, mode);
@@ -98,7 +98,7 @@ int light_event_get_rebootmode(enum light_rebootmode_index *mode)
 {
 	int ret;
 
-	if (!light_event->init)
+	if (!light_event || !light_event->init)
 		return -EINVAL;
 
 	ret = regmap_read(light_event->aon_iram, LIGHT_EVENT_OFFSET, mode);
@@ -215,7 +215,6 @@ static int light_event_probe(struct platform_device *pdev)
 	thead = devm_kzalloc(&pdev->dev, sizeof(*thead), GFP_KERNEL);
 	if (!thead)
 		return -ENOMEM;
-	light_event = thead;
 
 	ret = light_aon_get_handle(&(thead->ipc_handle));
 	if (ret == -EPROBE_DEFER)
@@ -238,10 +237,12 @@ static int light_event_probe(struct platform_device *pdev)
 		return -EPERM;
 	}
 	thead->init = true;
+	light_event = thead;
 
 	ret = light_event_check_powerup();
 	if (ret) {
 		dev_err(dev, "check powerup failed!\n");
+		light_event = NULL;
 		return -EPERM;
 	}
 	dev_info(dev, "light-event driver init successfully\n");

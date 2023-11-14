@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2022 Alibaba Group Holding Limited.
  */
@@ -10,98 +10,186 @@
 #include <linux/of_address.h>
 #include <linux/of.h>
 #include <linux/types.h>
+#include <asm/sbi.h>
+#include <asm/suspend.h>
+#include <linux/firmware/thead/ipc.h>
+#include <linux/platform_device.h>
 
 #undef pr_fmt
 #define pr_fmt(fmt) "light-system-suspend" ": " fmt
 
-#ifdef CONFIG_PLIC_INT_CLEAR
-void __iomem *hart0_sbase;
-/*
- * Each hart context has a set of control registers associated with it.  Right
- * now there's only two: a source priority threshold over which the hart will
- * take an interrupt, and a register to claim interrupts.
- */
-#define CONTEXT_BASE			0x200000
-#define CONTEXT_PER_HART		0x1000
-#define CONTEXT_THRESHOLD		0x00
-#define CONTEXT_CLAIM			0x04
-#endif
+struct rpc_msg_cpu_info{
+	u16 cpu_id;
+	u16 status;
+	u32 reserved[5];
+} __packed __aligned(4);
 
-static int light_suspend_prepare_late(void)
+struct light_aon_msg_pm_ctrl {
+	struct light_aon_rpc_msg_hdr hdr;
+	union rpc_func_t {
+	struct rpc_msg_cpu_info	cpu_info;
+	} __packed __aligned(4) rpc;
+} __packed __aligned(4);
+
+struct light_aon_pm_ctrl {
+	struct device			*dev;
+	struct light_aon_ipc		*ipc_handle;
+	struct light_aon_msg_pm_ctrl msg;
+	bool   suspend_flag;
+};
+
+static struct light_aon_pm_ctrl *aon_pm_ctrl;
+
+static int light_require_state_pm_ctrl(struct light_aon_msg_pm_ctrl *msg, enum light_aon_misc_func func, bool ack)
 {
-#ifdef CONFIG_PLIC_INT_CLEAR
-	void __iomem *claim = hart0_sbase + CONTEXT_CLAIM;
-	irq_hw_number_t hwirq;
+	pr_debug("notify aon subsys...\n");
+	struct light_aon_ipc *ipc = aon_pm_ctrl->ipc_handle;
+	struct light_aon_rpc_msg_hdr *hdr = &msg->hdr;
 
-	pr_debug("clear plic pending interrupt\n");
-	pr_debug("claim base = 0x%lx\n", (unsigned long)claim);
+	hdr->ver = LIGHT_AON_RPC_VERSION;
+	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_MISC;
+	hdr->func = (uint8_t)func;
+	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	while ((hwirq = readl(claim))) {
-		pr_debug("claim hwirq%ld\n", hwirq);
-		writel(hwirq, claim);
-	}
-#endif
-	/*
-	 * Two-level switch for interrupt control: it needs to disable interrupts in SIE, not just in SSTATUS,
-	 * otherwise the pending interrupts will wakup the cpu immediately after wfi.
-	 */
-	csr_write(CSR_IE, 0);
+	return light_aon_call_rpc(ipc, msg, ack);
+}
 
-	return 0;
+static int sbi_suspend_finisher(unsigned long suspend_type,
+				unsigned long resume_addr,
+				unsigned long opaque)
+{
+	struct sbiret ret;
+
+	ret = sbi_ecall(SBI_EXT_HSM, SBI_EXT_HSM_HART_SUSPEND,
+			suspend_type, resume_addr, opaque, 0, 0, 0);
+
+	return (ret.error) ? sbi_err_map_linux_errno(ret.error) : 0;
 }
 
 static int light_suspend_enter(suspend_state_t state)
 {
+	struct light_aon_msg_pm_ctrl msg = {0};
+	unsigned long suspend_type;
+
 	if (!IS_ENABLED(CONFIG_PM))
 		return 0;
+	pr_debug("[%s,%d]enter platform system suspend... state:%d\n", __func__, __LINE__, state);
 
-	switch (state) {
-	case PM_SUSPEND_MEM:
-		pr_debug("enter platform system suspend...\n");
-		cpu_do_idle();
-		pr_debug("wakeup from wfi...\n");
-	break;
-	default:
+	if (state == PM_SUSPEND_MEM)
+		suspend_type = SBI_HSM_SUSP_NON_RET_BIT;
+	else
 		return -EINVAL;
-	}
 
+	cpu_suspend(suspend_type, sbi_suspend_finisher);
+	pr_debug("[%s,%d]wakeup from system suspend\n",__func__, __LINE__);
 	return 0;
 }
+
+static int light_suspend_prepare(void)
+{
+	int ret;
+	aon_pm_ctrl->suspend_flag = true;
+	struct light_aon_msg_pm_ctrl msg = {0};
+	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_REQUIRE_STR, false);
+	if (ret) {
+		pr_err("[%s,%d]failed to initiate Suspend to Ram process to AON subsystem\n",__func__, __LINE__);
+		return ret;
+	}
+	return 0;
+}
+
+static void light_resume_wake(void)
+{
+	aon_pm_ctrl->suspend_flag = false;
+}
+
+static int thead_cpuhp_offline(unsigned int cpu)
+{
+	int ret;
+	if(!aon_pm_ctrl->suspend_flag)
+	{
+		struct light_aon_msg_pm_ctrl msg = {0};
+		msg.rpc.cpu_info.cpu_id = (u16)cpu;
+		msg.rpc.cpu_info.status = 0;
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, false);
+		if (ret) {
+			pr_info("failed to notify aon subsys with cpuhp...%08x\n", ret);
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static int thead_cpuhp_online(unsigned int cpu)
+{
+	int ret;
+	if(!aon_pm_ctrl->suspend_flag)
+	{
+		struct light_aon_msg_pm_ctrl msg = {0};
+		msg.rpc.cpu_info.cpu_id = (u16)cpu;
+		msg.rpc.cpu_info.status = 1;
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, false);
+		if (ret) {
+			pr_info("[%s,%d]failed to bring up aon subsys with cpuhp...%08x\n", __func__, __LINE__, ret);
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static const struct of_device_id aon_ctrl_ids[] = {
+	{ .compatible = "thead,light-aon-suspend-ctrl" },
+	{}
+};
 
 static const struct platform_suspend_ops light_suspend_ops = {
 	.enter = light_suspend_enter,
 	.valid = suspend_valid_only_mem,
-	.prepare_late = light_suspend_prepare_late,
+	.prepare_late = light_suspend_prepare,
+	.wake = light_resume_wake,
 };
 
-static int __init pm_light_init(void)
+static int light_pm_probe(struct platform_device *pdev)
 {
-#ifdef CONFIG_PLIC_INT_CLEAR
-	struct device_node *np;
-	void __iomem *regs;
+	struct device			*dev = &pdev->dev;
+	int ret;
+	struct light_aon_pm_ctrl	*pm_ctrl;
 
-	np = of_find_node_by_path("/soc/interrupt-controller@ffd8000000");
-	if (!np) {
-		pr_err("no plic interrupt controller found\n");
-		return -EINVAL;
+	pm_ctrl = devm_kzalloc(&pdev->dev, sizeof(*aon_pm_ctrl), GFP_KERNEL);
+	if (!pm_ctrl)
+		return -ENOMEM;
+	aon_pm_ctrl = pm_ctrl;
+
+	ret = light_aon_get_handle(&(aon_pm_ctrl->ipc_handle));
+	if (ret == -EPROBE_DEFER) {
+		pr_err("[%s, %d]failed to register ipc_handler.\n",__func__, __LINE__);
+		return ret;
 	}
-
-	regs = of_iomap(np, 0);
-	if (WARN_ON(!regs)) {
-		pr_err("failed to ioremap interrupt regs\n");
-		return -EIO;
-	}
-
-	hart0_sbase = regs + CONTEXT_BASE + 1 * CONTEXT_PER_HART; /* 1 means s mode */
-
-	pr_debug("hart0_sbase = 0x%lx\n", (unsigned long)hart0_sbase);
-#endif
-
-	pr_info("set system suspend platform callbacks\n");
 
 	suspend_set_ops(&light_suspend_ops);
 
+	ret = cpuhp_setup_state_nocalls(CPUHP_BP_PREPARE_DYN, "soc/thead:online",
+			thead_cpuhp_online,
+			thead_cpuhp_offline);
+	if(ret < 0) {
+		pr_err("[%s,%d]failed to register hotplug callbacks with err %08x.\n", __func__, __LINE__, ret);
+		return ret;
+	}
+
+	aon_pm_ctrl->dev = &pdev->dev;
+	aon_pm_ctrl->suspend_flag = false;
+	platform_set_drvdata(pdev, aon_pm_ctrl);
+
+	dev_info(&pdev->dev, "Light power management control sys successfully registered\n");
 	return 0;
 }
 
-late_initcall(pm_light_init);
+static struct platform_driver light_pm_driver = {
+	.driver = {
+		.name	= "light-pm",
+		.of_match_table = aon_ctrl_ids,
+	},
+	.probe = light_pm_probe,
+};
+
+module_platform_driver(light_pm_driver);
