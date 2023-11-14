@@ -48,6 +48,7 @@ struct vs_dc {
     struct clk      *dpu1pll_clk;
 
     unsigned int    pix_clk_rate[DC_DISPLAY_NUM]; /* in KHz */
+    unsigned int    def_pix_clk_rate[DC_DISPLAY_NUM];
 
     bool            first_frame;
     bool            dpu0pll_on;

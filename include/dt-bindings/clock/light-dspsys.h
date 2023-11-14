@@ -5,7 +5,7 @@
 
 #ifndef _LIGHT_DSPSYS_H
 #define _LIGHT_DSPSYS_H
-
+// gate
 #define CLKGEN_DSP0_PCLK			0
 #define CLKGEN_DSP0_CCLK                        1
 #define CLKGEN_DSP1_PCLK                        2
@@ -20,6 +20,14 @@
 #define CLKGEN_AXI4_DSPSYS_PCLK                 11
 #define CLKGEN_X2X_DSP0_ACLK_S			12
 #define CLKGEN_X2X_DSP2_ACLK_S			13
-#define LIGHT_CLKGEN_DSPSYS_CLK_END		14
+// MUX
+#define DSPSYS_DSP0_CLK_SWITCH          14
+#define DSPSYS_DSP1_CLK_SWITCH          15
+// DIV
+#define DSPSYS_DSP_CLK              16
+#define DSPSYS_DSP0_CLK_CDE         17
+#define DSPSYS_DSP1_CLK_CDE         18
+
+#define LIGHT_CLKGEN_DSPSYS_CLK_END		19
 
 #endif

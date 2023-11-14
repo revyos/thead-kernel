@@ -166,6 +166,14 @@
 		iopmp_dsp1: IOPMP_DSP1 {
 			is_default_region;
 		};
+
+		iopmp_audio0: IOPMP_AUDIO0 {
+			is_default_region;
+		};
+
+		iopmp_audio1: IOPMP_AUDIO1 {
+			is_default_region;
+		};
 	};
 
 	mbox_910t_client1: mbox_910t_client1 {
@@ -258,12 +266,14 @@
 		pinctrl-names = "default";
 		key-volumedown {
 			label = "Volume Down Key";
+			wakeup-source;
 			linux,code = <KEY_VOLUMEDOWN>;
 			debounce-interval = <1>;
 			gpios = <&ao_gpio_porta 11 0x1>;
 		};
 		key-volumeup {
 			label = "Volume Up Key";
+			wakeup-source;
 			linux,code = <KEY_VOLUMEUP>;
 			debounce-interval = <1>;
 			gpios = <&ao_gpio_porta 10 0x1>;

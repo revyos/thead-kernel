@@ -73,6 +73,10 @@ struct light_rpmsg_vproc {
         u32 out_idx;
         u32 core_id;
         spinlock_t mu_lock;
+#ifdef CONFIG_PM_SLEEP
+        struct semaphore pm_sem;
+        int sleep_flag;
+#endif
 };
 
 struct light_rpmsg_head {

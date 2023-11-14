@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "light-lpi4a.dts"
+#include "light-lpi4a-hdmi.dts"
 
 
 &light_iopmp {

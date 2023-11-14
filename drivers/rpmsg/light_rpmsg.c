@@ -126,6 +126,13 @@ static bool light_rpmsg_notify(struct virtqueue *vq)
 	int ret;
 	struct light_rpmsg_vq_info *rpvq = vq->priv;
 
+#ifdef CONFIG_PM_SLEEP
+    if(rpvq->rpdev->sleep_flag) {
+        dev_err(tdev_priv->dev, "dev in deep sleep, Channel cannot do Tx+++\n");
+		return -EINVAL;
+	}
+#endif
+
 	mu_rpmsg = rpvq->vq_id << 16;
 	mutex_lock(&rpvq->rpdev->lock);
 
@@ -433,7 +440,9 @@ static int light_rpmsg_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&(rpdev->rpmsg_work), rpmsg_work_handler);
 	BLOCKING_INIT_NOTIFIER_HEAD(&(rpdev->notifier));
-
+#ifdef  CONFIG_PM_SLEEP
+    sema_init(&rpdev->pm_sem, 0);
+#endif
 	pr_info("light rpmsg: Ready for cross core communication!\n");
 
 	ret = of_property_read_u32(np, "vdev-nums", &rpdev->vdev_nums);
@@ -485,28 +494,111 @@ static int light_rpmsg_probe(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int light_rpmsg_suspend(struct device *dev)
+
+typedef enum {
+   RPMSG_MAILBOX_TYPE_PM = 0xA0,
+   RPMSG_MAILBOX_TYPE_MAX
+} rpmsg_mailbox_message_type_en;
+
+typedef enum {
+   RPMSG_PM_CTRL = 0x50,
+   RPMSG_PM_GET,
+   RPMSG_PM_STATUS,
+   RPMSG_PM_MAX
+} rpmsg_pm_message_type_en;
+
+typedef enum {
+   LIGHT_PM_DISABLE = 0xA0,
+   LIGHT_PM_OFF,
+   LIGHT_PM_HW_VAD,
+   LIGHT_PM_TYPE_MAX
+} light_pm_type_en;
+
+typedef enum {
+   LIGHT_PM_WAKEUP = 0x50,
+   LIGHT_PM_SLEEP,
+   LIGHT_PM_STATUS_MAX
+} light_pm_status_en;
+
+#define MAX_PM_NOTIFY_TIME 10
+#define MAX_PM_ASK_TIME 10
+
+static int light_rpmsg_sleep_notify(struct virtqueue *vq, light_pm_type_en type)
 {
-	struct light_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
-
-	clk_disable_unprepare(rpdev->mu_clk);
-
+	int ret;
+	struct light_rpmsg_vq_info *rpvq = vq->priv;
+	uint8_t sleep_ctrl[4] = {RPMSG_MAILBOX_TYPE_PM, RPMSG_PM_CTRL, type, '\n'};
+	mutex_lock(&rpvq->rpdev->lock);
+	ret = mbox_send_message(tdev_priv->tx_channel, sleep_ctrl);
+	if(ret < 0) {
+       pr_err("sleep notify faild %d", ret);
+	   mutex_unlock(&rpvq->rpdev->lock);
+       return ret;
+	}
+	mutex_unlock(&rpvq->rpdev->lock);
 	return 0;
+}
+
+static int light_rpmsg_sleep_ask(struct virtqueue *vq)
+{
+	int ret;
+	struct light_rpmsg_vq_info *rpvq = vq->priv;
+	uint8_t sleep_get[3] = {RPMSG_MAILBOX_TYPE_PM, RPMSG_PM_GET, '\n'};
+	mutex_lock(&rpvq->rpdev->lock);
+	ret = mbox_send_message(tdev_priv->tx_channel, sleep_get);
+	if(ret < 0) {
+       pr_err("sleep ask send faild %d", ret);
+	   mutex_unlock(&rpvq->rpdev->lock);
+       return ret;
+	}
+	mutex_unlock(&rpvq->rpdev->lock);
+	return 0;
+}
+
+static int light_rpmsg_suspend(struct device *dev)
+
+{
+  int ret;
+  int try_num = 0;
+  struct light_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
+
+  //clk_disable_unprepare(rpdev->mu_clk);
+  printk("%s,%d,enter",__func__,__LINE__);
+  light_rpmsg_sleep_notify(rpdev->ivdev[0].vq[0], LIGHT_PM_OFF);
+  try_num++;
+  down_timeout(&rpdev->pm_sem, msecs_to_jiffies(200));
+  while(!rpdev->sleep_flag) {
+    light_rpmsg_sleep_notify(rpdev->ivdev[0].vq[0], LIGHT_PM_OFF);
+	down_timeout(&rpdev->pm_sem, msecs_to_jiffies(200));
+	if(try_num++ > MAX_PM_NOTIFY_TIME) {
+         pr_err("sleep notify faild after try %d time", MAX_PM_NOTIFY_TIME);
+		 printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
+		 return -1;
+	}
+  }
+  printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
+  return 0;
 }
 
 static int light_rpmsg_resume(struct device *dev)
 {
-	struct light_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
-	int ret;
-
-	ret = clk_prepare_enable(rpdev->mu_clk);
-	if (ret) {
-		pr_err("unable to enable mu clock\n");
-		return ret;
+  struct light_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
+  int ret;
+  int try_num = 0;
+  printk("%s,%d,enter",__func__,__LINE__);
+  while(rpdev->sleep_flag) {
+    ret = light_rpmsg_sleep_ask(rpdev->ivdev[0].vq[0]);
+    down_timeout(&rpdev->pm_sem, msecs_to_jiffies(200));
+	if(try_num++ > MAX_PM_ASK_TIME) {
+         pr_err("sleep status check faild after try %d time", MAX_PM_ASK_TIME);
+		 printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
+		 return -1;
 	}
-
-	return ret;
+  }
+  printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
+  return ret;
 }
+
 #endif
 
 static SIMPLE_DEV_PM_OPS(light_rpmsg_pm_ops, light_rpmsg_suspend, light_rpmsg_resume);
@@ -643,7 +735,19 @@ static void mbox_client_light_receive_message(struct mbox_client *client,
 
 	//printk("mbox_client receive rpmsg_work\n");
 	schedule_delayed_work(&(pri_rpdev->rpmsg_work), 0);
-
+#ifdef CONFIG_PM_SLEEP
+     if(data[0] == RPMSG_MAILBOX_TYPE_PM && data[1] == RPMSG_PM_STATUS) {
+        if(data[2] == LIGHT_PM_WAKEUP) {
+            pri_rpdev->sleep_flag = 0;
+			up(&pri_rpdev->pm_sem);
+			printk("audio wakeup");
+		} else if(data[2] == LIGHT_PM_SLEEP) {
+            pri_rpdev->sleep_flag = 1;
+			up(&pri_rpdev->pm_sem);
+			printk("audio sleep");
+		}
+	 }
+#endif
 	//print_hex_dump(KERN_INFO, __func__, DUMP_PREFIX_NONE, 16, 1, tdev->rx_buffer, MBOX_MAX_MSG_LEN, true);
 }
 

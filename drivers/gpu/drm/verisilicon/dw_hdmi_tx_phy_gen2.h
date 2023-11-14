@@ -126,6 +126,12 @@ struct dw_hdmi_mpll_gen_config{
 	} voltage;
 };
 
+struct dw_hdmi_light_private {
+	u32 max_pixclock;
+	u16 max_width;
+	u16 max_height;
+};
+
 static const struct dw_hdmi_mpll_gen_config mpll_configs[] = {
 	{
 		.pixelclock = 25175,
@@ -587,13 +593,36 @@ dw_hdmi_tx_phy_gen2_mode_valid(struct dw_hdmi *dw_hdmi, void *data,
 {
 	int i;
 
-        if (mode->clock < 13500)
-                return MODE_CLOCK_LOW;
-        else if (mode->clock > 594000)
-                return MODE_CLOCK_HIGH;
+	u32 max_clock  = 594000;
+	u16 max_height = 0;
+	u16 max_width  = 0;
+
+	struct dw_hdmi_light_private *dw_hdmi_private = (struct dw_hdmi_light_private*)data;
+	if(dw_hdmi_private != NULL){
+		max_clock  = dw_hdmi_private->max_pixclock;
+		max_height = dw_hdmi_private->max_height;
+		max_width  = dw_hdmi_private->max_width;
+	}
+
+	if (mode->clock < 13500)
+	{
+		return MODE_CLOCK_LOW;
+	}
+	else if (mode->clock > max_clock)
+	{
+		return MODE_CLOCK_HIGH;
+	}
+
+	if((max_width > 0) && (mode->hdisplay > max_width)){
+		return MODE_H_ILLEGAL;
+	}
+
+	if((max_height > 0) && (mode->vdisplay > max_height)){
+		return MODE_V_ILLEGAL;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(mpll_configs); i++) {
-		if (abs(mode->clock - mpll_configs[i].pixelclock) <= 100)
+	if (abs(mode->clock - mpll_configs[i].pixelclock) <= 100)
 			return MODE_OK;
 		else if (mode->clock < mpll_configs[i].pixelclock)
 			break;

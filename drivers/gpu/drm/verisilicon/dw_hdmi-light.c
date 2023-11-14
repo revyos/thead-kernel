@@ -54,10 +54,20 @@ static const struct drm_encoder_helper_funcs dw_hdmi_light_encoder_helper_funcs 
 	.atomic_check	= dw_hdmi_light_encoder_atomic_check,
 };
 
+struct dw_hdmi_light_private dw_hdmi_priv_data = {
+	.max_pixclock = 594000,
+	.max_width    = 0,
+	.max_height   = 0,
+};
+
 static int dw_hdmi_light_bind(struct device *dev, struct device *master,
 			      void *data)
 {
 	int ret = 0;
+	u32 max_pixclock = 0;
+	u16 max_width    = 0;
+	u16 max_height   = 0;
+	int property_ret = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct device_node *np = dev->of_node;
 	const struct of_device_id *match;
@@ -73,6 +83,30 @@ static int dw_hdmi_light_bind(struct device *dev, struct device *master,
 	match = of_match_node(dw_hdmi_light_dt_ids, np);
 	if (unlikely(!match))
 		return -ENODEV;
+
+	property_ret = of_property_read_u32(np, "max_pixclock", &max_pixclock);
+	if(property_ret == 0){
+		printk(KERN_INFO "Hdmi max pixel clock = %d\n", max_pixclock);
+		if(dw_hdmi_priv_data.max_pixclock > max_pixclock){
+			dw_hdmi_priv_data.max_pixclock = max_pixclock;
+			printk(KERN_INFO"Hdmi max pixel clock adjust to %d\n", max_pixclock);
+		}
+		else{
+			printk(KERN_INFO"Hdmi max pixel clock not take effect\n");
+		}
+	}
+
+	property_ret = of_property_read_u16(np, "max_width", &max_width);
+	if(property_ret == 0){
+		dw_hdmi_priv_data.max_width = max_width;
+	}
+
+ 	property_ret = of_property_read_u16(np, "max_height", &max_height);
+	if(property_ret == 0){
+		dw_hdmi_priv_data.max_height = max_height;
+	}
+
+	light_hdmi_drv_data.priv_data = (void*)&dw_hdmi_priv_data;
 
 	plat_data = match->data;
 	hdmi->dev = &pdev->dev;
@@ -90,7 +124,6 @@ static int dw_hdmi_light_bind(struct device *dev, struct device *master,
 		ret = PTR_ERR(hdmi->dw_hdmi);
 		drm_encoder_cleanup(encoder);
 	}
-
 	pm_runtime_enable(dev);
 
 	return ret;
@@ -114,7 +147,6 @@ static const struct component_ops dw_hdmi_light_ops = {
 static int dw_hdmi_light_probe(struct platform_device *pdev)
 {
 	struct light_hdmi *hdmi;
-
 	hdmi = devm_kzalloc(&pdev->dev, sizeof(*hdmi), GFP_KERNEL);
 	if (!hdmi)
 		return -ENOMEM;
@@ -146,11 +178,22 @@ static int hdmi_runtime_resume(struct device *dev)
 	return dw_hdmi_runtime_resume(hdmi->dw_hdmi);
 }
 #endif
-
+#ifdef CONFIG_PM_SLEEP
+static int hdmi_resume(struct device *dev)
+{
+       struct light_hdmi *hdmi = dev_get_drvdata(dev);
+        dev_info(dev,"hdmi resume\n");
+        dw_hdmi_resume(hdmi->dw_hdmi);
+       return 0;
+}
+#endif
 static const struct dev_pm_ops dw_hdmi_pm_ops = {
     SET_LATE_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
 				 pm_runtime_force_resume)
     SET_RUNTIME_PM_OPS(hdmi_runtime_suspend, hdmi_runtime_resume, NULL)
+    #ifdef CONFIG_PM_SLEEP
+     SET_LATE_SYSTEM_SLEEP_PM_OPS(NULL,hdmi_resume)
+    #endif
 };
 
 struct platform_driver dw_hdmi_light_platform_driver = {

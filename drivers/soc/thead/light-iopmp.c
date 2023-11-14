@@ -53,7 +53,6 @@ struct light_iopmp_cur_sys_entry {
 
 struct light_iopmp_info {
 	struct device *dev;
-
 	int entries;
 	struct light_iopmp_list *iopmp_list;
 	struct light_iopmp_cur_sys_entry cur_entry;
@@ -64,35 +63,41 @@ static struct light_iopmp_list {
 	int iopmp_type;
 	resource_size_t offset;
 	void __iomem *base;
+	bool bypass_en;
+	bool is_default_region;
+	u32 dummy_slave;
+	u32 attr;
+	int lock;
+	struct light_iopmp_entry iopmp_entry;
 } light_iopmp_lists[] = {
-	{IOPMP_EMMC, 0xFFFC028000, NULL},
-	{IOPMP_SDIO0, 0xFFFC029000, NULL},
-	{IOPMP_SDIO1, 0xFFFC02A000, NULL},
-	{IOPMP_USB0, 0xFFFC02E000, NULL},
-	{IOPMP_AO, 0xFFFFC21000, NULL},
-	{IOPMP_AUD, 0xFFFFC22000, NULL},
-	{IOPMP_CHIP_DBG, 0xFFFFC37000, NULL},
-	{IOPMP_EIP120I, 0xFFFF220000, NULL},
-	{IOPMP_EIP120II, 0xFFFF230000, NULL},
-	{IOPMP_EIP120III, 0xFFFF240000, NULL},
-	{IOPMP_ISP0, 0xFFF4080000, NULL},
-	{IOPMP_ISP1, 0xFFF4081000, NULL},
-	{IOPMP_DW200, 0xFFF4082000, NULL},
-	{IOPMP_VIPRE, 0xFFF4083000, NULL},
-	{IOPMP_VENC, 0xFFFCC60000, NULL},
-	{IOPMP_VDEC, 0xFFFCC61000, NULL},
-	{IOPMP_G2D, 0xFFFCC62000, NULL},
-	{IOPMP_FCE, 0xFFFCC63000, NULL},
-	{IOPMP_NPU, 0xFFFF01C000, NULL},
-	{IOPMP0_DPU, 0xFFFF520000, NULL},
-	{IOPMP1_DPU, 0xFFFF521000, NULL},
-	{IOPMP_GPU, 0xFFFF522000, NULL},
-	{IOPMP_GMAC1, 0xFFFC001000, NULL},
-	{IOPMP_GMAC2, 0xFFFC002000, NULL},
-	{IOPMP_DMAC, 0xFFFFC20000, NULL},
-	{IOPMP_TEE_DMAC, 0xFFFF250000, NULL},
-	{IOPMP_DSP0, 0xFFFF058000, NULL},
-	{IOPMP_DSP1, 0xFFFF059000, NULL},
+	{IOPMP_EMMC, 0xFFFC028000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_SDIO0, 0xFFFC029000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_SDIO1, 0xFFFC02A000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_USB0, 0xFFFC02E000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_AO, 0xFFFFC21000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_AUD, 0xFFFFC22000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_CHIP_DBG, 0xFFFFC37000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_EIP120I, 0xFFFF220000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_EIP120II, 0xFFFF230000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_EIP120III, 0xFFFF240000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_ISP0, 0xFFF4080000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_ISP1, 0xFFF4081000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_DW200, 0xFFF4082000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_VIPRE, 0xFFF4083000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_VENC, 0xFFFCC60000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_VDEC, 0xFFFCC61000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_G2D, 0xFFFCC62000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_FCE, 0xFFFCC63000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_NPU, 0xFFFF01C000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP0_DPU, 0xFFFF520000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP1_DPU, 0xFFFF521000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_GPU, 0xFFFF522000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_GMAC1, 0xFFFC001000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_GMAC2, 0xFFFC002000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_DMAC, 0xFFFFC20000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_TEE_DMAC, 0xFFFF250000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_DSP0, 0xFFFF058000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
+	{IOPMP_DSP1, 0xFFFF059000, NULL, false, false, LIGHT_IOPMP_DUMMY_ADDR, 0xFFFFFFFF, 0x7FFFF, {{0,},{0,},0} },
 };
 
 static const struct light_iopmp_driver_data {
@@ -481,6 +486,35 @@ static ssize_t light_iopmp_set_store(struct device *dev,
 	return count;
 }
 
+
+static int light_iopmp_config(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct light_iopmp_info *info = platform_get_drvdata(pdev);
+	struct light_iopmp_list *list = info->iopmp_list;
+	int i, j;
+
+	for (i = 0; i < info->entries; i++) {
+		if (list[i].iopmp_entry.entry_valid_num > 0) {
+			/* config the iopmp entry */
+			light_iopmp_set_attr(info, i,
+				list[i].attr,
+				list[i].dummy_slave,
+				&list[i].iopmp_entry);
+
+		} else {
+			/* config the iopmp entry */
+			if (list[i].bypass_en)
+				light_iopmp_set_attr_bypass(info, i);
+			else if (list[i].is_default_region)
+				light_iopmp_set_attr_default(info, i, list[i].attr);
+		}
+	}
+
+	return 0;
+}
+
+
 static DEVICE_ATTR(light_iopmp_tap, 0644, light_iopmp_tap_show, light_iopmp_tap_store);
 static DEVICE_ATTR(light_iopmp_start_addr, 0644, light_iopmp_start_addr_show, light_iopmp_start_addr_store);
 static DEVICE_ATTR(light_iopmp_end_addr, 0644, light_iopmp_end_addr_show, light_iopmp_end_addr_store);
@@ -506,19 +540,20 @@ static int light_iopmp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	const struct light_iopmp_driver_data *drvdata = NULL;
-	struct light_iopmp_list *match;
+	struct light_iopmp_list *list;
 	struct light_iopmp_info *info;
 	struct device_node *entry_np;
 	int size, entries;
 	int ret;
+	int i, j;
 
 	drvdata = device_get_match_data(dev);
 	if (!drvdata) {
 		dev_err(dev, "cannot get driver data\n");
 		return -ENOENT;
 	}
-	match = drvdata->iopmp_list;
-	entries = light_iopmp_get_entries(match);
+	list = drvdata->iopmp_list;
+	entries = light_iopmp_get_entries(list);
 	if (entries <= 0)
 		return -ENOENT;
 
@@ -528,7 +563,7 @@ static int light_iopmp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	info->entries = entries;
-	info->iopmp_list = match;
+	info->iopmp_list = list;
 	info->dev = dev;
 
 	for_each_child_of_node(dev->of_node, entry_np) {
@@ -538,7 +573,6 @@ static int light_iopmp_probe(struct platform_device *pdev)
 		bool bypass_en = false;
 		int region_size;
 		int type;
-		int i = 0, j;
 
 		if (!of_device_is_available(entry_np))
 			continue;
@@ -566,13 +600,6 @@ static int light_iopmp_probe(struct platform_device *pdev)
 				dev_err(dev, "missing/invalid reg property\n");
 				continue;
 			}
-
-			/* config the iopmp entry */
-			if (bypass_en)
-				light_iopmp_set_attr_bypass(info, type);
-			else if (is_default_region)
-				light_iopmp_set_attr_default(info, type, attr);
-
 		} else {
 			region_size >>= 1;
 			if (region_size > LIGHT_IOPMP_REGION_NUM) {
@@ -582,28 +609,30 @@ static int light_iopmp_probe(struct platform_device *pdev)
 
 			for (j = 0; j < region_size; j++) {
 				ret = of_property_read_u32_index(entry_np, "regions",
-						j << 1, &info->iopmp_entry[i].reg_start[j]);
+						j << 1, &list[type].iopmp_entry.reg_start[j]);
 				if (ret)
 					break;
 				ret = of_property_read_u32_index(entry_np, "regions",
-						(j << 1) + 1, &info->iopmp_entry[i].reg_end[j]);
+						(j << 1) + 1, &list[type].iopmp_entry.reg_end[j]);
 				if (ret)
 					break;
 
 				/* check the region valid, otherwise drop the iopmp setting */
-				if (j && info->iopmp_entry[i].reg_end[j - 1] > info->iopmp_entry[i].reg_start[j])
+				if (j && list[type].iopmp_entry.reg_end[j - 1] > list[type].iopmp_entry.reg_start[j])
 					break;
 			}
 
-			if (j == region_size) {
-				info->iopmp_entry[i].entry_valid_num = region_size;
+			if (j < region_size)
+				continue;
 
-				/* config the iopmp entry */
-				light_iopmp_set_attr(info, type, attr, dummy_slave, &info->iopmp_entry[i]);
-			}
+			list[type].iopmp_entry.entry_valid_num = region_size;
 		}
 
-		i++;
+		// store valid config
+		list[type].attr = attr;
+		list[type].dummy_slave = dummy_slave;
+		list[type].is_default_region = is_default_region;
+		list[type].bypass_en = bypass_en;
 	}
 
 	/* init the cur entry config */
@@ -614,6 +643,8 @@ static int light_iopmp_probe(struct platform_device *pdev)
 	info->cur_entry.lock = false;
 
 	platform_set_drvdata(pdev, info);
+
+	light_iopmp_config(&pdev->dev);
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &dev_attr_light_iopmp_group);
 	if (ret) {
@@ -632,17 +663,17 @@ static int light_iopmp_remove(struct platform_device *pdev)
 
 static int __maybe_unused light_iopmp_noirq_suspend(struct device *dev)
 {
-	/* the iopmp clocks depend on module theirself,
-	 * we should keep them always enabled in clock's driver
-	 */
+	// nothing to do
 	return 0;
 }
 
 static int __maybe_unused light_iopmp_noirq_resume(struct device *dev)
 {
-	/* TBD: restore IOPMP in noirq stage is too late ?
-	 * we should restore these registers setting in early arch resume ?
-	 */
+	/* reinit iopmp register setting
+	   ensure system clock enabled before here
+	*/
+	light_iopmp_config(dev);
+
 	return 0;
 }
 

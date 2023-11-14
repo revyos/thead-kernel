@@ -40,6 +40,9 @@ enum LIGHT_MPW_CPUFREQ_CLKS {
 #define LIGHT_C910_BUS_CLK_DIV_RATIO_2	0x100
 #define LIGHT_C910_BUS_CLK_DIV_RATIO_3	0x200
 
+#define LIGHT_CPU_PLL_IDX(x)	(x)
+#define LIGHT_CPU_PLL_COUNT	2
+
 static int num_clks;
 static struct clk_bulk_data clks[] = {
 	{ .id = "c910_cclk" },
@@ -51,12 +54,47 @@ static struct clk_bulk_data clks[] = {
 static struct device *cpu_dev;
 static struct cpufreq_frequency_table *freq_table;
 static unsigned int max_freq;
+static unsigned int min_freq;
 static unsigned int transition_latency;
 static void __iomem *ap_sys_reg;
 static bool light_dvfs_sv = false;
 
 static u32 *light_dvddm_volt;
 static u32 soc_opp_count = 0;
+
+static int _light_get_pllid(void)
+{
+	int ret;
+
+	if (!strcmp(__clk_get_name(clk_get_parent(clks[LIGHT_C910_CCLK].clk)),
+		__clk_get_name(clks[LIGHT_C910_CCLK_I0].clk))) // pll index 0
+		ret = LIGHT_CPU_PLL_IDX(0);
+	else // pll index 1
+		ret = LIGHT_CPU_PLL_IDX(1);
+
+	return ret;
+}
+
+static int _light_switch_pllid(int pllid, int target_freq)
+{
+	pr_debug("[%s] switchto pll[%d], freq[%u]\n", __func__, pllid, target_freq);
+	if (pllid == LIGHT_CPU_PLL_IDX(1)) {
+		clk_prepare_enable(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
+		clk_set_rate(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk, target_freq * 1000);
+		clk_set_parent(clks[LIGHT_C910_CCLK].clk, clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
+		udelay(1);
+		clk_disable_unprepare(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk);
+	} else {
+		clk_prepare_enable(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk);
+		clk_set_rate(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk, target_freq * 1000);
+		clk_set_parent(clks[LIGHT_C910_CCLK].clk, clks[LIGHT_C910_CCLK_I0].clk);
+		udelay(1);
+		clk_disable_unprepare(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
+	}
+
+	return 0;
+}
+
 
 static int light_set_target(struct cpufreq_policy *policy, unsigned int index)
 {
@@ -140,20 +178,8 @@ static int light_set_target(struct cpufreq_policy *policy, unsigned int index)
 		}
 	}
 
-	if (!strcmp(__clk_get_name(clk_get_parent(clks[LIGHT_C910_CCLK].clk)),
-	    __clk_get_name(clks[LIGHT_C910_CCLK_I0].clk))) {
-		clk_prepare_enable(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
-		clk_set_rate(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk, new_freq * 1000);
-		ret = clk_set_parent(clks[LIGHT_C910_CCLK].clk, clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
-		udelay(1);
-		clk_disable_unprepare(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk);
-	} else {
-		clk_prepare_enable(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk);
-		clk_set_rate(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk, new_freq * 1000);
-		ret  = clk_set_parent(clks[LIGHT_C910_CCLK].clk, clks[LIGHT_C910_CCLK_I0].clk);
-		udelay(1);
-		clk_disable_unprepare(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
-	}
+	/* switch pll */
+	_light_switch_pllid((_light_get_pllid()+1)&(LIGHT_CPU_PLL_COUNT-1), new_freq);
 
 	/*add delay for clk-switch*/
 	udelay(1);
@@ -200,6 +226,35 @@ static int light_set_target(struct cpufreq_policy *policy, unsigned int index)
 	return 0;
 }
 
+static int light_cpufreq_suspend(struct cpufreq_policy *policy)
+{
+	int ret;
+	int index;
+
+	pr_debug("%s: cpu: %d, %u KHz to %u KHz\n",
+			__func__, policy->cpu, policy->cur, policy->suspend_freq);
+
+	ret = cpufreq_generic_suspend(policy);
+	if (ret) {
+		pr_err("%s: failed\n", __func__);
+		return ret;
+	}
+
+	/*
+	 * Only CPU PLL0 would be active after STR resume. We should switch
+	 * CPU PLL to be PLL0 after policy stopped.
+	 */
+	if (_light_get_pllid() == LIGHT_CPU_PLL_IDX(1))
+		_light_switch_pllid(LIGHT_CPU_PLL_IDX(0), policy->suspend_freq);
+
+	return 0;
+}
+
+static int light_cpufreq_resume(struct cpufreq_policy *policy)
+{
+	return 0;
+}
+
 static int light_cpufreq_init(struct cpufreq_policy *policy)
 {
 	policy->clk = clks[LIGHT_C910_CCLK].clk;
@@ -234,7 +289,8 @@ static struct cpufreq_driver light_cpufreq_driver = {
 	.init = light_cpufreq_init,
 	.name = "light-cpufreq",
 	.attr = cpufreq_generic_attr,
-	.suspend = cpufreq_generic_suspend,
+	.suspend = light_cpufreq_suspend,
+	.resume = light_cpufreq_resume,
 };
 
 static int light_cpufreq_pm_notify(struct notifier_block *nb,
@@ -274,15 +330,9 @@ static int panic_cpufreq_notifier_call(struct notifier_block *nb,
 	 * set CPU PLL1's frequency as minimum to compatible voltage
 	 * becarefull if the PLL1 is serving the cpu core, swith to PLL0 first
 	 */
-	if (strcmp(__clk_get_name(clk_get_parent(clks[LIGHT_C910_CCLK].clk)),
-		__clk_get_name(clks[LIGHT_C910_CCLK_I0].clk))) {
+	if (_light_get_pllid() == LIGHT_CPU_PLL_IDX(1)) {
 		pr_debug("[%s,%d]\n", __func__, __LINE__);
-		clk_prepare_enable(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk);
-		clk_set_rate(clks[LIGHT_CPU_PLL0_FOUTPOSTDIV].clk, policy->min * 1000);
-		udelay(1);
-		clk_set_parent(clks[LIGHT_C910_CCLK].clk, clks[LIGHT_C910_CCLK_I0].clk);
-
-		pr_debug("[%s,%d]\n", __func__, __LINE__);
+		_light_switch_pllid(LIGHT_CPU_PLL_IDX(0), policy->min);
 	}
 
 	pr_debug("[%s,%d]\n", __func__, __LINE__);
@@ -292,9 +342,7 @@ static int panic_cpufreq_notifier_call(struct notifier_block *nb,
 	 * set the CPU PLL1's frequency as minimum in advance, otherwise the
 	 * system may crash in crash kernel stage.
 	 */
-	clk_prepare_enable(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
-	clk_set_rate(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk, policy->min * 1000);
-	udelay(1);
+	_light_switch_pllid(LIGHT_CPU_PLL_IDX(1), policy->min);
 
 	pr_info("finish to execute cpufreq notifier callback on panic\n");
 
@@ -411,6 +459,7 @@ soc_opp_out:
 		transition_latency = CPUFREQ_ETERNAL;
 
 	max_freq = freq_table[--num].frequency;
+	min_freq = freq_table[0].frequency;
 
 	ret = cpufreq_register_driver(&light_cpufreq_driver);
 	if (ret) {

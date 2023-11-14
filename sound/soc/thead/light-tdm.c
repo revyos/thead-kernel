@@ -17,6 +17,7 @@
 #include <sound/pcm_params.h>
 #include <sound/sh_fsi.h>
 #include "light-pcm.h"
+#include "light-audio-cpr.h"
 #include "light-tdm.h"
 #include <linux/dmaengine.h>
 #include <linux/regmap.h>
@@ -57,6 +58,9 @@ static int light_tdm_dai_startup(struct snd_pcm_substream *substream,
 
 static void light_tdm_snd_rxctrl(struct light_tdm_priv *priv, char on)
 {
+    u32 dmactl;
+    u32 tdmen;
+
     if (priv->slot_num != 1) {
         return;
     }
@@ -65,8 +69,6 @@ static void light_tdm_snd_rxctrl(struct light_tdm_priv *priv, char on)
             DMACTL_DMAEN_MSK, DMACTL_DMAEN_SEL(on));
     regmap_update_bits(priv->regmap, TDM_TDMEN,
             TDMCTL_TDMEN_MSK, TDMCTL_TDMEN_SEL(on));
-    u32 dmactl;
-    u32 tdmen;
     regmap_read(priv->regmap, TDM_DMACTL, &dmactl);
     regmap_read(priv->regmap, TDM_TDMEN, &tdmen);
     //printk("%s TDM_DMACTL=0x%x TDM_TDMEN=0x%x\n", __func__, dmactl, tdmen);
@@ -99,10 +101,12 @@ static int light_tdm_dai_trigger(struct snd_pcm_substream *substream, int cmd, s
         case SNDRV_PCM_TRIGGER_RESUME:
         case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
             light_tdm_snd_rxctrl(priv, 1);
+            priv->state = TDM_STATE_RUNNING;
             break;
         case SNDRV_PCM_TRIGGER_STOP:
-        case SNDRV_PCM_TRIGGER_SUSPEND:
         case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+            priv->state = TDM_STATE_IDLE;
+        case SNDRV_PCM_TRIGGER_SUSPEND:
             light_tdm_snd_rxctrl(priv, 0);
             break;
         default:
@@ -115,11 +119,12 @@ static int light_tdm_dai_trigger(struct snd_pcm_substream *substream, int cmd, s
 static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
 {
     struct light_tdm_priv *priv = snd_soc_dai_get_drvdata(dai);
-    u32 cnfin = 0;
 
     if (priv->slot_num != 1) {
         return 0;
     }
+
+    pm_runtime_resume_and_get(priv->dev);
     
     switch(fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
         case SND_SOC_DAIFMT_DSP_B:
@@ -137,10 +142,8 @@ static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
 			TDMCTL_SPEDGE_SEL(1));
     regmap_update_bits(priv->regmap, TDM_DMADL,
             DMACTL_DMADL_MSK, DMACTL_DMADL_SEL(0));
-    u32 tdmctl;
-    u32 dmadl;
-    regmap_read(priv->regmap, TDM_TDMCTL, &tdmctl);
-    regmap_read(priv->regmap, TDM_DMADL, &dmadl);
+
+    pm_runtime_put_sync(priv->dev);
 
     return 0;
 }
@@ -198,6 +201,7 @@ static int light_tdm_dai_hw_params(struct snd_pcm_substream *substream, struct s
 {
     struct light_tdm_priv *priv =  snd_soc_dai_get_drvdata(dai);
     u32 datawth, chn_num;
+    u32 tdmctl;
 
     if ( params_channels(params) != 1) {
         pr_err("Not support channel num\n");
@@ -244,8 +248,7 @@ static int light_tdm_dai_hw_params(struct snd_pcm_substream *substream, struct s
 	regmap_update_bits(priv->regmap, TDM_TDMCTL,
 			TDMCTL_DATAWTH_MSK, TDMCTL_DATAWTH_SEL(datawth));
 	regmap_update_bits(priv->regmap, TDM_TDMCTL,
-			TDMCTL_CHNUM_MSK, TDMCTL_CHNUM_SEL(chn_num));   
-    u32 tdmctl;
+			TDMCTL_CHNUM_MSK, TDMCTL_CHNUM_SEL(chn_num));
     regmap_read(priv->regmap, TDM_TDMCTL, &tdmctl);
     //printk("%s TDM_TDMCTL=0x%x\n", __func__, tdmctl); 
     light_tdm_set_div(priv, params);
@@ -277,6 +280,7 @@ static const struct snd_soc_component_driver light_tdm_soc_component = {
 	.name		= "light_tdm",
 };
 
+#if 0
 static void light_tdm_pinctrl(struct light_tdm_priv *tdm_priv)
 {
     //GPIO_SEL
@@ -292,48 +296,129 @@ static void light_tdm_pinctrl(struct light_tdm_priv *tdm_priv)
 				0x40,0xF0000, 0x70000); // AUDIO_PA27
     return;
 }
+#endif
+
+static bool light_tdm_wr_reg(struct device *dev, unsigned int reg)
+{
+    return true;
+}
+
+static bool light_tdm_rd_reg(struct device *dev, unsigned int reg)
+{
+	return true;
+}
 
 static const struct regmap_config light_tdm_regmap_config = {
         .reg_bits = 32,
         .reg_stride = 4,
         .val_bits = 32,
         .max_register = TDM_DIV0_LEVEL,
-        .cache_type = REGCACHE_FLAT,
+        .writeable_reg = light_tdm_wr_reg,
+        .readable_reg = light_tdm_rd_reg,
+        .cache_type = REGCACHE_NONE,
 };
 
 static int light_tdm_runtime_suspend(struct device *dev)
 {
-        struct light_tdm_priv *priv = dev_get_drvdata(dev);
+    struct light_tdm_priv *priv = dev_get_drvdata(dev);
 
-        if (priv->slot_num != 1) {
-            return 0;
-        }
+    if (priv->slot_num != 1) {
+        return 0;
+    }
 
-        regcache_cache_only(priv->regmap, true);
-        clk_disable_unprepare(priv->clk);
+    clk_disable_unprepare(priv->clk);
 
 	return 0;
 }
 
 static int light_tdm_runtime_resume(struct device *dev)
 {
-        struct light_tdm_priv *priv = dev_get_drvdata(dev);
-        int ret;
+    struct light_tdm_priv *priv = dev_get_drvdata(dev);
+    int ret;
 
-        if (priv->slot_num != 1) {
-            return 0;
-        }
+    if (priv->slot_num != 1) {
+        return 0;
+    }
 
-        ret = clk_prepare_enable(priv->clk);
-        if (ret) {
-                dev_err(priv->dev, "clock enable failed %d\n", ret);
-                return ret;
-        }
+    ret = clk_prepare_enable(priv->clk);
+    if (ret) {
+            dev_err(priv->dev, "clock enable failed %d\n", ret);
+            return ret;
+    }
 
-        regcache_cache_only(priv->regmap, false);
-
-        return ret;
+    return ret;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int light_tdm_suspend(struct device *dev)
+{
+    struct light_tdm_priv *priv = dev_get_drvdata(dev);
+
+    if (priv->slot_num != 1  || priv->state == TDM_STATE_IDLE) {
+        return 0;
+    }
+
+	regmap_read(priv->regmap, TDM_TDMCTL, &priv->suspend_tdmctl);
+	regmap_read(priv->regmap, TDM_CHOFFSET1, &priv->suspend_choffset1);
+	regmap_read(priv->regmap, TDM_CHOFFSET2, &priv->suspend_choffset2);
+	regmap_read(priv->regmap, TDM_CHOFFSET3, &priv->suspend_choffset3);
+	regmap_read(priv->regmap, TDM_CHOFFSET4, &priv->suspend_choffset4);
+	regmap_read(priv->regmap, TDM_FIFOTL1, &priv->suspend_fifotl1);
+	regmap_read(priv->regmap, TDM_FIFOTL2, &priv->suspend_fifotl2);
+	regmap_read(priv->regmap, TDM_FIFOTL3, &priv->suspend_fifotl3);
+	regmap_read(priv->regmap, TDM_FIFOTL4, &priv->suspend_fifotl4);
+	regmap_read(priv->regmap, TDM_IMR, &priv->suspend_imr);
+	regmap_read(priv->regmap, TDM_DMADL, &priv->suspend_dmadl);
+	regmap_read(priv->regmap, TDM_DIV0_LEVEL, &priv->suspend_div0level);
+
+    regmap_read(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, &priv->cpr_peri_div_sel);
+    regmap_read(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, &priv->cpr_peri_clk_sel);
+	
+	regmap_update_bits(priv->audio_cpr_regmap,
+							CPR_IP_RST_REG, CPR_TDM_SRST_N_SEL_MSK, CPR_TDM_SRST_N_SEL(0));
+
+    clk_disable_unprepare(priv->clk);
+
+	return 0;
+}
+
+static int light_tdm_resume(struct device *dev)
+{
+    struct light_tdm_priv *priv = dev_get_drvdata(dev);
+    int ret;
+
+    if (priv->slot_num != 1  || priv->state == TDM_STATE_IDLE) {
+        return 0;
+    }
+
+    ret = clk_prepare_enable(priv->clk);
+    if (ret) {
+            dev_err(priv->dev, "clock enable failed %d\n", ret);
+            return ret;
+    }
+
+    regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
+    regmap_write(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, priv->cpr_peri_clk_sel);
+
+    regmap_update_bits(priv->audio_cpr_regmap,
+                        CPR_IP_RST_REG, CPR_TDM_SRST_N_SEL_MSK, CPR_TDM_SRST_N_SEL(1));
+
+	regmap_write(priv->regmap, TDM_TDMCTL, priv->suspend_tdmctl);
+	regmap_write(priv->regmap, TDM_CHOFFSET1, priv->suspend_choffset1);
+	regmap_write(priv->regmap, TDM_CHOFFSET2, priv->suspend_choffset2);
+	regmap_write(priv->regmap, TDM_CHOFFSET3, priv->suspend_choffset3);
+	regmap_write(priv->regmap, TDM_CHOFFSET4, priv->suspend_choffset4);
+	regmap_write(priv->regmap, TDM_FIFOTL1, priv->suspend_fifotl1);
+	regmap_write(priv->regmap, TDM_FIFOTL2, priv->suspend_fifotl2);
+	regmap_write(priv->regmap, TDM_FIFOTL3, priv->suspend_fifotl3);
+	regmap_write(priv->regmap, TDM_FIFOTL4, priv->suspend_fifotl4);
+	regmap_write(priv->regmap, TDM_IMR, priv->suspend_imr);
+	regmap_write(priv->regmap, TDM_DMADL, priv->suspend_dmadl);
+	regmap_write(priv->regmap, TDM_DIV0_LEVEL, priv->suspend_div0level);
+
+    return ret;
+}
+#endif
 
 static const struct of_device_id light_tdm_of_match[] = {
 	{ .compatible = "light,light-tdm"},
@@ -343,7 +428,7 @@ MODULE_DEVICE_TABLE(of, light_tdm_of_match);
 
 irqreturn_t tdm_interrupt(int irq, void* dev_id)
 {
-    struct light_tdm_priv* priv = (struct light_tdm_priv*)dev_id;
+    //struct light_tdm_priv* priv = (struct light_tdm_priv*)dev_id;
     return IRQ_HANDLED;
 }
 
@@ -355,7 +440,7 @@ static int light_tdm_probe(struct platform_device *pdev)
     struct light_tdm_priv *tdm_priv;
     struct resource *res;
     struct device *dev = &pdev->dev;
-    unsigned int irq;
+
     int data_register, ret = 0;
 
     tdm_priv = devm_kzalloc(&pdev->dev, sizeof(struct light_tdm_priv), GFP_KERNEL);
@@ -529,6 +614,8 @@ static int light_tdm_remove(struct platform_device *pdev)
 
 static const struct dev_pm_ops light_tdm_pm_ops = {
     SET_RUNTIME_PM_OPS(light_tdm_runtime_suspend, light_tdm_runtime_resume, NULL)
+    SET_SYSTEM_SLEEP_PM_OPS(light_tdm_suspend,
+                    light_tdm_resume)
 };
 
 static struct platform_driver light_tdm_driver = {

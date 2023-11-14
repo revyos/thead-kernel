@@ -166,6 +166,14 @@
 		iopmp_dsp1: IOPMP_DSP1 {
 			is_default_region;
 		};
+
+		iopmp_audio0: IOPMP_AUDIO0 {
+			is_default_region;
+		};
+
+		iopmp_audio1: IOPMP_AUDIO1 {
+			is_default_region;
+		};
 	};
 
 	mbox_910t_client1: mbox_910t_client1 {
@@ -239,6 +247,7 @@
 		ref-clock-frequency = <24000000>;
 		keep_wifi_power_on;
 		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_wifi>;
 		wifi_chip_type = "rtl8723ds";
 		WIFI,poweren_gpio = <&gpio2_porta 29 0>;
 		WIFI,reset_n = <&gpio2_porta 24 0>;
@@ -247,7 +256,8 @@
 
 	wcn_bt: wireless-bluetooth {
 		compatible = "bluetooth-platdata";
-		pinctrl-names = "default", "rts_gpio";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_bt>;
 		BT,power_gpio    = <&gpio2_porta 25 0>;
 		status = "okay";
 	};
@@ -258,12 +268,14 @@
 		pinctrl-names = "default";
 		key-volumedown {
 			label = "Volume Down Key";
+			wakeup-source;
 			linux,code = <KEY_VOLUMEDOWN>;
 			debounce-interval = <1>;
 			gpios = <&ao_gpio_porta 11 0x1>;
 		};
 		key-volumeup {
 			label = "Volume Up Key";
+			wakeup-source;
 			linux,code = <KEY_VOLUMEUP>;
 			debounce-interval = <1>;
 			gpios = <&ao_gpio_porta 10 0x1>;
@@ -699,6 +711,23 @@
 
 &uart0 {
 	clock-frequency = <100000000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart0>;
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+};
+
+&uart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart4>;
 };
 
 &qspi0 {
@@ -744,6 +773,8 @@
 	tx-clk-delay = <0x00>; /* for RGMII */
 	phy-handle = <&phy_88E1111_0>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gmac0>;
 
 	mdio0 {
 		#address-cells = <1>;
@@ -787,6 +818,8 @@
 	pull_up;
 	wprtn_ignore;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sdio0>;
 };
 
 &sdhci1 {
@@ -814,17 +847,8 @@
 			 */
 			pinctrl_uart0: uart0grp {
 				thead,pins = <
-					FM_UART0_TXD	0x0	0x72
-					FM_UART0_RXD	0x0	0x72
-				>;
-			};
-
-			pinctrl_spi0: spi0grp {
-				thead,pins = <
-					FM_SPI_CSN	0x3	0x20a
-					FM_SPI_SCLK	0x0	0x20a
-					FM_SPI_MISO	0x0	0x23a
-					FM_SPI_MOSI	0x0	0x23a
+					FM_UART0_TXD	0x0	0x234
+					FM_UART0_RXD	0x0	0x234
 				>;
 			};
 
@@ -852,9 +876,81 @@
 				>;
 			};
 
+			pinctrl_i2c2: i2c2grp {
+				thead,pins = <
+					FM_I2C2_SCL	0x0	0x204
+					FM_I2C2_SDA	0x0	0x204
+				>;
+			};
+
+			pinctrl_i2c3: i2c3grp {
+				thead,pins = <
+					FM_I2C3_SCL	0x0	0x204
+					FM_I2C3_SDA	0x0	0x204
+				>;
+			};	
+
+			pinctrl_spi0: spi0grp {
+				thead,pins = <
+					FM_SPI_CSN	0x3	0x20a
+					FM_SPI_SCLK	0x0	0x20a
+					FM_SPI_MISO	0x0	0x23a
+					FM_SPI_MOSI	0x0	0x23a
+				>;
+			};
+
+			pinctrl_wifi: wifi_grp {
+				thead,pins = <
+					FM_GPIO2_22	0x0	0x202
+					FM_GPIO2_24	0x0	0x202
+				>;
+			};
+
+			pinctrl_bt: bt_grp {
+				thead,pins = <
+					FM_GPIO2_23	0x0	0x202
+					FM_GPIO2_25	0x0	0x202
+				>;
+			};
+
+			pinctrl_sdio0: sdio0grp {
+				thead,pins = <
+					FM_SDIO0_DETN	0x0	0x208
+				>;
+			};
+
 			pinctrl_pwm: pwmgrp {
 				thead,pins = <
-					FM_GPIO3_2	0x1	0x208	/* pwm0 */
+					FM_GPIO3_2	0x1	0x20f	/* pwm0 */
+				>;
+			};
+
+			pinctrl_hdmi: hdmigrp {
+				thead,pins = <
+					FM_HDMI_SCL	0x0	0x208
+					FM_HDMI_SDA	0x0	0x208
+					FM_HDMI_CEC	0x0	0x208
+				>;
+			};
+
+			pinctrl_gmac0: gmac0grp {
+				thead,pins = <
+					FM_GMAC0_TX_CLK	0x0	0x20f	/*	GMAC0_TX_CLK  */
+					FM_GMAC0_RX_CLK	0x0	0x20f	/*	GMAC0_RX_CLK  */
+					FM_GMAC0_TXEN	0x0	0x20f	/*	GMAC0_TXEN  */
+					FM_GMAC0_TXD0	0x0	0x20f	/*	GMAC0_TXD0  */
+					FM_GMAC0_TXD1	0x0	0x20f	/*	GMAC0_TXD1  */
+					FM_GMAC0_TXD2	0x0	0x20f	/*	GMAC0_TXD2  */
+					FM_GMAC0_TXD3	0x0	0x20f	/*	GMAC0_TXD3  */
+					FM_GMAC0_RXDV	0x0	0x20f	/*	GMAC0_RXDV  */
+					FM_GMAC0_RXD0	0x0	0x20f	/*	GMAC0_RXD0  */
+					FM_GMAC0_RXD1	0x0	0x20f	/*	GMAC0_RXD1  */
+					FM_GMAC0_RXD2	0x0	0x20f	/*	GMAC0_RXD2  */
+					FM_GMAC0_RXD3	0x0	0x20f	/*	GMAC0_RXD3  */
+					FM_GMAC0_MDC	0x0 0x208	/*	GMAC0_MDC  */
+					FM_GMAC0_MDIO	0x0 0x208	/*	GMAC0_MDIO  */
+					FM_GMAC0_COL	0x3	0x232	/*	PHY0_nRST  */
+					FM_GMAC0_CRS	0x3	0x232	/*	PHY0_nINT  */
 				>;
 			};
 		};
@@ -866,22 +962,6 @@
 			 * Pin Configuration Node:
 			 * Format: <pin_id mux_node config>
 			 */
-			pinctrl_uart3: uart3grp {
-				thead,pins = <
-					FM_UART3_TXD	0x0	0x72
-					FM_UART3_RXD	0x0	0x72
-				>;
-			};
-
-			pinctrl_uart4: uart4grp {
-				thead,pins = <
-					FM_UART4_TXD	0x0	0x72
-					FM_UART4_RXD	0x0	0x72
-					FM_UART4_CTSN	0x0	0x72
-					FM_UART4_RTSN	0x0	0x72
-				>;
-			};
-
 			pinctrl_qspi1: qspi1grp {
 				thead,pins = <
 					FM_QSPI1_SCLK    0x0    0x20a
@@ -893,7 +973,6 @@
 				>;
 			};
 
-
 			pinctrl_iso7816: iso7816grp {
 				thead,pins = <
 					FM_QSPI1_SCLK		0x1	0x208
@@ -904,6 +983,49 @@
 				>;
 			};
 
+			pinctrl_i2c0: i2c0grp {
+				thead,pins = <
+					FM_I2C0_SCL	0x0	0x204
+					FM_I2C0_SDA	0x0	0x204
+				>;
+			};
+
+			pinctrl_i2c1: i2c1grp {
+				thead,pins = <
+					FM_I2C1_SCL	0x0	0x204
+					FM_I2C1_SDA	0x0	0x204
+				>;
+			};
+
+			pinctrl_uart1: uart1grp {
+ 				thead,pins = <
+					FM_UART1_TXD	0x0	0x234
+					FM_UART1_RXD	0x0	0x234
+				>;
+			};
+
+			pinctrl_uart4: uart4grp {
+				thead,pins = <
+					FM_UART4_TXD	0x0	0x208
+					FM_UART4_RXD	0x0	0x208
+					FM_UART4_CTSN	0x0	0x208
+					FM_UART4_RTSN	0x0	0x208
+				>;
+			};
+
+			pinctrl_uart3: uart3grp {
+				thead,pins = <
+					FM_UART3_TXD	0x1	0x202
+					FM_UART3_RXD	0x1	0x202
+				>;
+			};
+
+			pinctrl_i2c4: i2c4grp {
+				thead,pins = <
+					FM_GPIO0_18	0x1	0x204	/*	I2C4_SCL  */
+					FM_GPIO0_19	0x1	0x204	/*	I2C4_SDA  */
+				>;
+			};
 		};
 };
 
@@ -1014,26 +1136,36 @@
 &i2c0 {
 	clock-frequency = <400000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c0>;
 };
 
 &i2c1 {
 	clock-frequency = <400000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
 };
 
 &i2c2 {
 	clock-frequency = <400000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
 };
 
 &i2c3 {
 	clock-frequency = <400000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
 };
 
 &i2c4 {
 	clock-frequency = <400000>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
 };
 
 &isp0 {
@@ -1240,6 +1372,7 @@
 };
 
 &video0{
+	status = "okay";
 	vi_mem_pool_region = <2>;	// vi_mem: framebuffer, region[2]
 	channel0 {
 		sensor0 {
@@ -1326,6 +1459,7 @@
 
 
 &video1{
+	status = "okay";
 	vi_mem_pool_region = <2>;	// vi_mem: framebuffer, region[2]
 	channel0 {
 		sensor0 {
@@ -1429,6 +1563,7 @@
 };
 
 &video2{
+	status = "okay";
     vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
@@ -1445,20 +1580,13 @@
 			mode_idx = <0>;
 			path_type = "SENSOR_1600x1200_RAW10_LINER";
 		};
-		sensor2 {
-			subdev_name = "vivcam";
-			idx = <7>; //imx334
-			csi_idx = <0>; //<0>=CSI2
-			mode_idx = <0>;
-			path_type = "SENSOR_3840x2180_RAW12_LINER";
-		};
 		isp {
 			subdev_name = "isp";
 			idx = <1>;
 			path_type = "ISP_MI_PATH_MP";
 			output {
-				max_width = <3840>;
-				max_height = <2180>;
+				max_width = <1920>;
+				max_height = <1088>;
 				bit_per_pixel = <16>;
 				frame_count = <3>;
 			};
@@ -1521,6 +1649,7 @@
 };
 
 &video3{
+	status = "okay";
     vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
@@ -1624,6 +1753,7 @@
 };
 
 &video4{
+	status = "okay";
     vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
@@ -1775,6 +1905,7 @@
 };
 
 &video5{
+	status = "okay";
 	vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
@@ -1944,6 +2075,7 @@
 };
 
 &video6{
+	status = "okay";
 	vi_mem_pool_region = <1>;	// vi_mem: framebuffer, region[1]
 	channel0 {
 		sensor0 {
@@ -1985,6 +2117,7 @@
 };
 
 &video7{
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2154,6 +2287,7 @@
 
 
 &video8{
+	status = "okay";
 	vi_mem_pool_region = <1>;	// vi_mem: framebuffer, region[1]
     channel0 {
 		sensor0 {
@@ -2185,6 +2319,7 @@
 };
 
 &video9{
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2206,6 +2341,7 @@
 
 
 &video10{ // TUNINGTOOL
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2227,6 +2363,7 @@
 };
 
 &video11{
+	status = "okay";
 	channel0 { 
 		channel_id = <0>;
 		status = "okay";
@@ -2253,6 +2390,7 @@
 };
 
 &video12{ // TUNINGTOOL
+	status = "okay";
 	channel0 { // CSI2
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2274,6 +2412,7 @@
 };
 
 &video14{
+	status = "okay";
     vi_mem_pool_region = <2>;	// vi_mem: framebuffer, region[0]
 	status = "okay";
 	channel0 {
@@ -2440,6 +2579,8 @@
 
 &hdmi_tx {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hdmi>;
 
 	port@0 {
 		/* input */

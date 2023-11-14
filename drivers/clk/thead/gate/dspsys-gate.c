@@ -20,12 +20,16 @@
 
 static struct clk *gates[LIGHT_CLKGEN_DSPSYS_CLK_END];
 static struct clk_onecell_data clk_gate_data;
+static const char * const dsp0_cclk_sels[] = {"gmac_pll_foutpostdiv", "dspsys_dsp_clk"};
+static const char * const dsp1_cclk_sels[] = {"gmac_pll_foutpostdiv", "dspsys_dsp_clk"};
 
 static int light_dspsys_clk_probe(struct platform_device *pdev)
 {
 	struct regmap *dspsys_regmap, *tee_dspsys_regmap;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
+	struct device_node *np_reg = of_parse_phandle(np, "dspsys-regmap", 0);
+	void __iomem *gate_base;
 	int ret;
 
 	dspsys_regmap = syscon_regmap_lookup_by_phandle(np, "dspsys-regmap");
@@ -39,14 +43,24 @@ static int light_dspsys_clk_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "cannot find regmap for tee dsp system register\n");
 		tee_dspsys_regmap = NULL;
 	}
+	gate_base = of_iomap(np_reg,0);
+	// MUX 
+	gates[DSPSYS_DSP0_CLK_SWITCH] = thead_light_clk_mux_flags("dspsys_dsp0_clk_switch", gate_base + 0x1c, 0, 1, dsp0_cclk_sels, ARRAY_SIZE(dsp0_cclk_sels), 0);
+	gates[DSPSYS_DSP1_CLK_SWITCH] = thead_light_clk_mux_flags("dspsys_dsp1_clk_switch", gate_base + 0x20, 0, 1, dsp1_cclk_sels, ARRAY_SIZE(dsp1_cclk_sels), 0);
 
+	// DIV & CDE
+	gates[DSPSYS_DSP_CLK] = thead_light_clk_fixed_factor("dspsys_dsp_clk", "video_pll_foutvco", 1, 3);
+	gates[DSPSYS_DSP0_CLK_CDE] = thead_clk_light_divider("dspsys_dsp0_clk_cde", "dspsys_dsp0_clk_switch", gate_base + 0x0, 0, 3, 4, MUX_TYPE_CDE, 0, 7);
+	gates[DSPSYS_DSP1_CLK_CDE] = thead_clk_light_divider("dspsys_dsp1_clk_cde", "dspsys_dsp1_clk_switch", gate_base + 0x4, 0, 3, 4, MUX_TYPE_CDE, 0, 7);
+
+	// gate
 	gates[CLKGEN_DSP0_PCLK] = thead_gate_clk_register("clkgen_dsp0_pclk", NULL, dspsys_regmap,
 							  0x24, 0, GATE_NOT_SHARED, NULL, dev);
 	gates[CLKGEN_DSP1_PCLK] = thead_gate_clk_register("clkgen_dsp1_pclk", NULL, dspsys_regmap,
 							  0x24, 1, GATE_NOT_SHARED, NULL, dev);
-	gates[CLKGEN_DSP1_CCLK] = thead_gate_clk_register("clkgen_dsp1_cclk", NULL, dspsys_regmap,
+	gates[CLKGEN_DSP1_CCLK] = thead_gate_clk_register("clkgen_dsp1_cclk", "dspsys_dsp1_clk_cde", dspsys_regmap,
 							  0x24, 2, GATE_NOT_SHARED, NULL, dev);
-	gates[CLKGEN_DSP0_CCLK] = thead_gate_clk_register("clkgen_dsp0_cclk", NULL, dspsys_regmap,
+	gates[CLKGEN_DSP0_CCLK] = thead_gate_clk_register("clkgen_dsp0_cclk", "dspsys_dsp0_clk_cde", dspsys_regmap,
 							  0x24, 3, GATE_NOT_SHARED, NULL, dev);
 	gates[CLKGEN_X2X_DSP2_ACLK_S] = thead_gate_clk_register("clkgen_x2x_dsp2_aclk_s", NULL, dspsys_regmap,
 							  0x24, 4, GATE_NOT_SHARED, NULL, dev);

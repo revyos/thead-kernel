@@ -148,6 +148,28 @@ enum dw_ssi_type {
 	SSI_NS_MICROWIRE,
 };
 
+#ifdef CONFIG_PM_SLEEP
+struct dw_qspi_context {
+    u32 ctrlr0;
+    u32 ctrlr1;
+    u32 ssienr;
+    u32 mwcr;
+    u32 ser;
+    u32 baudr;
+    u32 txftlr;
+    u32 rxftlr;
+    u32 txflr;
+    u32 rxflr;
+    u32 imr;
+    u32 dmacr;
+    u32 dmatdlr;
+    u32 dmardlr;
+    u32 rx_sample_dly;
+    u32 spi_ctrlr0;
+    u32 txd_drv_edge;
+};
+#endif
+
 struct dw_spi;
 struct dw_spi_dma_ops {
 	int (*dma_init)(struct dw_spi *dws);
@@ -211,6 +233,10 @@ struct dw_spi {
 	void			*priv;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs;
+#endif
+
+#ifdef CONFIG_PM_SLEEP
+    struct dw_qspi_context ctx;
 #endif
 };
 

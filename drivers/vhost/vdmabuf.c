@@ -102,8 +102,7 @@ static int carveout_buf_setup(void)
 	node = of_find_node_by_name(NULL, "vdmabuf_reserved_memory");
 	if (!node) {
 		ret = -EINVAL;
-		dev_err(drv_info->dev,
-			"failed to find vdmabuf_reserved_memory node\n");
+		dev_info(drv_info->dev, "no vdmabuf_reserved_memory node\n");
 	}
 
 	for (i = 0; i <= VIRTIO_VDMABUF_CARVEOUTS_NUM; i++) {
@@ -1745,9 +1744,7 @@ static int __init vhost_vdmabuf_init(void)
 
 	ret = carveout_buf_setup();
 	if (ret < 0)
-		dev_warn(drv_info->dev,
-			 "vhost-vdmabuf: carveout bufs setup failed %d\n",
-			 ret);
+		dev_info(drv_info->dev, "vhost-vdmabuf: carveout buf not setup %d\n", ret);
 
 	mutex_init(&drv_info->g_mutex);
 

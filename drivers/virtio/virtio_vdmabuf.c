@@ -56,8 +56,7 @@ static int carveout_buf_setup(void)
 	node = of_find_node_by_name(NULL, "vdmabuf_reserved_memory");
 	if (!node) {
 		ret = -EINVAL;
-		dev_err(drv_info->dev,
-			"failed to find vdmabuf_reserved_memory node\n");
+		pr_info("no vdmabuf_reserved_memory node\n");
 	}
 
 	for (i = 0; i <= VIRTIO_VDMABUF_CARVEOUTS_NUM; i++) {
@@ -1201,6 +1200,7 @@ static int virtio_vdmabuf_create_dmabuf(struct virtio_vdmabuf *vdmabuf,
 	struct dma_buf *dmabuf;
 	unsigned long irqflags;
 	struct page *page = NULL;
+	unsigned int gfp = GFP_KERNEL;
 	int ret, i = 0, npages, bp_num;
 
 	/* For carveout, buf size is fixed, user don't need specify it */
@@ -1226,7 +1226,6 @@ static int virtio_vdmabuf_create_dmabuf(struct virtio_vdmabuf *vdmabuf,
 	exp_info.flags = O_RDWR;
 	exp_info.priv = exp_buf;
 
-	unsigned int gfp = GFP_KERNEL;
 	if(attr->flags & VIRTIO_VDAMBUF_DMA32)
 	{
 		gfp |= __GFP_DMA32;
@@ -1652,8 +1651,7 @@ static int __init virtio_vdmabuf_init(void)
 
 	ret = carveout_buf_setup();
 	if (ret < 0)
-		pr_warn("virtio-vdmabuf: carveout bufs setup failed %d\n",
-			 ret);
+		pr_info("virtio-vdmabuf: carveout buf not setup %d\n", ret);
 
 	mutex_init(&drv_info->g_mutex);
 

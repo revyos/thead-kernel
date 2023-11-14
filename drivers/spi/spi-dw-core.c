@@ -89,6 +89,52 @@ static inline void dw_spi_debugfs_remove(struct dw_spi *dws)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+#ifdef CONFIG_PM_SLEEP
+static void dw_spi_register_suspend(struct dw_spi *dws)
+{
+    struct dw_spi_context *ctx = &dws->ctx;
+
+    ctx->ctrlr0         = dw_readl(dws, DW_SPI_CTRLR0);
+    ctx->ctrlr1         = dw_readl(dws, DW_SPI_CTRLR1);
+    ctx->ssienr         = dw_readl(dws, DW_SPI_SSIENR);
+    ctx->mwcr           = dw_readl(dws, DW_SPI_MWCR);
+    ctx->ser            = dw_readl(dws, DW_SPI_SER);
+    ctx->baudr          = dw_readl(dws, DW_SPI_BAUDR);
+    ctx->txftlr         = dw_readl(dws, DW_SPI_TXFTLR);
+    ctx->rxftlr         = dw_readl(dws, DW_SPI_RXFTLR);
+    ctx->txflr          = dw_readl(dws, DW_SPI_TXFLR);
+    ctx->rxflr          = dw_readl(dws, DW_SPI_RXFLR);
+    ctx->imr            = dw_readl(dws, DW_SPI_IMR);
+    ctx->dmacr          = dw_readl(dws, DW_SPI_DMACR);
+    ctx->dmatdlr        = dw_readl(dws, DW_SPI_DMATDLR);
+    ctx->dmardlr        = dw_readl(dws, DW_SPI_DMARDLR);
+    ctx->rx_sample_dly  = dw_readl(dws, DW_SPI_RX_SAMPLE_DLY);
+
+}
+
+static void dw_spi_register_resume(struct dw_spi *dws)
+{
+    struct dw_spi_context *ctx = &dws->ctx;
+
+    dw_writel(dws, DW_SPI_SSIENR, 0);
+    dw_writel(dws, DW_SPI_CTRLR0, ctx->ctrlr0);
+    dw_writel(dws, DW_SPI_CTRLR1, ctx->ctrlr1);
+    dw_writel(dws, DW_SPI_TXFTLR, ctx->txftlr);
+    dw_writel(dws, DW_SPI_RXFTLR, ctx->rxftlr);
+    dw_writel(dws, DW_SPI_TXFLR, ctx->txflr);
+    dw_writel(dws, DW_SPI_RXFLR, ctx->rxflr);
+    dw_writel(dws, DW_SPI_IMR, ctx->imr);
+    dw_writel(dws, DW_SPI_DMATDLR, ctx->dmatdlr);
+    dw_writel(dws, DW_SPI_DMARDLR, ctx->dmardlr);
+    dw_writel(dws, DW_SPI_RX_SAMPLE_DLY, ctx->rx_sample_dly);
+    dw_writel(dws, DW_SPI_SER, ctx->ser);
+    dw_writel(dws, DW_SPI_BAUDR, ctx->baudr);
+    dw_writel(dws, DW_SPI_MWCR, ctx->mwcr);
+    dw_writel(dws, DW_SPI_DMACR, ctx->dmacr);
+    dw_writel(dws, DW_SPI_SSIENR, ctx->ssienr);
+}
+#endif
+
 void dw_spi_set_cs(struct spi_device *spi, bool enable)
 {
 	struct dw_spi *dws = spi_controller_get_devdata(spi->controller);
@@ -940,6 +986,9 @@ int dw_spi_suspend_host(struct dw_spi *dws)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_PM_SLEEP
+    dw_spi_register_suspend(dws);
+#endif
 	spi_shutdown_chip(dws);
 	return 0;
 }
@@ -948,6 +997,9 @@ EXPORT_SYMBOL_GPL(dw_spi_suspend_host);
 int dw_spi_resume_host(struct dw_spi *dws)
 {
 	spi_hw_init(&dws->master->dev, dws);
+#ifdef CONFIG_PM_SLEEP
+    dw_spi_register_resume(dws);
+#endif
 	return spi_controller_resume(dws->master);
 }
 EXPORT_SYMBOL_GPL(dw_spi_resume_host);

@@ -27,8 +27,58 @@ struct dw_qspi_mmio {
 	struct dw_spi  dws;
 	struct clk     *clk;
 	struct clk     *pclk;
+	struct clk     *sclk;
 	void           *priv;
 };
+
+static int qspi_clk_prepare_enable(struct dw_qspi_mmio *dwsmmio)
+{
+   int ret;
+
+   ret = clk_prepare_enable(dwsmmio->pclk);
+   if (ret)
+       return ret;
+
+   ret = clk_prepare_enable(dwsmmio->sclk);
+   if (ret) {
+       clk_disable_unprepare(dwsmmio->pclk);
+       return ret;
+   }
+
+   return 0;
+}
+
+static void qspi_clk_disable_unprepare(struct dw_qspi_mmio *dwsmmio)
+{
+    clk_disable_unprepare(dwsmmio->pclk);
+    clk_disable_unprepare(dwsmmio->sclk);
+}
+
+static int __maybe_unused dw_qspi_mmio_suspend(struct device *dev)
+{
+   int ret;
+   struct dw_qspi_mmio *dwsmmio = dev_get_drvdata(dev);
+
+   ret = dw_qspi_suspend_host(&dwsmmio->dws);
+
+   qspi_clk_disable_unprepare(dwsmmio);
+
+   return ret;
+}
+
+static int __maybe_unused dw_qspi_mmio_resume(struct device *dev)
+{
+   struct dw_qspi_mmio *dwsmmio = dev_get_drvdata(dev);
+   int ret;
+
+   ret = qspi_clk_prepare_enable(dwsmmio);
+   if (ret) {
+       dev_err(dev, "failed to enable spi clock(%d)\n", ret);
+       return ret;
+   }
+
+   return dw_qspi_resume_host(&dwsmmio->dws);
+}
 
 static int dw_qspi_mmio_probe(struct platform_device *pdev)
 {
@@ -74,6 +124,15 @@ static int dw_qspi_mmio_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_clk;
 
+	dwsmmio->sclk = devm_clk_get_optional(&pdev->dev, "sclk");
+	if (IS_ERR(dwsmmio->sclk)) {
+		ret = PTR_ERR(dwsmmio->sclk);
+		goto out_clk;
+	}
+	ret = clk_prepare_enable(dwsmmio->sclk);
+	if (ret)
+		goto out_clk;
+
 	/* set bus number */
 	dws->bus_num = pdev->id;
 
@@ -113,6 +172,7 @@ static int dw_qspi_mmio_probe(struct platform_device *pdev)
 
 out:
 	clk_disable_unprepare(dwsmmio->pclk);
+	clk_disable_unprepare(dwsmmio->sclk);
 out_clk:
 	clk_disable_unprepare(dwsmmio->clk);
 	return ret;
@@ -124,6 +184,7 @@ static int dw_qspi_mmio_remove(struct platform_device *pdev)
 
 	dw_qspi_remove_host(&dwsmmio->dws);
 	clk_disable_unprepare(dwsmmio->pclk);
+	clk_disable_unprepare(dwsmmio->sclk);
 	clk_disable_unprepare(dwsmmio->clk);
 
 	return 0;
@@ -135,12 +196,17 @@ static const struct of_device_id dw_qspi_mmio_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, dw_qspi_mmio_of_match);
 
+static const struct dev_pm_ops qspi_mmio_pm_ops = {
+    SET_SYSTEM_SLEEP_PM_OPS(dw_qspi_mmio_suspend, dw_qspi_mmio_resume)
+};
+
 static struct platform_driver dw_qspi_mmio_driver = {
 	.probe		= dw_qspi_mmio_probe,
 	.remove		= dw_qspi_mmio_remove,
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.of_match_table = dw_qspi_mmio_of_match,
+        .pm = &qspi_mmio_pm_ops,
 	},
 };
 module_platform_driver(dw_qspi_mmio_driver);

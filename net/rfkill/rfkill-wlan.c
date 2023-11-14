@@ -651,6 +651,9 @@ static int wlan_platdata_parse_dt(struct device *dev,
 		data->mregulator.power_ctrl_by_pmu = false;
 		LOG("%s: wifi power controled by gpio.\n", __func__);
         gpio = of_get_named_gpio_flags(node, "WIFI,poweren_gpio", 0, &flags);
+        if (gpio == -EPROBE_DEFER) {
+            return gpio;
+        }
         if (gpio_is_valid(gpio)){
 			data->power_n.io = gpio;
 			data->power_n.enable = (flags == GPIO_ACTIVE_HIGH)? 1:0;

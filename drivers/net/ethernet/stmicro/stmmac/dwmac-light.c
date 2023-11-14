@@ -5,6 +5,7 @@
 #include <linux/of_device.h>
 #include <linux/of_net.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 
 #include "stmmac_platform.h"
 
@@ -52,10 +53,13 @@ struct thead_dwmac_priv_data {
 	phy_interface_t interface;
 	struct clk *gmac_pll_clk;
 	unsigned long gmac_pll_clk_freq;
-
+	struct clk *gmac_axi_aclk;
+	struct clk *gmac_axi_pclk;
 	const struct thead_dwmac_ops *ops;
 	struct plat_stmmacenet_data *plat_dat;
 };
+
+#define  pm_debug dev_dbg	// for suspend/resume interface debug info show,replace to dev_info
 
 /* set GMAC PHY interface, 0:MII/GMII, 1:RGMII, 4:RMII */
 static void thead_dwmac_set_phy_if(struct plat_stmmacenet_data *plat_dat)
@@ -64,7 +68,7 @@ static void thead_dwmac_set_phy_if(struct plat_stmmacenet_data *plat_dat)
 	void __iomem *phy_if_reg = thead_plat_dat->phy_if_reg;
 	phy_interface_t interface = thead_plat_dat->interface;
 	struct device *dev = thead_plat_dat->dev;
-	int devid = thead_plat_dat->id;
+	//int devid = thead_plat_dat->id;
 	unsigned int phyif = PHY_INTERFACE_MODE_MII;
 	uint32_t reg;
 
@@ -92,8 +96,10 @@ static void thead_dwmac_set_phy_if(struct plat_stmmacenet_data *plat_dat)
 	};
 
 	reg = readl(phy_if_reg);
-	reg &= ~(DWMAC_PHYIF_MASK << (DWMAC_PHYIF_BIT_WIDTH * devid));
-	reg |= (phyif & DWMAC_PHYIF_MASK) << (DWMAC_PHYIF_BIT_WIDTH * devid);
+	//This reg defined bit not related to devid
+	reg &= ~(DWMAC_PHYIF_MASK );
+	reg |= (phyif & DWMAC_PHYIF_MASK) ;
+	dev_info(dev,"set phy_if_reg val 0x%x \n",reg);
 	writel(reg, phy_if_reg);
 }
 
@@ -428,13 +434,13 @@ static void thead_dwmac_light_enable_clk(struct plat_stmmacenet_data *plat_dat)
 static int thead_dwmac_init(struct platform_device *pdev, void *bsp_priv)
 {
 	struct thead_dwmac_priv_data *thead_plat_dat = bsp_priv;
-	struct plat_stmmacenet_data *plat_dat = thead_plat_dat->plat_dat;
+	//struct plat_stmmacenet_data *plat_dat = thead_plat_dat->plat_dat;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *res;
 	void __iomem *ptr;
-	struct clk *clktmp;
-	int ret;
+	//struct clk *clktmp;
+	//int ret;
 
 	thead_plat_dat->id = of_alias_get_id(np, "ethernet");
 	if (thead_plat_dat->id < 0) {
@@ -472,7 +478,7 @@ static int thead_dwmac_init(struct platform_device *pdev, void *bsp_priv)
 	} else {
 		thead_plat_dat->gmac_clk_reg = ptr;
 	}
-
+#if 0
 	/* get gmac pll clk */
 	clktmp = devm_clk_get(dev, "gmac_pll_clk");
 	if (IS_ERR(clktmp)) {
@@ -490,6 +496,7 @@ static int thead_dwmac_init(struct platform_device *pdev, void *bsp_priv)
 				clk_get_rate(thead_plat_dat->gmac_pll_clk);
 	}
 
+
 	thead_dwmac_set_phy_if(plat_dat);
 	thead_dwmac_set_txclk_dir(plat_dat);
 
@@ -506,7 +513,7 @@ static int thead_dwmac_init(struct platform_device *pdev, void *bsp_priv)
 
 	if (thead_plat_dat->ops->enable_clk)
 		thead_plat_dat->ops->enable_clk(plat_dat);
-
+#endif
 	return 0;
 }
 
@@ -577,6 +584,97 @@ static int dwmac1000_validate_ucast_entries(int ucast_entries)
 	}
 	return x;
 }
+static void __maybe_unused thead_dwmac_dump_priv_reg(struct platform_device *pdev, void *bsp_priv)
+{
+	struct thead_dwmac_priv_data *thead_plat_dat = bsp_priv;
+	struct device *dev = &pdev->dev;
+	void __iomem *gmac_clk_reg = thead_plat_dat->gmac_clk_reg;
+	unsigned int reg = 0;
+	int i;
+	dev_info(dev,"dump gmac_clk_reg %p\n",gmac_clk_reg);
+	if(gmac_clk_reg == NULL)
+		return ;
+	for(i=0; i< 0x1c; i+=4)
+	{
+		reg = readl(gmac_clk_reg + GMAC_CLK_CFG0+i);
+		pr_info("%08x ",reg);
+	}
+	pr_info("\n");
+	reg = readl(thead_plat_dat->phy_if_reg);
+	pr_info("phy_if_reg %08x ",reg);
+	reg = readl(thead_plat_dat->txclk_dir_reg);
+	pr_info("txclk_dir_reg %08x ",reg);
+}
+
+int thead_dwmac_clk_enable(struct platform_device *pdev, void *bsp_priv)
+{
+	struct thead_dwmac_priv_data *thead_plat_dat = bsp_priv;
+	struct device *dev = &pdev->dev;
+	int ret;
+	pm_debug(dev,"enter %s()\n",__func__);
+	ret = clk_prepare_enable(thead_plat_dat->gmac_pll_clk);
+	if (ret) {
+		dev_err(dev, "Failed to enable clk 'gmac_pll_clk'\n");
+		return -1;
+	}
+	ret = clk_prepare_enable(thead_plat_dat->gmac_axi_aclk);
+	if (ret) {
+		clk_disable_unprepare(thead_plat_dat->gmac_pll_clk);
+		dev_err(dev, "Failed to enable clk 'gmac_axi_aclk'\n");
+		return -1;
+	}
+	ret = clk_prepare_enable(thead_plat_dat->gmac_axi_pclk);
+	if (ret) {
+		clk_disable_unprepare(thead_plat_dat->gmac_axi_aclk);
+		clk_disable_unprepare(thead_plat_dat->gmac_pll_clk);
+		dev_err(dev, "Failed to enable clk 'gmac_axi_pclk'\n");
+		return -1;
+	}
+	
+	return ret;
+}
+
+int thead_dwmac_clk_init(struct platform_device *pdev, void *bsp_priv)
+{
+	struct thead_dwmac_priv_data *thead_plat_dat = bsp_priv;
+	struct device *dev = &pdev->dev;
+	struct plat_stmmacenet_data *plat_dat = thead_plat_dat->plat_dat;
+	int ret = 0;
+	pm_debug(dev,"enter %s()\n",__func__);
+
+	thead_dwmac_set_phy_if(plat_dat);
+	thead_dwmac_set_txclk_dir(plat_dat);
+
+	if (thead_plat_dat->ops->set_clk_source)
+		thead_plat_dat->ops->set_clk_source(plat_dat);
+
+	thead_dwmac_set_clock_delay(plat_dat);
+
+	if (thead_plat_dat->ops->set_clk_pll)
+		thead_plat_dat->ops->set_clk_pll(plat_dat);
+
+	if (thead_plat_dat->ops->set_clk_div)
+		thead_plat_dat->ops->set_clk_div(plat_dat, SPEED_1000);
+
+	if (thead_plat_dat->ops->enable_clk)
+		thead_plat_dat->ops->enable_clk(plat_dat);
+	
+	//thead_dwmac_dump_priv_reg(pdev,bsp_priv);
+	return ret;
+}
+void thead_dwmac_clk_disable(struct platform_device *pdev, void *bsp_priv)
+{
+	struct thead_dwmac_priv_data *thead_plat_dat = bsp_priv;
+	struct device *dev = &pdev->dev;
+	pm_debug(dev,"enter %s()\n",__func__);
+	//thead_dwmac_dump_priv_reg(pdev,bsp_priv);
+	
+	clk_disable_unprepare(thead_plat_dat->gmac_pll_clk);
+	clk_disable_unprepare(thead_plat_dat->gmac_axi_aclk);
+	clk_disable_unprepare(thead_plat_dat->gmac_pll_clk);
+
+	return ;
+}
 
 static int thead_dwmac_probe(struct platform_device *pdev)
 {
@@ -627,17 +725,13 @@ static int thead_dwmac_probe(struct platform_device *pdev)
 		plat_dat->unicast_filter_entries = 1;
 	}
 
-	/* Custom initialisation (if needed) */
-	if (plat_dat->init) {
-		ret = plat_dat->init(pdev, plat_dat->bsp_priv);
-		if (ret)
-			goto err_remove_config_dt;
-	}
+
 
 	/* populate bsp private data */
 	thead_plat_dat->dev = &pdev->dev;
 	plat_dat->bsp_priv = thead_plat_dat;
 	plat_dat->fix_mac_speed = thead_dwmac_fix_speed;
+	plat_dat->init = thead_dwmac_clk_init;
 	of_property_read_u32(np, "max-frame-size", &plat_dat->maxmtu);
 	of_property_read_u32(np, "snps,multicast-filter-bins",
 			     &plat_dat->multicast_filter_bins);
@@ -651,9 +745,41 @@ static int thead_dwmac_probe(struct platform_device *pdev)
 	plat_dat->pmt = 1;
 	thead_plat_dat->plat_dat = plat_dat;
 
+	/* get gmac pll clk */
+	thead_plat_dat->gmac_pll_clk = devm_clk_get(dev, "gmac_pll_clk");
+	if (IS_ERR(thead_plat_dat->gmac_pll_clk)) {
+		dev_err(dev, "gmac_pll_clk not exist, dts error\n");
+		goto err_remove_config_dt;
+	}
+	
+	thead_plat_dat->gmac_axi_aclk = devm_clk_get(dev, "axi_aclk");
+	if (IS_ERR(thead_plat_dat->gmac_axi_aclk)) {
+		dev_err(dev, "gmac axi_aclk not exist, skipped it\n");
+	}
+	thead_plat_dat->gmac_axi_pclk = devm_clk_get(dev, "axi_pclk");
+	if (IS_ERR(thead_plat_dat->gmac_axi_pclk)) {
+		dev_err(dev, "gmac axi_pclk not exist, skipped it\n");
+	}
+	
+
+	thead_plat_dat->gmac_pll_clk_freq =
+			clk_get_rate(thead_plat_dat->gmac_pll_clk);
+	dev_info(dev,"get_rate gmac_pll_clk_freq %ld \n",thead_plat_dat->gmac_pll_clk_freq);
+
 	ret = thead_dwmac_init(pdev, plat_dat->bsp_priv);
 	if (ret)
-		goto err_exit;
+		goto err_remove_config_dt;
+	
+	ret = thead_dwmac_clk_enable(pdev, plat_dat->bsp_priv);
+	if (ret)
+			goto err_remove_config_dt;
+	
+	/* Custom initialisation (if needed) -- init clks*/
+	if (plat_dat->init) {
+		ret = plat_dat->init(pdev, plat_dat->bsp_priv);
+		if (ret)
+			goto err_exit;
+	}
 
 	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
 	if (ret)
@@ -664,12 +790,137 @@ static int thead_dwmac_probe(struct platform_device *pdev)
 err_exit:
 	if (plat_dat->exit)
 		plat_dat->exit(pdev, plat_dat->bsp_priv);
+	thead_dwmac_clk_disable(pdev, plat_dat->bsp_priv);
 err_remove_config_dt:
 	if (pdev->dev.of_node)
 		stmmac_remove_config_dt(pdev, plat_dat);
 
 	return ret;
 }
+
+/**
+ * stmmac_pltfr_suspend
+ * @dev: device pointer
+ * Description: this function is invoked when suspend the driver and it direcly
+ * call the main suspend function and then, if required, on some platform, it
+ * can call an exit helper.
+ */
+static int __maybe_unused thead_dwmac_suspend(struct device *dev)
+{
+	int ret;
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct platform_device *pdev = to_platform_device(dev);
+	pm_debug(dev,"enter %s()\n",__func__);
+	ret = stmmac_suspend(dev);
+	if (priv->plat->exit)
+		priv->plat->exit(pdev, priv->plat->bsp_priv);
+	
+	return ret;
+}
+
+/**
+ * thead_dwmac_resume
+ * @dev: device pointer
+ * Description: this function is invoked when resume the driver before calling
+ * the main resume function, on some platforms, it can call own init helper
+ * if required.
+ */
+static int __maybe_unused thead_dwmac_resume(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct platform_device *pdev = to_platform_device(dev);
+	pm_debug(dev,"enter %s()\n",__func__);
+
+	if (priv->plat->init)
+		priv->plat->init(pdev, priv->plat->bsp_priv);
+
+	return stmmac_resume(dev);
+}
+
+static int __maybe_unused thead_dwmac_runtime_suspend(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct platform_device *pdev = to_platform_device(dev);
+	pm_debug(dev,"enter %s()\n",__func__);
+	stmmac_bus_clks_config(priv, false);
+	thead_dwmac_clk_disable(pdev, priv->plat->bsp_priv);
+	return 0;
+}
+
+static int __maybe_unused thead_dwmac_runtime_resume(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	struct platform_device *pdev = to_platform_device(dev);
+	int ret;
+	pm_debug(dev,"enter %s()\n",__func__);
+	ret = stmmac_bus_clks_config(priv, true);
+	if(ret)
+		return ret;
+	ret = thead_dwmac_clk_enable(pdev, priv->plat->bsp_priv);
+	if(ret)
+		return ret;
+	return 0;
+}
+
+static int __maybe_unused thead_dwmac_noirq_suspend(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int ret;
+	pm_debug(dev,"enter %s()\n",__func__);
+	if (!netif_running(ndev))
+		return 0;
+
+	if (!device_may_wakeup(priv->device) || !priv->plat->pmt) {
+		/* Disable clock in case of PWM is off */
+		clk_disable_unprepare(priv->plat->clk_ptp_ref);
+
+		ret = pm_runtime_force_suspend(dev);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int __maybe_unused thead_dwmac_noirq_resume(struct device *dev)
+{
+	struct net_device *ndev = dev_get_drvdata(dev);
+	struct stmmac_priv *priv = netdev_priv(ndev);
+	int ret;
+	pm_debug(dev,"enter %s()\n",__func__);
+	if (!netif_running(ndev))
+		return 0;
+
+	if (!device_may_wakeup(priv->device) || !priv->plat->pmt) {
+		/* enable the clk previously disabled */
+		ret = pm_runtime_force_resume(dev);
+		if (ret)
+			return ret;
+
+		ret = clk_prepare_enable(priv->plat->clk_ptp_ref);
+		if (ret < 0) {
+			netdev_warn(priv->dev,
+				    "failed to enable PTP reference clock: %pe\n",
+				    ERR_PTR(ret));
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+/*similar with stmmac_pltfr_pm_ops,but clks enable/disable add this drv need */
+const struct dev_pm_ops thead_dwmac_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(thead_dwmac_suspend, thead_dwmac_resume)
+	SET_RUNTIME_PM_OPS(thead_dwmac_runtime_suspend, thead_dwmac_runtime_resume, NULL)
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(thead_dwmac_noirq_suspend, thead_dwmac_noirq_resume)
+};
+
 
 static struct thead_dwmac_ops thead_ice_dwmac_data = {
 	.set_clk_source = thead_dwmac_ice_set_clk_source,
@@ -695,7 +946,7 @@ static struct platform_driver thead_dwmac_driver = {
 	.remove = stmmac_pltfr_remove,
 	.driver = {
 		.name           = "light_dwmac_eth",
-		.pm		= &stmmac_pltfr_pm_ops,
+		.pm		= &thead_dwmac_pm_ops,
 		.of_match_table = of_match_ptr(thead_dwmac_match),
 	},
 };

@@ -35,5 +35,7 @@
 #define IOPMP_TEE_DMAC	25
 #define IOPMP_DSP0	26
 #define IOPMP_DSP1	27
+#define IOPMP_AUDIO0	28
+#define IOPMP_AUDIO1	29
 
 #endif /* __DT_THEAD_LIGHT_IOPMP_H__ */
