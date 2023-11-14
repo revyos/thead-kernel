@@ -190,6 +190,7 @@ unsigned char aw87519_audio_speaker(void)
 					aw87519_spk_cnt->data[i],
 					aw87519_spk_cnt->data[i+1]);
 	}
+	mdelay(40); // aw87519 chip need 40ms setup time.
 
 	return 0;
 }
@@ -537,9 +538,7 @@ int aw87519_hw_reset(struct aw87519 *aw87519)
 		usleep_range(2500, 3000);
 		gpio_set_value_cansleep(aw87519->reset_gpio, 1);
 		usleep_range(5000, 5500);
-		aw87519->hwen_flag = 1;
 	} else {
-		aw87519->hwen_flag = 0;
 		dev_err(&aw87519->i2c_client->dev, "%s: failed\n", __func__);
 	}
 
@@ -599,6 +598,7 @@ static int  aw87519_power_event(struct snd_soc_dapm_widget *w,
 	struct aw87519 *pa = snd_soc_component_get_drvdata(c);
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		aw87519_hw_reset(pa);
 		/* Before widget power up: turn chip on, sync registers */
 		aw87519_audio_speaker();
 	} else {

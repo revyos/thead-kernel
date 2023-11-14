@@ -280,7 +280,7 @@ static int es7210_set_dai_fmt(struct snd_soc_dai *codec_dai,
 }
 static void es7210_tdm_init_ratio(struct es7210_priv *priv)
 {
-        int cnt, channel, i, width;
+        int cnt, channel, width;
 
         channel = ES7210_CHANNELS_MAX;
 
@@ -456,7 +456,7 @@ static void es7210_tdm_init_ratio(struct es7210_priv *priv)
 */
 static void es7210_tdm_init_codec(u8 mode)
 {
-        int cnt, channel, i;
+        int cnt, i;
 
         for (cnt = 0;
              cnt < sizeof(es7210_tdm_reg_common_cfg1) /
@@ -876,50 +876,148 @@ static struct snd_soc_dai_driver *es7210_dai[] = {
         &es7210_dai3,
 };
 
+#ifdef CONFIG_PM_SLEEP
 static int es7210_suspend(struct snd_soc_component *component)
 {
         int i = 0;
-
-        printk("es7210_suspend enter\n");
+        struct es7210_priv *priv = snd_soc_component_get_drvdata(component);
 
         for (i = 0; i < ADC_DEV_MAXNUM; i++) {
-                if (i == 1) {
-                        es7210_write(0x06, 0x05, i2c_clt1[i]);
-                        es7210_write(0x05, 0x1B, i2c_clt1[i]);
-                        es7210_write(0x06, 0x5C, i2c_clt1[i]);
-                        es7210_write(0x07, 0x3F, i2c_clt1[i]);
-                        es7210_write(0x08, 0x4B, i2c_clt1[i]);
-                        es7210_write(0x09, 0x9F, i2c_clt1[i]);
-
-                } else {
-                        /*turn off mic3/4 */
-
-                        es7210_write(0x4C, 0xFF, i2c_clt1[i]);
-                        es7210_write(0x0B, 0xD0, i2c_clt1[i]);
-                        es7210_write(0x40, 0x80, i2c_clt1[i]);
-                        es7210_write(0x01, 0x34, i2c_clt1[i]);
-                        es7210_write(0x06, 0x07, i2c_clt1[i]);
-                        /*turn off mic 1/2/3/4 */
-                        /*
-                        es7210_write(0x4B, 0xFF, i2c_clt1[i]);
-                        es7210_write(0x4C, 0xFF, i2c_clt1[i]);
-                        es7210_write(0x0B, 0xD0, i2c_clt1[i]);
-                        es7210_write(0x40, 0x80, i2c_clt1[i]);
-                        es7210_write(0x01, 0x7F, i2c_clt1[i]);
-                        es7210_write(0x06, 0x07, i2c_clt1[i]);
-                        */
-                }
+                es7210_read(ES7210_RESET_CTL_REG00, &priv->suspend_reg00[i], i2c_clt1[i]);
+                es7210_read(ES7210_CLK_ON_OFF_REG01, &priv->suspend_reg01[i], i2c_clt1[i]);
+                es7210_read(ES7210_MCLK_CTL_REG02, &priv->suspend_reg02[i], i2c_clt1[i]);
+                es7210_read(ES7210_MST_CLK_CTL_REG03, &priv->suspend_reg03[i], i2c_clt1[i]);
+                es7210_read(ES7210_MST_LRCDIVH_REG04, &priv->suspend_reg04[i], i2c_clt1[i]);
+                es7210_read(ES7210_MST_LRCDIVL_REG05, &priv->suspend_reg05[i], i2c_clt1[i]);
+                es7210_read(ES7210_DIGITAL_PDN_REG06, &priv->suspend_reg06[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC_OSR_REG07, &priv->suspend_reg07[i], i2c_clt1[i]);
+                es7210_read(ES7210_MODE_CFG_REG08, &priv->suspend_reg08[i], i2c_clt1[i]);
+                es7210_read(ES7210_TCT0_CHPINI_REG09, &priv->suspend_reg09[i], i2c_clt1[i]);
+                es7210_read(ES7210_TCT1_CHPINI_REG0A, &priv->suspend_reg0A[i], i2c_clt1[i]);
+                es7210_read(ES7210_CHIP_STA_REG0B, &priv->suspend_reg0B[i], i2c_clt1[i]);
+                es7210_read(ES7210_IRQ_CTL_REG0C, &priv->suspend_reg0C[i], i2c_clt1[i]);
+                es7210_read(ES7210_MISC_CTL_REG0D, &priv->suspend_reg0D[i], i2c_clt1[i]);
+                es7210_read(ES7210_DMIC_CTL_REG10, &priv->suspend_reg10[i], i2c_clt1[i]);
+                es7210_read(ES7210_SDP_CFG1_REG11, &priv->suspend_reg11[i], i2c_clt1[i]);
+                es7210_read(ES7210_SDP_CFG2_REG12, &priv->suspend_reg12[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC_AUTOMUTE_REG13, &priv->suspend_reg13[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC34_MUTE_REG14, &priv->suspend_reg14[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC12_MUTE_REG15, &priv->suspend_reg15[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC_SEL_REG16, &priv->suspend_reg16[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC_COM_CFG1_REG17, &priv->suspend_reg17[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC34_LVL_REG18, &priv->suspend_reg18[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC12_LVL_REG19, &priv->suspend_reg19[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC_COM_CFG2_REG1A, &priv->suspend_reg1A[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC4_MAX_GAIN_REG1B, &priv->suspend_reg1B[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC3_MAX_GAIN_REG1C, &priv->suspend_reg1C[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC2_MAX_GAIN_REG1D, &priv->suspend_reg1D[i], i2c_clt1[i]);
+                es7210_read(ES7210_ALC1_MAX_GAIN_REG1E, &priv->suspend_reg1E[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC34_HPF2_REG20, &priv->suspend_reg20[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC34_HPF1_REG21, &priv->suspend_reg21[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC12_HPF2_REG22, &priv->suspend_reg22[i], i2c_clt1[i]);
+                es7210_read(ES7210_ADC12_HPF1_REG23, &priv->suspend_reg23[i], i2c_clt1[i]);
+                es7210_read(ES7210_ANALOG_SYS_REG40, &priv->suspend_reg40[i], i2c_clt1[i]);
+                es7210_read(ES7210_MICBIAS12_REG41, &priv->suspend_reg41[i], i2c_clt1[i]);
+                es7210_read(ES7210_MICBIAS34_REG42, &priv->suspend_reg42[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC1_GAIN_REG43, &priv->suspend_reg43[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC2_GAIN_REG44, &priv->suspend_reg44[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC3_GAIN_REG45, &priv->suspend_reg45[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC4_GAIN_REG46, &priv->suspend_reg46[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC1_LP_REG47, &priv->suspend_reg47[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC2_LP_REG48, &priv->suspend_reg48[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC3_LP_REG49, &priv->suspend_reg49[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC4_LP_REG4A, &priv->suspend_reg4A[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC12_PDN_REG4B, &priv->suspend_reg4B[i], i2c_clt1[i]);
+                es7210_read(ES7210_MIC34_PDN_REG4C, &priv->suspend_reg4C[i], i2c_clt1[i]);
         }
 
         es7210_init_reg = 0;
+
+        /* power down the controller */
+        if (priv->pvdd)
+                regulator_disable(priv->pvdd);
+        if (priv->dvdd)
+                regulator_disable(priv->dvdd);
+        if (priv->avdd)
+                regulator_disable(priv->avdd);
+        if (priv->mvdd)
+                regulator_disable(priv->mvdd);
+
         return 0;
 }
 
 static int es7210_resume(struct snd_soc_component *component)
 {
-        es7210_tdm_init_codec(resume_es7210->tdm_mode);
-        return 0;
+        int ret = 0, i = 0;
+        struct es7210_priv *priv = snd_soc_component_get_drvdata(component);
+
+        /* power up the controller */
+        if (priv->mvdd)
+                ret |= regulator_enable(priv->mvdd);
+        if (priv->avdd)
+                ret |= regulator_enable(priv->avdd);
+        if (priv->dvdd)
+                ret |= regulator_enable(priv->dvdd);
+        if (priv->pvdd)
+                ret |= regulator_enable(priv->pvdd);
+        if (ret) {
+                pr_err("Failed to enable VDD regulator: %d\n", ret);
+                return ret;
+        }
+        mdelay(10); // es7210 need 10ms setup time after power up.
+
+        for (i = 0; i < ADC_DEV_MAXNUM; i++) {
+                es7210_write(ES7210_RESET_CTL_REG00, priv->suspend_reg00[i], i2c_clt1[i]);
+                es7210_write(ES7210_CLK_ON_OFF_REG01, priv->suspend_reg01[i], i2c_clt1[i]);
+                es7210_write(ES7210_MCLK_CTL_REG02, priv->suspend_reg02[i], i2c_clt1[i]);
+                es7210_write(ES7210_MST_CLK_CTL_REG03, priv->suspend_reg03[i], i2c_clt1[i]);
+                es7210_write(ES7210_MST_LRCDIVH_REG04, priv->suspend_reg04[i], i2c_clt1[i]);
+                es7210_write(ES7210_MST_LRCDIVL_REG05, priv->suspend_reg05[i], i2c_clt1[i]);
+                es7210_write(ES7210_DIGITAL_PDN_REG06, priv->suspend_reg06[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC_OSR_REG07, priv->suspend_reg07[i], i2c_clt1[i]);
+                es7210_write(ES7210_MODE_CFG_REG08, priv->suspend_reg08[i], i2c_clt1[i]);
+                es7210_write(ES7210_TCT0_CHPINI_REG09, priv->suspend_reg09[i], i2c_clt1[i]);
+                es7210_write(ES7210_TCT1_CHPINI_REG0A, priv->suspend_reg0A[i], i2c_clt1[i]);
+                es7210_write(ES7210_CHIP_STA_REG0B, priv->suspend_reg0B[i], i2c_clt1[i]);
+                es7210_write(ES7210_IRQ_CTL_REG0C, priv->suspend_reg0C[i], i2c_clt1[i]);
+                es7210_write(ES7210_MISC_CTL_REG0D, priv->suspend_reg0D[i], i2c_clt1[i]);
+                es7210_write(ES7210_DMIC_CTL_REG10, priv->suspend_reg10[i], i2c_clt1[i]);
+                es7210_write(ES7210_SDP_CFG1_REG11, priv->suspend_reg11[i], i2c_clt1[i]);
+                es7210_write(ES7210_SDP_CFG2_REG12, priv->suspend_reg12[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC_AUTOMUTE_REG13, priv->suspend_reg13[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC34_MUTE_REG14, priv->suspend_reg14[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC12_MUTE_REG15, priv->suspend_reg15[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC_SEL_REG16, priv->suspend_reg16[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC_COM_CFG1_REG17, priv->suspend_reg17[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC34_LVL_REG18, priv->suspend_reg18[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC12_LVL_REG19, priv->suspend_reg19[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC_COM_CFG2_REG1A, priv->suspend_reg1A[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC4_MAX_GAIN_REG1B, priv->suspend_reg1B[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC3_MAX_GAIN_REG1C, priv->suspend_reg1C[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC2_MAX_GAIN_REG1D, priv->suspend_reg1D[i], i2c_clt1[i]);
+                es7210_write(ES7210_ALC1_MAX_GAIN_REG1E, priv->suspend_reg1E[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC34_HPF2_REG20, priv->suspend_reg20[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC34_HPF1_REG21, priv->suspend_reg21[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC12_HPF2_REG22, priv->suspend_reg22[i], i2c_clt1[i]);
+                es7210_write(ES7210_ADC12_HPF1_REG23, priv->suspend_reg23[i], i2c_clt1[i]);
+                es7210_write(ES7210_ANALOG_SYS_REG40, priv->suspend_reg40[i], i2c_clt1[i]);
+                es7210_write(ES7210_MICBIAS12_REG41, priv->suspend_reg41[i], i2c_clt1[i]);
+                es7210_write(ES7210_MICBIAS34_REG42, priv->suspend_reg42[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC1_GAIN_REG43, priv->suspend_reg43[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC2_GAIN_REG44, priv->suspend_reg44[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC3_GAIN_REG45, priv->suspend_reg45[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC4_GAIN_REG46, priv->suspend_reg46[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC1_LP_REG47, priv->suspend_reg47[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC2_LP_REG48, priv->suspend_reg48[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC3_LP_REG49, priv->suspend_reg49[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC4_LP_REG4A, priv->suspend_reg4A[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC12_PDN_REG4B, priv->suspend_reg4B[i], i2c_clt1[i]);
+                es7210_write(ES7210_MIC34_PDN_REG4C, priv->suspend_reg4C[i], i2c_clt1[i]);
+        }        
+
+        return ret;
 }
+#endif
 
 static int es7210_probe(struct snd_soc_component *component)
 {
@@ -1707,8 +1805,10 @@ static struct snd_soc_component_driver soc_codec_dev_es7210 = {
         .name = "es7210",
         .probe = es7210_probe,
         .remove = es7210_remove,
+#ifdef CONFIG_PM_SLEEP
         .suspend = es7210_suspend,
         .resume = es7210_resume,
+#endif
         .set_bias_level = es7210_set_bias_level,
         .controls = es7210_snd_controls,
         .num_controls = ARRAY_SIZE(es7210_snd_controls),
@@ -1752,11 +1852,13 @@ static ssize_t es7210_store(struct device *dev, struct device_attribute *attr, c
 
 static ssize_t es7210_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
+        u8 value, i;
+        struct es7210_priv *es7210 = dev_get_drvdata(dev);
+
         printk("echo flag|reg|val > es7210\n");
         printk("eg read star address=0x06,count 0x10:echo 0610 >es7210\n");
         printk("eg write star address=0x90,value=0x3c,count=4:echo 4903c >es7210\n");
-        struct es7210_priv *es7210 = dev_get_drvdata(dev);
-        u8 value, i;
+
         for (i = 0; i < 0x4d; i++) {
                 es7210_read(i, &value, es7210->i2c_client);
                 printk("reg[0x%x]=0x%x\n", i, value);
@@ -1785,7 +1887,7 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
 {
         struct es7210_priv *es7210;
         struct device_node *np = i2c_client->dev.of_node;
-        char* property;
+        const char* property;
         int ret;
 
         es7210 = devm_kzalloc(&i2c_client->dev, sizeof(struct es7210_priv),

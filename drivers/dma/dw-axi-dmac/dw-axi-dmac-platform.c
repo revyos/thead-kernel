@@ -467,7 +467,7 @@ static int dma_chan_alloc_chan_resources(struct dma_chan *dchan)
 	}
 	dev_vdbg(dchan2dev(dchan), "%s: allocating\n", axi_chan_name(chan));
 
-	pm_runtime_get(chan->chip->dev);
+	pm_runtime_get_sync(chan->chip->dev);
 
 	return 0;
 }
@@ -492,7 +492,7 @@ static void dma_chan_free_chan_resources(struct dma_chan *dchan)
 		 "%s: free resources, descriptor still allocated: %u\n",
 		 axi_chan_name(chan), atomic_read(&chan->descs_allocated));
 
-	pm_runtime_put(chan->chip->dev);
+	pm_runtime_put_sync(chan->chip->dev);
 }
 
 static void dw_axi_dma_set_hw_channel(struct axi_dma_chan *chan, bool set)
@@ -1111,7 +1111,8 @@ static int dma_chan_terminate_all(struct dma_chan *dchan)
 	axi_chan_disable(chan);
 
 	ret = readl_poll_timeout_atomic(chan->chip->regs + DMAC_CHEN, val,
-					!(val & chan_active), 1000, 10000);
+					!(val & chan_active), 1000, 100000);
+
 	if (ret == -ETIMEDOUT)
 		dev_warn(dchan2dev(dchan),
 			 "%s failed to stop\n", axi_chan_name(chan));
@@ -1141,6 +1142,8 @@ static int dma_chan_pause(struct dma_chan *dchan)
 	unsigned long flags;
 	unsigned int timeout = 20; /* timeout iterations */
 	u32 val;
+	int ret;
+	u32 chan_active = BIT(chan->id) << DMAC_CHAN_EN_SHIFT;
 
 	spin_lock_irqsave(&chan->vc.lock, flags);
 
@@ -1168,13 +1171,48 @@ static int dma_chan_pause(struct dma_chan *dchan)
 
 	spin_unlock_irqrestore(&chan->vc.lock, flags);
 
+	chan->ch_sar = axi_chan_ioread32(chan, CH_SAR);
+	chan->ch_dar = axi_chan_ioread32(chan, CH_DAR);
+	chan->ch_dar_h = axi_chan_ioread32(chan, CH_DAR_H);
+	chan->ch_block_ts = axi_chan_ioread32(chan, CH_BLOCK_TS);
+	chan->ch_ctl_l = axi_chan_ioread32(chan, CH_CTL_L);
+	chan->ch_ctl_h = axi_chan_ioread32(chan, CH_CTL_H);
+	chan->ch_cfg_l = axi_chan_ioread32(chan, CH_CFG_L);
+	chan->ch_cfg_h = axi_chan_ioread32(chan, CH_CFG_H);
+	chan->ch_llp = axi_chan_ioread32(chan, CH_LLP);
+	//printk("%s for %s ch_sar=0x%x ch_dar=0x%x ch_dar_h=0x%x ch_block_ts=0x%x ch_ctl_l=0x%x ch_ctl_h=0x%x ch_cfg_l=0x%x ch_cfg_h=0x%x ch_llp=0x%x\n", __func__,
+	//	axi_chan_name(chan), chan->ch_sar, chan->ch_dar, chan->ch_dar_h, chan->ch_block_ts, chan->ch_ctl_l, chan->ch_ctl_h, chan->ch_cfg_l, chan->ch_cfg_h, chan->ch_llp);
+
+	axi_chan_disable(chan);
+	ret = readl_poll_timeout_atomic(chan->chip->regs + DMAC_CHEN, val,
+					!(val & chan_active), 1000, 100000);
+	if (ret == -ETIMEDOUT)
+		printk("%s %s failed to stop\n", __func__, axi_chan_name(chan));
+
 	return timeout ? 0 : -EAGAIN;
 }
 
 /* Called in chan locked context */
 static inline void axi_chan_resume(struct axi_dma_chan *chan)
 {
-	u32 val;
+	u32 val, irq_mask;
+	struct axi_dma_desc		*desc = chan->desc;
+	struct axi_dma_hw_desc	*hw_desc = desc->hw_desc;
+
+	axi_chan_iowrite32(chan, CH_SAR, chan->ch_sar);
+	axi_chan_iowrite32(chan, CH_DAR, chan->ch_dar);
+	axi_chan_iowrite32(chan, CH_DAR_H, chan->ch_dar_h);
+	axi_chan_iowrite32(chan, CH_BLOCK_TS, chan->ch_block_ts);
+	axi_chan_iowrite32(chan, CH_CTL_L, chan->ch_ctl_l);
+	axi_chan_iowrite32(chan, CH_CTL_H, chan->ch_ctl_h);
+	axi_chan_iowrite32(chan, CH_CFG_L, chan->ch_cfg_l);
+	axi_chan_iowrite32(chan, CH_CFG_H, chan->ch_cfg_h);
+	axi_chan_iowrite32(chan, CH_LLP, chan->ch_llp);
+	irq_mask = DWAXIDMAC_IRQ_DMA_TRF | DWAXIDMAC_IRQ_ALL_ERR;
+	axi_chan_irq_sig_set(chan, irq_mask);
+	/* Generate 'suspend' status but don't generate interrupt */
+	irq_mask |= DWAXIDMAC_IRQ_SUSPENDED;
+	axi_chan_irq_set(chan, irq_mask);
 
 	val = axi_dma_ioread32(chan->chip, DMAC_CHEN);
 	if (chan->chip->dw->hdata->reg_map_8_channels) {
@@ -1187,7 +1225,11 @@ static inline void axi_chan_resume(struct axi_dma_chan *chan)
 		axi_dma_iowrite32(chan->chip, DMAC_CHSUSPREG, val);
 	}
 
+	axi_chan_enable(chan);
+
 	chan->is_paused = false;
+
+	return;
 }
 
 static int dma_chan_resume(struct dma_chan *dchan)
@@ -1234,6 +1276,21 @@ static int axi_dma_resume(struct axi_dma_chip *chip)
 	return 0;
 }
 
+static void axi_dma_dump(struct axi_dma_chip *chip)
+{
+	struct dw_axi_dma *dw = chip->dw;
+	struct axi_dma_chan *chan;
+	u32 i;
+	struct virt_dma_desc *vd;
+	for (i = 0; i < dw->hdata->nr_channels; i++) {
+		chan = &dw->chan[i];
+		printk("%s chan name %s\n", __func__, axi_chan_name(chan));
+		vd = vchan_next_desc(&chan->vc);
+		axi_chan_list_dump_lli(chan, vd_to_axi_desc(vd));
+	}
+	return;
+}
+
 static int __maybe_unused axi_dma_runtime_suspend(struct device *dev)
 {
 	struct axi_dma_chip *chip = dev_get_drvdata(dev);
@@ -1246,6 +1303,42 @@ static int __maybe_unused axi_dma_runtime_resume(struct device *dev)
 	struct axi_dma_chip *chip = dev_get_drvdata(dev);
 
 	return axi_dma_resume(chip);
+}
+
+static int __maybe_unused axi_dma_sleep_suspend(struct device *dev)
+{
+
+	//struct axi_dma_chip *chip = dev_get_drvdata(dev);
+	//axi_dma_irq_disable(chip);
+	//axi_dma_disable(chip);
+
+	//clk_disable_unprepare(chip->core_clk);
+	//clk_disable_unprepare(chip->cfgr_clk);
+
+
+	dev_err(dev, "%s, %d\n", __func__, __LINE__);
+
+	return 0;
+}
+
+static int __maybe_unused axi_dma_sleep_resume(struct device *dev)
+{
+	struct axi_dma_chip *chip = dev_get_drvdata(dev);
+	int ret = 0;
+
+	ret = clk_prepare_enable(chip->cfgr_clk);
+	if (ret < 0)
+		return ret;
+
+	ret = clk_prepare_enable(chip->core_clk);
+	if (ret < 0)
+		return ret;
+
+	axi_dma_enable(chip);
+	axi_dma_irq_enable(chip);
+	dev_err(dev, "%s, %d\n", __func__, __LINE__);
+
+	return 0;
 }
 
 static struct dma_chan *dw_axi_dma_of_xlate(struct of_phandle_args *dma_spec,
@@ -1521,9 +1614,16 @@ static int dw_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
 static const struct dev_pm_ops dw_axi_dma_pm_ops = {
-	SET_RUNTIME_PM_OPS(axi_dma_runtime_suspend, axi_dma_runtime_resume, NULL)
+       SET_LATE_SYSTEM_SLEEP_PM_OPS(axi_dma_sleep_suspend, axi_dma_sleep_resume)
+       SET_RUNTIME_PM_OPS(axi_dma_runtime_suspend, axi_dma_runtime_resume, NULL)
 };
+#else
+static const struct dev_pm_ops dw_axi_dma_pm_ops = {
+       SET_RUNTIME_PM_OPS(axi_dma_runtime_suspend, axi_dma_runtime_resume, NULL)
+};
+#endif
 
 static const struct of_device_id dw_dma_of_id_table[] = {
 	{ .compatible = "snps,axi-dma-1.01a" },

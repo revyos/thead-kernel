@@ -1,0 +1,53 @@
+/* SPDX-License-Identifier: GPL-2.0 */	
+/*
+ * Copyright (C) 2021 Alibaba Group Holding Limited.
+ */
+
+/dts-v1/;
+
+#include "light-lpi4a.dts"
+
+
+
+&video10{ // TUNINGTOOL
+	status = "okay";
+	channel0 {
+		sensor1 {
+			subdev_name = "vivcam";
+			idx = <3>;
+			csi_idx = <0>;
+			mode_idx = <1>; // 0=640 480 1=2592x1944
+			path_type = "SENSOR_2592x1944_LINER";
+		};
+        dma {
+			path_type = "VIPRE_CSI0_ISP0";
+		};
+	};
+};
+
+&video15{
+    status = "okay";
+    vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
+    channel0 {
+        status = "okay";
+		sensor0 {
+			subdev_name = "vivcam";
+			idx = <0>;
+			csi_idx = <0>;
+			mode_idx = <0>;
+			path_type = "SENSOR_VGA_RAW12_LINER";
+		};
+		sensor1 {
+			subdev_name = "vivcam";
+			idx = <3>;
+			csi_idx = <0>;
+			mode_idx = <1>;
+			path_type = "SENSOR_2592x1944_LINER";
+		};
+		dma {
+			subdev_name = "vipre";
+			idx = <0>;
+			path_type = "VIPRE_CSI0_DDR";
+		};
+    };
+};

@@ -1380,6 +1380,7 @@ static int gc_poweroff_timeout_show(void* m, void* data)
     gckGALDEVICE device = galDevice;
     gckHARDWARE hardware;
     int len = 0;
+    int i;
 #ifdef CONFIG_DEBUG_FS
     void* ptr = m;
 #else
@@ -1389,14 +1390,19 @@ static int gc_poweroff_timeout_show(void* m, void* data)
     if (!device)
         return -ENXIO;
 
-    hardware = device->kernels[0]->hardware;
-
+    for (i = 0; i < gcvCORE_COUNT; ++i)
+    {
+        if (!device->kernels[i])
+        {
+            continue;
+        }
+        hardware = device->kernels[i]->hardware;
 #ifdef CONFIG_DEBUG_FS
-    len += fs_printf(ptr + len, "power off timeout: %d ms.\n", hardware->powerOffTimeout);
+        len += fs_printf(ptr + len, "power off timeout: %d ms.\n", hardware->powerOffTimeout);
 #else
-    len += sprintf(ptr + len, "power off timeout: %d ms.\n", hardware->powerOffTimeout);
+        len += sprintf(ptr + len, "power off timeout: %d ms.\n", hardware->powerOffTimeout);
 #endif
-
+    }
     return len;
 }
 

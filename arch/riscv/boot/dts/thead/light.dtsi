@@ -15,6 +15,7 @@
 #include <dt-bindings/clock/light-dspsys.h>
 #include <dt-bindings/clock/light-audiosys.h>
 #include <dt-bindings/firmware/thead/rsrc.h>
+#include <dt-bindings/clock/light-miscsys.h>
 #include <dt-bindings/soc/thead,light-iopmp.h>
 #include <dt-bindings/thermal/thermal.h>
 #include <dt-bindings/reset/light-reset.h>
@@ -185,6 +186,7 @@
 				interrupt-controller;
 			};
 		};
+
 		c910_1: cpu@1 {
 			device_type = "cpu";
 			reg = <1>;
@@ -322,6 +324,44 @@
 				compatible = "riscv,cpu-intc";
 				interrupt-controller;
 			};
+		};
+
+		idle_states: idle-states {
+		    CPU_RET_0_0: cpu-retentive-0-0 {
+			compatible = "riscv,idle-state";
+			riscv,sbi-suspend-param = <0x10000000>;
+			entry-latency-us = <20>;
+			exit-latency-us = <40>;
+			min-residency-us = <80>;
+		    };
+
+		    CPU_NONRET_0_0: cpu-nonretentive-0-0 {
+			compatible = "riscv,idle-state";
+			riscv,sbi-suspend-param = <0x90000000>;
+			entry-latency-us = <250>;
+			exit-latency-us = <500>;
+			min-residency-us = <950>;
+		    };
+
+		    CLUSTER_RET_0: cluster-retentive-0 {
+			compatible = "riscv,idle-state";
+			riscv,sbi-suspend-param = <0x11000000>;
+			local-timer-stop;
+			entry-latency-us = <50>;
+			exit-latency-us = <100>;
+			min-residency-us = <250>;
+			wakeup-latency-us = <130>;
+		    };
+
+		    CLUSTER_NONRET_0: cluster-nonretentive-0 {
+			compatible = "riscv,idle-state";
+			riscv,sbi-suspend-param = <0x91000000>;
+			local-timer-stop;
+			entry-latency-us = <600>;
+			exit-latency-us = <1100>;
+			min-residency-us = <2700>;
+			wakeup-latency-us = <1500>;
+		    };
 		};
 	};
 
@@ -631,6 +671,18 @@
 			status = "okay";
 		};
 
+		miscsys_reg: miscsys-reg@ffec02c000 {
+			compatible = "thead,light-miscsys-reg", "syscon";
+			reg = <0xff 0xec02c000 0x0 0x1000>;
+			status = "okay";
+		};
+ 
+		tee_miscsys_reg: tee_miscsys-reg@fffc02d000 {
+			compatible = "thead,light-miscsys-reg", "syscon";
+			reg = <0xff 0xfc02d000 0x0 0x1000>;
+			status = "okay";
+		};
+ 
 		audio_ioctrl: audio_ioctrl@ffcb01d000 {
 			compatible = "thead,light-audio-ioctrl-reg", "syscon";
 			reg = <0xff 0xcb01d000 0x0 0x1000>;
@@ -655,6 +707,8 @@
 			thead,teesys = <&teesys_syscon>;
 			#address-cells = <1>;
 			#size-cells = <1>;
+			clocks = <&miscsys_clk_gate CLKGEN_MISCSYS_EFUSE_PCLK>;
+			clock-names = "pclk";
 
 			gmac0_mac_address: mac-address@176 {
 				reg = <0xb0 6>;
@@ -682,7 +736,9 @@
 			reg = <0xff 0xec005000 0x0 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
+            clocks = <&clk CLKGEN_GPIO0_PCLK>,
+            <&clk CLKGEN_GPIO0_DBCLK>;
+			clock-names = "bus", "db";
 			gpio0_porta: gpio0-controller@0 {
 				compatible = "snps,dw-apb-gpio-port";
 				gpio-controller;
@@ -702,7 +758,9 @@
 			reg = <0xff 0xec006000 0x0 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
+			clocks = <&clk CLKGEN_GPIO1_PCLK>,
+			         <&clk CLKGEN_GPIO1_DBCLK>;
+			clock-names = "bus", "db";
 			gpio1_porta: gpio1-controller@0 {
 				compatible = "snps,dw-apb-gpio-port";
 				gpio-controller;
@@ -722,7 +780,9 @@
 			reg = <0xff 0xe7f34000 0x0 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
+			clocks = <&clk CLKGEN_GPIO2_PCLK>,
+			         <&clk CLKGEN_GPIO2_DBCLK>;
+			clock-names = "bus", "db";
 			gpio2_porta: gpio2-controller@0 {
 				compatible = "snps,dw-apb-gpio-port";
 				gpio-controller;
@@ -742,7 +802,9 @@
 			reg = <0xff 0xe7f38000 0x0 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
+			clocks = <&clk CLKGEN_GPIO3_PCLK>,
+			         <&clk CLKGEN_GPIO3_DBCLK>;
+			clock-names = "bus", "db";
 			gpio3_porta: gpio3-controller@0 {
 				compatible = "snps,dw-apb-gpio-port";
 				gpio-controller;
@@ -797,15 +859,19 @@
 			};
 		};
 
-		padctrl1_apsys: pinctrl1-apsys@ffe7f3c000 {
+		padctrl1_apsys: padctrl1-apsys@ffe7f3c000 {
 			compatible = "thead,light-fm-left-pinctrl";
 			reg = <0xff 0xe7f3c000 0x0 0x1000>;
+			clocks = <&clk CLKGEN_PADCTRL1_APSYS_PCLK>;
+			clock-names = "pclk";
 			status = "okay";
 		};
 
 		padctrl0_apsys: padctrl0-apsys@ffec007000 {
 			compatible = "thead,light-fm-right-pinctrl";
 			reg = <0xff 0xec007000 0x0 0x1000>;
+			clocks = <&clk CLKGEN_PADCTRL0_APSYS_PCLK>;
+			clock-names = "pclk";
 			status = "okay";
 		};
 
@@ -921,7 +987,7 @@
 		};
 
 		uart0: serial@ffe7014000 { /* Normal serial, for C910 log */
-			compatible = "snps,dw-apb-uart";
+                        compatible = "snps,dw-apb-uart", "light,uart0";
 			reg = <0xff 0xe7014000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <36>;
@@ -1016,7 +1082,9 @@
 			pinctrl-0 = <&pinctrl_spi0>;
 			interrupt-parent = <&intc>;
 			interrupts = <54>;
-			clocks = <&dummy_clock_spi>;
+            clocks = <&clk CLKGEN_SPI_SSI_CLK>,
+                     <&clk CLKGEN_SPI_PCLK>;
+            clock-names = "sclk", "pclk";
 			num-cs = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -1029,7 +1097,9 @@
 			pinctrl-0 = <&pinctrl_qspi0>;
 			interrupt-parent = <&intc>;
 			interrupts = <52>;
-			clocks = <&dummy_clock_qspi>;
+            clocks = <&clk CLKGEN_QSPI0_SSI_CLK>,
+                     <&clk CLKGEN_QSPI0_PCLK>;
+            clock-names = "sclk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -1041,7 +1111,9 @@
 			pinctrl-0 = <&pinctrl_qspi1>;
 			interrupt-parent = <&intc>;
 			interrupts = <53>;
-			clocks = <&dummy_clock_spi>;
+            clocks = <&clk CLKGEN_QSPI1_SSI_CLK>,
+                     <&clk CLKGEN_QSPI1_PCLK>;
+            clock-names = "sclk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -1139,9 +1211,8 @@
 			clocks = <&vosys_clk_gate LIGHT_CLKGEN_HDMI_PCLK>,
 				 <&vosys_clk_gate LIGHT_CLKGEN_HDMI_SFR_CLK>,
 				 <&vosys_clk_gate LIGHT_CLKGEN_HDMI_CEC_CLK>,
-				 <&vosys_clk_gate LIGHT_CLKGEN_HDMI_PIXCLK>,
-				 <&vosys_clk_gate LIGHT_CLKGEN_HDMI_I2S_CLK>;
-			clock-names = "iahb", "isfr", "cec", "pixclk", "i2s";
+				 <&vosys_clk_gate LIGHT_CLKGEN_HDMI_PIXCLK>;
+			clock-names = "iahb", "isfr", "cec", "pixclk";
 			reg-io-width = <4>;
 			phy_version = <301>;
 			/* TODO: add phy property */
@@ -1157,6 +1228,7 @@
 			      <0xff 0xef630010 0x0 0x60>;
 			interrupt-parent = <&intc>;
 			interrupts = <93>;
+			vosys-regmap = <&vosys_reg>;
 			clocks = <&vosys_clk_gate LIGHT_CLKGEN_DPU_CCLK>,
 				 <&vosys_clk_gate LIGHT_CLKGEN_DPU_PIXCLK0>,
 				 <&vosys_clk_gate LIGHT_CLKGEN_DPU_PIXCLK1>,
@@ -1218,6 +1290,7 @@
 			interrupts = <74>;
 			clocks = <&dummy_clock_rtc>;
 			clock-names = "rtc";
+			wakeup-source;
 			status = "okay";
 		};
 
@@ -1225,6 +1298,11 @@
 			compatible = "thead,dwc3";
 			usb3-misc-regmap = <&misc_sysreg>;
 			usb3-drd-regmap = <&usb3_drd>;
+			clocks = <&miscsys_clk_gate CLKGEN_MISCSYS_USB3_DRD_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_USB3_DRD_CTRL_REF_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_USB3_DRD_PHY_REF_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_USB3_DRD_SUSPEND_CLK>;
+			clock-names = "drd", "ctrl", "phy", "suspend";
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges;
@@ -1234,8 +1312,6 @@
 				reg = <0xff 0xe7040000 0x0 0x10000>;
 				interrupt-parent = <&intc>;
 				interrupts = <68>;
-				clocks = <&dummy_clock_ref>, <&dummy_clock_apb>, <&dummy_clock_suspend>;
-				clock-names = "ref", "bus_early", "suspend";
 				reg-shift = <2>;
 				reg-io-width = <4>;
 				maximum-speed = "super-speed";
@@ -1287,7 +1363,7 @@
 			reg = <0xff 0xefc00000 0x0 0x1000>;
 			interrupt-parent = <&intc>;
 			interrupts = <27>;
-			clocks = <&dummy_clock_apb>, <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_DMAC_CPUSYS_ACLK>, <&clk CLKGEN_DMAC_CPUSYS_HCLK>;
 			clock-names = "core-clk", "cfgr-clk";
 			#dma-cells = <1>;
 			dma-channels = <4>;
@@ -1304,7 +1380,7 @@
 			reg = <0xff 0xff340000 0x0 0x1000>;
 			interrupt-parent = <&intc>;
 			interrupts = <150>;
-			clocks = <&dummy_clock_apb>, <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_DMAC_CPUSYS_ACLK>, <&clk CLKGEN_DMAC_CPUSYS_HCLK>;
 			clock-names = "core-clk", "cfgr-clk";
 			#dma-cells = <1>;
 			dma-channels = <4>;
@@ -1321,7 +1397,7 @@
                         reg = <0xff 0xc8000000 0x0 0x2000>;
                         interrupt-parent = <&intc>;
                         interrupts = <167>;
-                        clocks = <&dummy_clock_apb>, <&dummy_clock_apb>;
+						clocks = <&clk CLKGEN_DMAC_CPUSYS_ACLK>, <&clk CLKGEN_DMAC_CPUSYS_HCLK>;
                         clock-names = "core-clk", "cfgr-clk";
                         #dma-cells = <1>;
                         dma-channels = <16>;
@@ -1352,8 +1428,11 @@
 			interrupt-parent = <&intc>;
 			interrupts = <66>;
 			interrupt-names = "macirq";
-			clocks = <&clk CLKGEN_GMAC0_CCLK>;
-			clock-names = "gmac_pll_clk";
+			clocks = <&clk CLKGEN_GMAC0_CCLK>,
+					 <&clk CLKGEN_GMAC0_PCLK>,
+					 <&clk CLKGEN_GMAC_AXI_ACLK>,
+					 <&clk CLKGEN_GMAC_AXI_PCLK>;
+			clock-names = "gmac_pll_clk","pclk","axi_aclk","axi_pclk";
 			snps,pbl = <32>;
 			snps,fixed-burst;
 			snps,axi-config = <&stmmac_axi_setup>;
@@ -1371,8 +1450,11 @@
 			interrupt-parent = <&intc>;
 			interrupts = <67>;
 			interrupt-names = "macirq";
-			clocks = <&clk CLKGEN_GMAC1_CCLK>;
-			clock-names = "gmac_pll_clk";
+			clocks = <&clk CLKGEN_GMAC1_CCLK>,
+					 <&clk CLKGEN_GMAC1_PCLK>,
+					 <&clk CLKGEN_GMAC_AXI_ACLK>,
+					 <&clk CLKGEN_GMAC_AXI_PCLK>;
+			clock-names = "gmac_pll_clk","pclk","axi_aclk","axi_pclk";
 			snps,pbl = <32>;
 			snps,fixed-burst;
 			snps,axi-config = <&stmmac_axi_setup>;
@@ -1386,8 +1468,9 @@
 			interrupt-parent = <&intc>;
 			interrupts = <62>;
 			interrupt-names = "sdhciirq";
-			clocks = <&dummy_clock_sdhci>;
-			clock-names = "core";
+			clocks = <&clk CLKGEN_EMMC_SDIO_REF_CLK>,
+					 <&miscsys_clk_gate CLKGEN_MISCSYS_EMMC_CLK>;
+			clock-names = "core", "bus";
 		};
 
 		sdhci0: sd@ffe7090000 {
@@ -1396,18 +1479,20 @@
 			interrupt-parent = <&intc>;
 			interrupts = <64>;
 			interrupt-names = "sdhci0irq";
-			clocks = <&dummy_clock_sdhci>;
-			clock-names = "core";
+			clocks = <&clk CLKGEN_EMMC_SDIO_REF_CLK>,
+					 <&miscsys_clk_gate CLKGEN_MISCSYS_EMMC_CLK>;
+			clock-names = "core", "bus";
 		};
 
 		sdhci1: sd@ffe70a0000 {
-		        compatible = "snps,dwcmshc-sdhci";
-		        reg = <0xff 0xe70a0000 0x0 0x10000>;
-		        interrupt-parent = <&intc>;
-		        interrupts = <71>;
-		        interrupt-names = "sdhci1irq";
-		        clocks = <&dummy_clock_sdhci>;
-		        clock-names = "core";
+			compatible = "snps,dwcmshc-sdhci";
+			reg = <0xff 0xe70a0000 0x0 0x10000>;
+			interrupt-parent = <&intc>;
+			interrupts = <71>;
+			interrupt-names = "sdhci1irq";
+			clocks = <&clk CLKGEN_EMMC_SDIO_REF_CLK>,
+					 <&miscsys_clk_gate CLKGEN_MISCSYS_EMMC_CLK>;
+			clock-names = "core", "bus";
 		};
 
 		hwspinlock: hwspinlock@ffefc10000 {
@@ -1507,8 +1592,6 @@
 			#sound-dai-cells = <1>;
 			compatible = "light,light-i2s";
 			reg = <0xff 0xe7034000 0x0 0x4000>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_light_i2s0>;
 			light,mode = "i2s-master";
 			light,sel = "ap_i2s";
 			interrupt-parent = <&intc>;
@@ -1517,7 +1600,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&vosys_clk_gate LIGHT_CLKGEN_HDMI_I2S_CLK>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1537,7 +1620,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S0>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1553,11 +1636,11 @@
 			light,sel = "i2s1";
 			interrupt-parent = <&intc>;
 			interrupts = <175>;
-			dmas = <&dmac2 11>, <&dmac2 17>;
+			dmas = <&dmac2 11>, <&dmac2 10>;
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S1>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1577,7 +1660,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S2>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1596,7 +1679,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S8CH>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1615,7 +1698,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S8CH>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1634,7 +1717,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S8CH>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1653,7 +1736,7 @@
 			dma-names = "tx", "rx";
 			light,dma_maxburst = <4>;
 			#dma-cells = <1>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_I2S8CH>;
 			clock-names = "pclk";
 			status = "disabled";
 		};
@@ -1841,6 +1924,7 @@
 			#dma-cells = <1>;
 			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_SPDIF0>;
 			clock-names = "pclk";
+			id = <0>;
 			status = "disabled";
 		};
 
@@ -1859,6 +1943,7 @@
 			#dma-cells = <1>;
 			clocks = <&audiosys_clk_gate LIGHT_CLKGEN_AUDIO_SPDIF1>;
 			clock-names = "pclk";
+			id = <1>;
 			status = "disabled";
 		};
 
@@ -1879,7 +1964,8 @@
 			reg = <0xff 0xe7f20000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <44>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_I2C0_PCLK>;
+			clock-names = "pclk";
 			clock-frequency = <100000>;
             i2c_mode = "dma";
 			dmas = <&dmac0 12>, <&dmac0 13>;
@@ -1902,7 +1988,8 @@
 			reg = <0xff 0xe7f24000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <45>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_I2C1_PCLK>;
+			clock-names = "pclk";
 			clock-frequency = <100000>;
             i2c_mode = "dma";
 			dmas = <&dmac0 14>, <&dmac0 15>;
@@ -1925,7 +2012,8 @@
 			reg = <0xff 0xec00c000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <46>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_I2C2_PCLK>;
+			clock-names = "pclk";
 			clock-frequency = <100000>;
             i2c_mode = "dma";
 			dmas = <&dmac0 16>, <&dmac0 17>;
@@ -1950,7 +2038,8 @@
 			reg = <0xff 0xec014000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <47>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_I2C3_PCLK>;
+			clock-names = "pclk";
 			clock-frequency = <100000>;
             i2c_mode = "dma";
 			dmas = <&dmac0 18>, <&dmac0 19>;
@@ -1975,7 +2064,8 @@
 			reg = <0xff 0xe7f28000 0x0 0x4000>;
 			interrupt-parent = <&intc>;
 			interrupts = <48>;
-			clocks = <&dummy_clock_apb>;
+			clocks = <&clk CLKGEN_I2C4_PCLK>;
+			clock-names = "pclk";
 			clock-frequency = <100000>;
             i2c_mode = "dma";
 			dmas = <&dmac0 20>, <&dmac0 21>;
@@ -2466,7 +2556,11 @@
 			reg = <0xff 0xff300000 0x0 0x40000>;
 			interrupt-parent = <&intc>;
 			interrupts = <144>,<145>,<146>,<147>;
-			clocks = <&dummy_clock_eip>;
+			clocks = <&miscsys_clk_gate CLKGEN_MISCSYS_EIP120SI_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_EIP120SII_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_EIP120SIII_CLK>,
+					<&miscsys_clk_gate CLKGEN_MISCSYS_EIP150B_HCLK>;
+			clock-names = "120si_clk","120sii_clk","120siii_clk","hclk";
 			status = "disabled";
 		};
 
@@ -2481,6 +2575,11 @@
                 aon-iram-regmap = <&aon_iram>;
                 status = "okay";
         };
+
+		aon_suspend_ctrl: aon_suspend_ctrl {
+		        compatible = "thead,light-aon-suspend-ctrl";
+		        status = "okay";
+		};
 
 		visys_clk_gate: visys-clk-gate { /* VI_SYSREG_R */
 			compatible = "thead,visys-gate-controller";
@@ -2516,6 +2615,15 @@
 			#clock-cells = <1>;
 			status = "okay";
 		};
+
+		miscsys_clk_gate: miscsys-clk-gate {
+			compatible = "thead,miscsys-gate-controller";
+			miscsys-regmap = <&miscsys_reg>;
+			tee-miscsys-regmap = <&tee_miscsys_reg>;
+			#clock-cells = <1>;
+			status = "okay";
+		};
+
 	};
 
 };

@@ -50,6 +50,7 @@ static u32 share_cnt_spi_clk_en;
 static u32 share_cnt_uart0_clk_en;
 static u32 share_cnt_uart2_clk_en;
 static u32 share_cnt_i2c2_clk_en;
+static u32 share_cnt_i2c3_clk_en;
 static u32 share_cnt_peri_i2s_clk_en;
 static u32 share_cnt_qspi1_clk_en;
 static u32 share_cnt_uart1_clk_en;
@@ -378,31 +379,31 @@ static int light_clocks_probe(struct platform_device *pdev)
 	clks[AONSYS_BUS_CLK] = thead_clk_fixed("aonsys_hclk", 101606400);	//from sys_pll, maybe change ?
 
 	/* Light Fullmask AP MUX */
-	clks[CPU_PLL0_BYPASS] = thead_light_clk_mux_flags("cpu_pll0_bypass", ap_base + 0x4, 30, 1, cpu_pll0_bypass_sels, ARRAY_SIZE(cpu_pll0_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[CPU_PLL1_BYPASS] = thead_light_clk_mux_flags("cpu_pll1_bypass", ap_base + 0x14, 30, 1, cpu_pll1_bypass_sels, ARRAY_SIZE(cpu_pll1_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[GMAC_PLL_BYPASS] = thead_light_clk_mux_flags("gmac_pll_bypass", ap_base + 0x24, 30, 1, gmac_pll_bypass_sels, ARRAY_SIZE(gmac_pll_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[VIDEO_PLL_BYPASS] = thead_light_clk_mux_flags("video_pll_bypass", ap_base + 0x34, 30, 1, video_pll_bypass_sels, ARRAY_SIZE(video_pll_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[TEE_PLL_BYPASS] = thead_light_clk_mux_flags("tee_pll_bypass", ap_base + 0x64, 30, 1, tee_pll_bypass_sels, ARRAY_SIZE(tee_pll_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[DPU0_PLL_BYPASS] = thead_light_clk_mux_flags("dpu0_pll_bypass", ap_base + 0x44, 30, 1, dpu0_pll_bypass_sels, ARRAY_SIZE(dpu0_pll_bypass_sels), CLK_SET_RATE_PARENT);
-	clks[DPU1_PLL_BYPASS] = thead_light_clk_mux_flags("dpu1_pll_bypass", ap_base + 0x54, 30, 1, dpu1_pll_bypass_sels, ARRAY_SIZE(dpu1_pll_bypass_sels), CLK_SET_RATE_PARENT);
+	clks[CPU_PLL0_BYPASS] = thead_light_clk_mux_flags("cpu_pll0_bypass", ap_base + 0x4, 30, 1, cpu_pll0_bypass_sels, ARRAY_SIZE(cpu_pll0_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CPU_PLL1_BYPASS] = thead_light_clk_mux_flags("cpu_pll1_bypass", ap_base + 0x14, 30, 1, cpu_pll1_bypass_sels, ARRAY_SIZE(cpu_pll1_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[GMAC_PLL_BYPASS] = thead_light_clk_mux_flags("gmac_pll_bypass", ap_base + 0x24, 30, 1, gmac_pll_bypass_sels, ARRAY_SIZE(gmac_pll_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[VIDEO_PLL_BYPASS] = thead_light_clk_mux_flags("video_pll_bypass", ap_base + 0x34, 30, 1, video_pll_bypass_sels, ARRAY_SIZE(video_pll_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[TEE_PLL_BYPASS] = thead_light_clk_mux_flags("tee_pll_bypass", ap_base + 0x64, 30, 1, tee_pll_bypass_sels, ARRAY_SIZE(tee_pll_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[DPU0_PLL_BYPASS] = thead_light_clk_mux_flags("dpu0_pll_bypass", ap_base + 0x44, 30, 1, dpu0_pll_bypass_sels, ARRAY_SIZE(dpu0_pll_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[DPU1_PLL_BYPASS] = thead_light_clk_mux_flags("dpu1_pll_bypass", ap_base + 0x54, 30, 1, dpu1_pll_bypass_sels, ARRAY_SIZE(dpu1_pll_bypass_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
 
-	clks[AHB2_CPUSYS_HCLK] = thead_light_clk_mux_flags("ahb2_cpusys_hclk", ap_base + 0x120, 5, 1, ahb2_cpusys_hclk_sels, ARRAY_SIZE(ahb2_cpusys_hclk_sels), CLK_SET_RATE_PARENT);
-	clks[C910_CCLK_I0] = thead_light_clk_mux_flags("c910_cclk_i0", ap_base + 0x100, 1, 1, c910_cclk_i0_sels, ARRAY_SIZE(c910_cclk_i0_sels), CLK_SET_RATE_PARENT);
-	clks[C910_CCLK] = thead_light_clk_mux_flags("c910_cclk", ap_base + 0x100, 0, 1, c910_cclk_sels, ARRAY_SIZE(c910_cclk_sels), CLK_SET_RATE_PARENT);
-	clks[CFG_AXI_ACLK] = thead_light_clk_mux_flags("cfg_axi_aclk", ap_base + 0x138, 5, 1, cfg_axi_aclk_sels, ARRAY_SIZE(cfg_axi_aclk_sels), CLK_SET_RATE_PARENT);
+	clks[AHB2_CPUSYS_HCLK] = thead_light_clk_mux_flags("ahb2_cpusys_hclk", ap_base + 0x120, 5, 1, ahb2_cpusys_hclk_sels, ARRAY_SIZE(ahb2_cpusys_hclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[C910_CCLK_I0] = thead_light_clk_mux_flags("c910_cclk_i0", ap_base + 0x100, 1, 1, c910_cclk_i0_sels, ARRAY_SIZE(c910_cclk_i0_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[C910_CCLK] = thead_light_clk_mux_flags("c910_cclk", ap_base + 0x100, 0, 1, c910_cclk_sels, ARRAY_SIZE(c910_cclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CFG_AXI_ACLK] = thead_light_clk_mux_flags("cfg_axi_aclk", ap_base + 0x138, 5, 1, cfg_axi_aclk_sels, ARRAY_SIZE(cfg_axi_aclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
 
 	if (teesys)
-		clks[TEESYS_HCLK] = thead_light_clk_mux_flags("teesys_hclk", ap_base + 0x1cc, 13, 1, teesys_hclk_sels, ARRAY_SIZE(teesys_hclk_sels), CLK_SET_RATE_PARENT); //just for teesys!!!
+		clks[TEESYS_HCLK] = thead_light_clk_mux_flags("teesys_hclk", ap_base + 0x1cc, 13, 1, teesys_hclk_sels, ARRAY_SIZE(teesys_hclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT); //just for teesys!!!
 
-	clks[PERISYS_AHB_HCLK] = thead_light_clk_mux_flags("perisys_ahb_hclk", ap_base + 0x140, 5, 1, perisys_ahb_hclk_sels, ARRAY_SIZE(perisys_ahb_hclk_sels), CLK_SET_RATE_PARENT);
-	clks[CLK_OUT_1] = thead_light_clk_mux_flags("clk_out_1", ap_base + 0x1b4, 4, 1, clk_out_1_sels, ARRAY_SIZE(clk_out_1_sels), CLK_SET_RATE_PARENT);
-	clks[CLK_OUT_2] = thead_light_clk_mux_flags("clk_out_2", ap_base + 0x1b8, 4, 1, clk_out_2_sels, ARRAY_SIZE(clk_out_2_sels), CLK_SET_RATE_PARENT);
-	clks[CLK_OUT_3] = thead_light_clk_mux_flags("clk_out_3", ap_base + 0x1bc, 4, 1, clk_out_3_sels, ARRAY_SIZE(clk_out_3_sels), CLK_SET_RATE_PARENT);
-	clks[CLK_OUT_4] = thead_light_clk_mux_flags("clk_out_4", ap_base + 0x1c0, 4, 1, clk_out_4_sels, ARRAY_SIZE(clk_out_4_sels), CLK_SET_RATE_PARENT);
-	clks[PERI_I2S_SRC_CLK] = thead_light_clk_mux_flags("peri_i2s_src_clk", ap_base + 0x1f0, 0, 1, peri_i2s_src_clk_sels, ARRAY_SIZE(peri_i2s_src_clk_sels), CLK_SET_RATE_PARENT);
+	clks[PERISYS_AHB_HCLK] = thead_light_clk_mux_flags("perisys_ahb_hclk", ap_base + 0x140, 5, 1, perisys_ahb_hclk_sels, ARRAY_SIZE(perisys_ahb_hclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CLK_OUT_1] = thead_light_clk_mux_flags("clk_out_1", ap_base + 0x1b4, 4, 1, clk_out_1_sels, ARRAY_SIZE(clk_out_1_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CLK_OUT_2] = thead_light_clk_mux_flags("clk_out_2", ap_base + 0x1b8, 4, 1, clk_out_2_sels, ARRAY_SIZE(clk_out_2_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CLK_OUT_3] = thead_light_clk_mux_flags("clk_out_3", ap_base + 0x1bc, 4, 1, clk_out_3_sels, ARRAY_SIZE(clk_out_3_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[CLK_OUT_4] = thead_light_clk_mux_flags("clk_out_4", ap_base + 0x1c0, 4, 1, clk_out_4_sels, ARRAY_SIZE(clk_out_4_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[PERI_I2S_SRC_CLK] = thead_light_clk_mux_flags("peri_i2s_src_clk", ap_base + 0x1f0, 0, 1, peri_i2s_src_clk_sels, ARRAY_SIZE(peri_i2s_src_clk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
 	clks[NPU_CCLK] = thead_light_clk_mux_flags("npu_cclk", ap_base + 0x1c8, 6, 1, npu_cclk_sels, ARRAY_SIZE(npu_cclk_sels), CLK_SET_RATE_PARENT);
-	clks[CFG_APB_PCLK] = thead_light_clk_mux_flags("cfg_apb_pclk", ap_base + 0x1c4, 7, 1, cfg_apb_pclk_sels, ARRAY_SIZE(cfg_apb_pclk_sels), CLK_SET_RATE_PARENT);
-	clks[UART_SCLK] = thead_light_clk_mux_flags("uart_sclk", ap_base + 0x210, 0, 1, uart_sclk_sels, ARRAY_SIZE(uart_sclk_sels), CLK_SET_RATE_PARENT);
+	clks[CFG_APB_PCLK] = thead_light_clk_mux_flags("cfg_apb_pclk", ap_base + 0x1c4, 7, 1, cfg_apb_pclk_sels, ARRAY_SIZE(cfg_apb_pclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
+	clks[UART_SCLK] = thead_light_clk_mux_flags("uart_sclk", ap_base + 0x210, 0, 1, uart_sclk_sels, ARRAY_SIZE(uart_sclk_sels), CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
 
 	/* Light Fullmask AP Divider */
 	clks[AHB2_CPUSYS_HCLK_OUT_DIV] = thead_clk_light_divider("ahb2_cpusys_hclk_out_div", "gmac_pll_fout1ph0", ap_base + 0x120, 0, 3, 4, MUX_TYPE_DIV, 2, 7);
@@ -436,7 +437,7 @@ static int light_clocks_probe(struct platform_device *pdev)
 	/* Light Fullmask PLL FOUT */
 	clks[GMAC_PLL_FOUT1PH0] = thead_light_clk_fixed_factor("gmac_pll_fout1ph0", "gmac_pll_bypass", 1, 2);
 	clks[GMAC_PLL_FOUT4] = thead_light_clk_fixed_factor("gmac_pll_fout4", "gmac_pll_bypass", 1, 8);
-	clks[VIDEO_PLL_FOUT1PH0] = thead_light_clk_fixed_factor("video_pll_fout1ph0", "video_pll_bybass", 1, 2);
+	clks[VIDEO_PLL_FOUT1PH0] = thead_light_clk_fixed_factor("video_pll_fout1ph0", "video_pll_bypass", 1, 2);
 	clks[VIDEO_PLL_FOUT4] = thead_light_clk_fixed_factor("video_pll_fout4", "video_pll_bypass", 1, 8);
 	clks[TEE_PLL_FOUT4] = thead_light_clk_fixed_factor("tee_pll_fout4", "tee_pll_bypass", 1, 8);
 	clks[CPU_PLL0_FOUT4] = thead_light_clk_fixed_factor("cpu_pll0_fout4", "cpu_pll0_bypass", 1, 8);
@@ -450,7 +451,7 @@ static int light_clocks_probe(struct platform_device *pdev)
 	clks[QSPI0_SSI_CLK] = thead_light_clk_fixed_factor("qspi0_ssi_clk", "qspi_ssi_clk", 1, 1);
 	clks[QSPI1_SSI_CLK] = thead_light_clk_fixed_factor("qspi1_ssi_clk", "video_pll_fout1ph0", 1, 1);
 	clks[SPI_SSI_CLK] = thead_light_clk_fixed_factor("spi_ssi_clk", "video_pll_fout1ph0", 1, 1);
-	clks[EMMC_SDIO_REF_CLK] = thead_light_clk_fixed_factor("emmc_sdio_ref_clk", "video_pll_foutpostdiv", 1, 1);	/* Note: no mux to select, use default value */
+	clks[EMMC_SDIO_REF_CLK] = thead_light_clk_fixed_factor("emmc_sdio_ref_clk", "video_pll_foutpostdiv", 1, 4);	/* Note: base clk is div 4 to 198M*/
 	clks[PWM_CCLK] = thead_light_clk_fixed_factor("pwm_cclk", "osc_24m", 1, 1);
 	clks[CHIP_DBG_CCLK] = thead_light_clk_fixed_factor("chip_dbg_cclk", "osc_24m", 1, 1);
 	clks[GMAC_CCLK] = thead_light_clk_fixed_factor("gmac_cclk", "gmac_pll_fout1ph0", 1, 1);
@@ -568,8 +569,8 @@ static int light_clocks_probe(struct platform_device *pdev)
 	clks[CLKGEN_UART2_SCLK] = thead_clk_light_gate_shared("clkgen_uart2_sclk", "uart_sclk", ap_base + 0x204, 12, &share_cnt_uart2_clk_en);
 	clks[CLKGEN_I2C2_PCLK] = thead_clk_light_gate_shared("clkgen_i2c2_pclk", "perisys_apb_pclk", ap_base + 0x204, 3, &share_cnt_i2c2_clk_en);
 	clks[CLKGEN_I2C2_IC_CLK] = thead_clk_light_gate_shared("clkgen_i2c2_ic_clk", "i2c_ic_clk", ap_base + 0x204, 3, &share_cnt_i2c2_clk_en);
-	clks[CLKGEN_I2C3_PCLK] = thead_clk_light_gate_shared("clkgen_i2c3_pclk", "perisys_apb_pclk", ap_base + 0x204, 2, &share_cnt_i2c2_clk_en);
-	clks[CLKGEN_I2C3_IC_CLK] = thead_clk_light_gate_shared("clkgen_i2c3_ic_clk", "i2c_ic_clk", ap_base + 0x204, 2, &share_cnt_i2c2_clk_en);
+	clks[CLKGEN_I2C3_PCLK] = thead_clk_light_gate_shared("clkgen_i2c3_pclk", "perisys_apb_pclk", ap_base + 0x204, 2, &share_cnt_i2c3_clk_en);
+	clks[CLKGEN_I2C3_IC_CLK] = thead_clk_light_gate_shared("clkgen_i2c3_ic_clk", "i2c_ic_clk", ap_base + 0x204, 2, &share_cnt_i2c3_clk_en);
 	clks[CLKGEN_I2S_PCLK] = thead_clk_light_gate_shared("clkgen_i2s_pclk", "perisys_apb_pclk", ap_base + 0x1f0, 1, &share_cnt_peri_i2s_clk_en);
 	clks[CLKGEN_I2S_SRC_CLK] = thead_clk_light_gate_shared("clkgen_i2s_src_clk", "peri_i2s_src_clk", ap_base + 0x1f0, 1, &share_cnt_peri_i2s_clk_en);
 	clks[CLKGEN_QSPI1_PCLK] = thead_clk_light_gate_shared("clkgen_qspi1_pclk", "peri2sys_apb_pclk", ap_base + 0x204, 16, &share_cnt_qspi1_clk_en);

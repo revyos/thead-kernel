@@ -166,6 +166,14 @@
 		iopmp_dsp1: IOPMP_DSP1 {
 			is_default_region;
 		};
+
+		iopmp_audio0: IOPMP_AUDIO0 {
+			is_default_region;
+		};
+
+		iopmp_audio1: IOPMP_AUDIO1 {
+			is_default_region;
+		};
 	};
 
 	mbox_910t_client1: mbox_910t_client1 {
@@ -2270,6 +2278,9 @@
 
 &hdmi_tx {
 	status = "okay";
+
+	max_width = /bits/ 16 <1280>;
+	max_height = /bits/ 16 <720>;
 
 	port@0 {
 		/* input */

@@ -748,13 +748,27 @@ static int dw_dphy_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#endif
+
+static int dw_dphy_resume(struct device *dev)
+{
+	struct dw_dphy *dphy = dev_get_drvdata(dev);
+
+	dw_dphy_init(dphy->phy);
+
+	return 0;
+}
 
 static const struct dev_pm_ops dw_dphy_pm_ops = {
-    SET_LATE_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				 pm_runtime_force_resume)
-    SET_RUNTIME_PM_OPS(dw_dphy_runtime_suspend, dw_dphy_runtime_resume, NULL)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(NULL,
+				 dw_dphy_resume)
+	SET_RUNTIME_PM_OPS(dw_dphy_runtime_suspend, dw_dphy_runtime_resume, NULL)
 };
+
+#define DW_DPHY_PM_OPS &dw_dphy_pm_ops
+#else
+#define DW_DPHY_PM_OPS NULL
+#endif
+
 
 static struct platform_driver dw_dphy_driver = {
 	.probe	= dw_dphy_probe,
@@ -762,7 +776,7 @@ static struct platform_driver dw_dphy_driver = {
 	.driver	= {
 		.name = "dw-mipi-dphy",
 		.of_match_table = dw_dphy_of_match,
-		.pm = &dw_dphy_pm_ops,
+		.pm = DW_DPHY_PM_OPS,
 	},
 };
 module_platform_driver(dw_dphy_driver);

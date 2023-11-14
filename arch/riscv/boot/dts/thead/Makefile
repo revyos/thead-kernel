@@ -32,7 +32,7 @@ dtb-$(CONFIG_SOC_THEAD) += light-beagle.dtb
 dtb-$(CONFIG_SOC_THEAD) += light-lpi4a.dtb light-lpi4a-ddr2G.dtb
 dtb-$(CONFIG_SOC_THEAD) += light-a-ref.dtb light-a-ref-dsi0.dtb light-a-ref-dsi0-hdmi.dtb
 dtb-$(CONFIG_SOC_THEAD) += light-b-ref.dtb
-dtb-$(CONFIG_SOC_THEAD) += light-a-val-crash.dtb light-b-product-crash.dtb light-ant-ref-crash.dtb light-ant-discrete-crash.dtb
+dtb-$(CONFIG_SOC_THEAD) += light-a-val-crash.dtb light-b-product-crash.dtb light-ant-ref-crash.dtb light-ant-discrete-crash.dtb light-lpi4a-crash.dtb light-lpi4a-camera-tuning.dtb light-lpi4a-hdmi.dtb
 dtb-$(CONFIG_SOC_THEAD) += light-b-power.dtb
 
 dtb-$(CONFIG_SOC_THEAD) += light-a-val-android.dtb

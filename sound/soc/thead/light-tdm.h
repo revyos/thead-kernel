@@ -46,24 +46,6 @@
 #define TDM_RDR4	0x60
 #define TDM_DIV0_LEVEL	0x64
 
-#define CPR_PERI_DIV_SEL_REG  0x004 /*audio sys i2s clock div Register*/
-#define CPR_PERI_CLK_SEL_REG  0x008 /*audio sys i2s clock selection Register*/
-#define CPR_IP_CG_REG   0x010 /* ip clock gate register */
-
-/* AUDIO SYS DIV SEL REG, offset: 0x4 */
-#define CPR_AUDIO_DIV1_SEL_POS                     (12U)
-#define CPR_AUDIO_DIV1_SEL_MSK                     (0x1FU << CPR_AUDIO_DIV1_SEL_POS)
-#define CPR_AUDIO_DIV1_SEL(X)                      (X << CPR_AUDIO_DIV1_SEL_POS)
-#define CPR_AUDIO_DIV0_SEL_POS                  (4U)
-#define CPR_AUDIO_DIV0_SEL_MSK               (0x1FU << CPR_AUDIO_DIV0_SEL_POS)
-#define CPR_AUDIO_DIV0_SEL(X)                      (X << CPR_AUDIO_DIV0_SEL_POS)
-#define CPR_TDM_CG_SEL_POS                      (21U)
-#define CPR_TDM_CG_SEL_MSK                       (0x1U << CPR_TDM_CG_SEL_POS)
-#define CPR_TDM_CG_SEL(X)                            (X << CPR_TDM_CG_SEL_POS)
-#define CPR_TDM_SRC_SEL_POS                     (16U)
-#define CPR_TDM_SRC_SEL_MSK                     (0x3U << CPR_TDM_SRC_SEL_POS)
-#define CPR_TDM_SRC_SEL(X)                          (X << CPR_TDM_SRC_SEL_POS)
-
 #define TDM_MODE_MASTER 0x1
 #define TDM_MODE_SLAVE 0x0
 #define TDMCTL_MODE_POS                             (0U) 
@@ -103,6 +85,8 @@
 #define TDMCTL_TDMEN_SEL(X)                            (X << TDMCTL_TDMEN_POS)
 
 #define LIGHT_TDM_DMABUF_SIZE     (64 * 1024)
+#define TDM_STATE_IDLE				0
+#define TDM_STATE_RUNNING	1
 
 struct light_tdm_priv {
     void __iomem *regs;
@@ -119,6 +103,21 @@ struct light_tdm_priv {
     char slots;
     char slot_num;
     unsigned int irq;
+    u32 suspend_tdmctl;
+    u32 suspend_choffset1;
+    u32 suspend_choffset2;
+    u32 suspend_choffset3;
+    u32 suspend_choffset4;
+    u32 suspend_fifotl1;
+    u32 suspend_fifotl2;
+    u32 suspend_fifotl3;
+    u32 suspend_fifotl4;
+    u32 suspend_imr;
+    u32 suspend_dmadl;
+    u32 suspend_div0level;
+	u32 cpr_peri_div_sel;
+	u32 cpr_peri_clk_sel;
+    u32 state;
 };
 
 

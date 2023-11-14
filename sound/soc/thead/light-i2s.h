@@ -456,6 +456,10 @@
 #define RXFIFO_IRQ_TH                               (0x20U)
 #define I2S_MAX_FIFO                                (0x20U)
 
+#define I2S_STATE_IDLE				0
+#define I2S_STATE_TX_RUNNING	1
+#define I2S_STATE_RX_RUNNING	2
+
 struct light_i2s_priv {
 	void __iomem *base;
 	phys_addr_t phys;
@@ -471,11 +475,33 @@ struct light_i2s_priv {
 	unsigned int dai_fmt;
 	u32 dma_maxburst;
 	unsigned int cfg_off;
+	u32 mclk_keepon;
 
 	struct device *dev;
 	char name[16];
 	int chan_num:16;
 	unsigned int clk_master:1;
+
+	u32 suspend_iisen;
+	u32 suspend_funcmode;
+	u32 suspend_iiscnf_in;
+	u32 suspend_fssta;
+	u32 suspend_ii2cnf_out;
+	u32 suspend_fadtlr;
+	u32 suspend_sccr;
+	u32 suspend_txftlr;
+	u32 suspend_rxftlr;
+	u32 suspend_imr;
+	u32 suspend_dmacr;
+	u32 suspend_dmatdlr;
+	u32 suspend_dmardlr;
+	u32 suspend_div0_level;
+	u32 suspend_div3_level;
+	u32 cpr_peri_div_sel;
+	u32 cpr_peri_ctrl;
+	u32 cpr_peri_clk_sel;
+
+	u32 state;
 };
 
 #endif /* _LIGHT_I2S_H */

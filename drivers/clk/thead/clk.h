@@ -111,7 +111,7 @@ static inline struct clk *thead_light_clk_mux_flags(const char *name,
 			unsigned long flags)
 {
 	return clk_register_mux(NULL, name, parents, num_parents,
-			flags | CLK_SET_RATE_NO_REPARENT, reg, shift, width, 0,
+			flags , reg, shift, width, 0,
 			&thead_light_clk_lock);
 }
 #endif

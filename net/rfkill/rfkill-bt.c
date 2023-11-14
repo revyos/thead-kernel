@@ -31,6 +31,7 @@
 #include <linux/uaccess.h>
 #include <linux/gpio.h>
 #include <linux/fs.h>
+#include <linux/errno.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <uapi/linux/rfkill.h>
 #ifdef CONFIG_OF
@@ -505,6 +506,12 @@ static int bluetooth_platdata_parse_dt(struct device *dev,
     }
 
     gpio = of_get_named_gpio_flags(node, "BT,power_gpio", 0, &flags);
+    LOG("%s: BT,power_gpio = %d\n", __func__, gpio);
+
+    if (gpio == -EPROBE_DEFER) {
+        return gpio;
+    }
+
     if (gpio_is_valid(gpio)){
         data->poweron_gpio.io = gpio;
         data->poweron_gpio.enable = (flags == GPIO_ACTIVE_HIGH)? 1:0;

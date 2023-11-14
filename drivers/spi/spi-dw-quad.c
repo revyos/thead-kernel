@@ -138,6 +138,57 @@ static inline void dw_qspi_debugfs_remove(struct dw_spi *dws)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+#ifdef CONFIG_PM_SLEEP
+static void dw_qspi_register_suspend(struct dw_spi *dws)
+{
+    struct dw_qspi_context *ctx = &dws->ctx;
+
+    ctx->ctrlr0         = dw_readl(dws, DW_SPI_CTRL0);
+    ctx->ctrlr1         = dw_readl(dws, DW_SPI_CTRL1);
+    ctx->ssienr         = dw_readl(dws, DW_SPI_SSIENR);
+    ctx->mwcr           = dw_readl(dws, DW_SPI_MWCR);
+    ctx->ser            = dw_readl(dws, DW_SPI_SER);
+    ctx->baudr          = dw_readl(dws, DW_SPI_BAUDR);
+    ctx->txftlr         = dw_readl(dws, DW_SPI_TXFLTR);
+    ctx->rxftlr         = dw_readl(dws, DW_SPI_RXFLTR);
+    ctx->txflr          = dw_readl(dws, DW_SPI_TXFLR);
+    ctx->rxflr          = dw_readl(dws, DW_SPI_RXFLR);
+    ctx->imr            = dw_readl(dws, DW_SPI_IMR);
+    ctx->dmacr          = dw_readl(dws, DW_SPI_DMACR);
+    ctx->dmatdlr        = dw_readl(dws, DW_SPI_DMATDLR);
+    ctx->dmardlr        = dw_readl(dws, DW_SPI_DMARDLR);
+    ctx->rx_sample_dly  = dw_readl(dws, DW_SPI_RX_SMP_DLY);
+    ctx->spi_ctrlr0     = dw_readl(dws, DW_SPI_SPI_CTRLR0);
+    ctx->txd_drv_edge   = dw_readl(dws, DW_SPI_TXD_DRV_EDGE);
+
+}
+
+static void dw_qspi_register_resume(struct dw_spi *dws)
+{
+    struct dw_qspi_context *ctx = &dws->ctx;
+
+    dw_writel(dws, DW_SPI_SSIENR, 0);
+    dw_writel(dws, DW_SPI_CTRL0, ctx->ctrlr0);
+    dw_writel(dws, DW_SPI_CTRL1, ctx->ctrlr1);
+    dw_writel(dws, DW_SPI_TXFLTR, ctx->txftlr);
+    dw_writel(dws, DW_SPI_RXFLTR, ctx->rxftlr);
+    dw_writel(dws, DW_SPI_TXFLR, ctx->txflr);
+    dw_writel(dws, DW_SPI_RXFLR, ctx->rxflr);
+    dw_writel(dws, DW_SPI_IMR, ctx->imr);
+    dw_writel(dws,DW_SPI_DMATDLR, ctx->dmatdlr);
+    dw_writel(dws, DW_SPI_DMARDLR, ctx->dmardlr);
+    dw_writel(dws, DW_SPI_RX_SMP_DLY, ctx->rx_sample_dly);
+    dw_writel(dws, DW_SPI_SPI_CTRLR0, ctx->spi_ctrlr0);
+    dw_writel(dws, DW_SPI_TXD_DRV_EDGE, ctx->txd_drv_edge);
+    dw_writel(dws, DW_SPI_SER, ctx->ser);
+    dw_writel(dws, DW_SPI_BAUDR, ctx->baudr);
+    dw_writel(dws, DW_SPI_MWCR, ctx->mwcr);
+    dw_writel(dws, DW_SPI_DMACR, ctx->dmacr);
+    dw_writel(dws, DW_SPI_SSIENR, ctx->ssienr);
+}
+#endif
+
+
 void dw_qspi_set_cs(struct spi_device *spi,struct dw_spi *dws, bool enable)
 {
 	bool enable1 = !enable;
@@ -779,6 +830,10 @@ int dw_qspi_suspend_host(struct dw_spi *dws)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_PM_SLEEP
+    dw_qspi_register_suspend(dws);
+#endif
+
 	spi_shutdown_chip(dws);
 	return 0;
 }
@@ -787,6 +842,9 @@ EXPORT_SYMBOL_GPL(dw_qspi_suspend_host);
 int dw_qspi_resume_host(struct dw_spi *dws)
 {
 	qspi_hw_init(&dws->master->dev, dws);
+#ifdef CONFIG_PM_SLEEP
+    dw_qspi_register_resume(dws);
+#endif
 	return spi_controller_resume(dws->master);
 }
 EXPORT_SYMBOL_GPL(dw_qspi_resume_host);

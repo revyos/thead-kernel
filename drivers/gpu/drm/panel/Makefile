@@ -55,3 +55,5 @@ obj-$(CONFIG_DRM_PANEL_VISIONOX_RM69299) += panel-visionox-rm69299.o
 obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
 obj-$(CONFIG_DRM_PANEL_ILI9881D) += panel-ili9881d.o
 obj-$(CONFIG_DRM_PANEL_HX8394) += panel-himax8394.o
+obj-$(CONFIG_DRM_PANEL_JADARD_JD9365DA_H3) += panel-jadard-jd9365da-h3.o
+obj-$(CONFIG_DRM_PANEL_HX8279) += panel-hx8279.o

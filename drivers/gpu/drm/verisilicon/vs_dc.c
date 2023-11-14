@@ -11,6 +11,8 @@
 #include <linux/of_graph.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <linux/regmap.h>
+#include <linux/mfd/syscon.h>
 
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_atomic.h>
@@ -345,7 +347,7 @@ static void vs_dc_enable(struct device *dev, struct drm_crtc *crtc)
     display.enable = true;
 
     if (dc->pix_clk_rate[display.id] != mode->clock) {
-	clk_set_rate(dc->pixclk[display.id], mode->clock * 1000);
+	    clk_set_rate(dc->pixclk[display.id], mode->clock * 1000);
         dc->pix_clk_rate[display.id] = mode->clock;
     }
 
@@ -936,7 +938,6 @@ static int dc_bind(struct device *dev, struct device *master, void *data)
     struct vs_plane_info *plane_info;
     int i, ret;
     u32 ctrc_mask = 0;
-
     if (!drm_dev || !dc) {
         dev_err(dev, "devices are not created.\n");
         return -ENODEV;
@@ -1047,7 +1048,6 @@ static int dc_bind(struct device *dev, struct device *master, void *data)
     }
 
     dc->funcs = &dc_funcs;
-
     vs_drm_update_pitch_alignment(drm_dev, dc_info->pitch_alignment);
     return 0;
 
@@ -1122,6 +1122,7 @@ static int dc_probe(struct platform_device *pdev)
     struct vs_dc *dc;
     int irq, ret, i;
     char pixclk[16];
+    struct device_node *np = dev->of_node;
 
     dc = devm_kzalloc(dev, sizeof(*dc), GFP_KERNEL);
     if (!dc)
@@ -1141,6 +1142,13 @@ static int dc_probe(struct platform_device *pdev)
         return PTR_ERR(dc->hw.mmu_base);
 #endif
 
+    dc->hw.vosys_regmap = syscon_regmap_lookup_by_phandle(np, "vosys-regmap");
+    if (IS_ERR(dc->hw.vosys_regmap))
+    {
+        dev_err(dev, "Failed to remap vosys\n");
+        return PTR_ERR(dc->hw.vosys_regmap);
+    }
+
     irq = platform_get_irq(pdev, 0);
     ret = devm_request_irq(dev, irq, dc_isr, 0, dev_name(dev), dc);
     if (ret < 0) {
@@ -1155,20 +1163,20 @@ static int dc_probe(struct platform_device *pdev)
     }
 
     for (i = 0; i < DC_DISPLAY_NUM; i++) {
-	snprintf(pixclk, ARRAY_SIZE(pixclk), "%s%d", "pix_clk", i);
-	dc->pix_clk[i] = devm_clk_get_optional(dev, pixclk);
+        snprintf(pixclk, ARRAY_SIZE(pixclk), "%s%d", "pix_clk", i);
+        dc->pix_clk[i] = devm_clk_get_optional(dev, pixclk);
 
-	if (IS_ERR(dc->pix_clk[i])) {
-	    dev_err(dev, "failed to get pix_clk %d source\n", i);
-	    return PTR_ERR(dc->pix_clk[i]);
-	}
+        if (IS_ERR(dc->pix_clk[i])) {
+            dev_err(dev, "failed to get pix_clk %d source\n", i);
+            return PTR_ERR(dc->pix_clk[i]);
+        }
 
-	snprintf(pixclk, ARRAY_SIZE(pixclk), "%s%d", "pixclk", i);
-	dc->pixclk[i] = devm_clk_get_optional(dev, pixclk);
-	if (IS_ERR(dc->pixclk[i])) {
-	    dev_err(dev, "failed to get pixclk %d source\n", i);
-	    return PTR_ERR(dc->pixclk[i]);
-	}
+        snprintf(pixclk, ARRAY_SIZE(pixclk), "%s%d", "pixclk", i);
+        dc->pixclk[i] = devm_clk_get_optional(dev, pixclk);
+        if (IS_ERR(dc->pixclk[i])) {
+            dev_err(dev, "failed to get pixclk %d source\n", i);
+            return PTR_ERR(dc->pixclk[i]);
+        }
     }
 
     dc->axi_clk = devm_clk_get_optional(dev, "axi_clk");
@@ -1194,6 +1202,9 @@ static int dc_probe(struct platform_device *pdev)
         dev_err(dev, "failed to get dpu1pll_clk source\n");
         return PTR_ERR(dc->dpu1pll_clk);
     }
+
+    dc->def_pix_clk_rate[0] = clk_get_rate(dc->dpu0pll_clk)/1000;
+    dc->def_pix_clk_rate[1] = clk_get_rate(dc->dpu1pll_clk)/1000;
 
     dc_get_display_pll(dev, dc);
 
@@ -1225,8 +1236,10 @@ static int dc_runtime_suspend(struct device *dev)
 	dev_dbg(dev, "%s\n", __func__);
 	clk_disable_unprepare(dc->axi_clk);
 
-	for (i = 0; i < DC_DISPLAY_NUM; i++)
+	for (i = 0; i < DC_DISPLAY_NUM; i++){
 		clk_disable_unprepare(dc->pix_clk[i]);
+        clk_disable_unprepare(dc->pixclk[i]);
+    }
 
 	clk_disable_unprepare(dc->core_clk);
 
@@ -1265,9 +1278,14 @@ static int dc_runtime_resume(struct device *dev)
 
 	for (i = 0; i < DC_DISPLAY_NUM; i++) {
 		ret = clk_prepare_enable(dc->pix_clk[i]);
-
-		if (ret < 0) {
+        if (ret < 0) {
 			dev_err(dev, "failed to prepare/enable pix_clk %d\n", i);
+			return ret;
+		}
+
+        ret = clk_prepare_enable(dc->pixclk[i]);
+		if (ret < 0) {
+			dev_err(dev, "failed to prepare/enable pixclk %d\n", i);
 			return ret;
 		}
 	}
@@ -1281,11 +1299,42 @@ static int dc_runtime_resume(struct device *dev)
 	return 0;
 }
 #endif
+#ifdef CONFIG_PM_SLEEP
 
+static int dc_suspend(struct device *dev)
+{
+    int i;
+	struct vs_dc *dc = dev_get_drvdata(dev);
+
+    for (i = 0; i < DC_DISPLAY_NUM; i++){
+        dc->pix_clk_rate[i] = dc->def_pix_clk_rate[i];
+        clk_set_rate(dc->pixclk[i], dc->pix_clk_rate[i] * 1000);
+    }
+
+    return 0;
+}
+
+static int dc_resume(struct device *dev)
+{
+    int i, ret;
+    struct vs_dc *dc = dev_get_drvdata(dev);
+    dev_info(dev,"dc resume\n");
+    regmap_write(dc->hw.vosys_regmap,0x4,0x7);  //release dpu reset
+
+    ret = dc_hw_init(&dc->hw);
+    if (ret) 
+        dev_err(dev, "failed to init DC HW\n");
+    return 0;
+}
+
+#endif
 static const struct dev_pm_ops dc_pm_ops = {
     SET_LATE_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
 				 pm_runtime_force_resume)
     SET_RUNTIME_PM_OPS(dc_runtime_suspend, dc_runtime_resume, NULL)
+    #ifdef CONFIG_PM_SLEEP
+        SET_LATE_SYSTEM_SLEEP_PM_OPS(dc_suspend, dc_resume)
+    #endif
 };
 
 struct platform_driver dc_platform_driver = {

@@ -202,7 +202,6 @@ int i2c_dw_dma_tx_transfer(struct dw_i2c_dev *dev, unsigned int timeout)
 {
     int ret = 0;
     struct i2c_dw_dma *dma = &dev->dma;
-    unsigned long start_jiffies = 0;
     u32 stat;
 
     __dev_vdgb(dev->dev, "%s, %d, enter\n", __func__, __LINE__);

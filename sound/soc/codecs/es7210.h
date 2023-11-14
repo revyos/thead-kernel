@@ -88,6 +88,53 @@ struct es7210_priv {
         int pcm_format;
         int mclk_sclk_ratio; // mclk_sclk_ratio=1 is when mclk hardwired to sclk.
         int sclk_lrck_ratio;
+
+        u8 suspend_reg00[4];
+        u8 suspend_reg01[4];
+        u8 suspend_reg02[4];
+        u8 suspend_reg03[4];
+        u8 suspend_reg04[4];
+        u8 suspend_reg05[4];
+        u8 suspend_reg06[4];
+        u8 suspend_reg07[4];
+        u8 suspend_reg08[4];
+        u8 suspend_reg09[4];
+        u8 suspend_reg0A[4];
+        u8 suspend_reg0B[4];
+        u8 suspend_reg0C[4];
+        u8 suspend_reg0D[4];
+        u8 suspend_reg10[4];
+        u8 suspend_reg11[4];
+        u8 suspend_reg12[4];
+        u8 suspend_reg13[4];
+        u8 suspend_reg14[4];
+        u8 suspend_reg15[4];
+        u8 suspend_reg16[4];
+        u8 suspend_reg17[4];
+        u8 suspend_reg18[4];
+        u8 suspend_reg19[4];
+        u8 suspend_reg1A[4];
+        u8 suspend_reg1B[4];
+        u8 suspend_reg1C[4];
+        u8 suspend_reg1D[4];
+        u8 suspend_reg1E[4];
+        u8 suspend_reg20[4];
+        u8 suspend_reg21[4];
+        u8 suspend_reg22[4];
+        u8 suspend_reg23[4];
+        u8 suspend_reg40[4];
+        u8 suspend_reg41[4];
+        u8 suspend_reg42[4];
+        u8 suspend_reg43[4];
+        u8 suspend_reg44[4];
+        u8 suspend_reg45[4];
+        u8 suspend_reg46[4];
+        u8 suspend_reg47[4];
+        u8 suspend_reg48[4];
+        u8 suspend_reg49[4];
+        u8 suspend_reg4A[4];
+        u8 suspend_reg4B[4];
+        u8 suspend_reg4C[4];
 };
 
 #endif	/* _ES7210_H_ */

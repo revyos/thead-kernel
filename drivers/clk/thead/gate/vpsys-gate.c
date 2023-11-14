@@ -34,15 +34,18 @@ static int light_vpsys_clk_probe(struct platform_device *pdev)
 	if (WARN_ON(IS_ERR(gate_base)))
 		return PTR_ERR(gate_base);
 
-	/* we assume that the gate clock is a root clock  */
+	// DIV & CDE
+	gates[LIGHT_VPSYS_G2D_CCLK_DIV] = thead_clk_light_divider("light_vpsys_g2d_cclk_div", "video_pll_foutvco", gate_base + 0x30, 0, 4, 4, MUX_TYPE_DIV, 3, 9);
+
+	/* G2D clock configuration : Completed the upward configuration of CCLK */
 	gates[LIGHT_VPSYS_G2D_PCLK] = thead_clk_light_gate_shared("clkgen_vpsys_g2d_pclk", NULL,
 								   gate_base + 0x20, 3, &share_cnt_g2d_clk_en);
 	gates[LIGHT_VPSYS_G2D_ACLK] = thead_clk_light_gate_shared("clkgen_vpsys_g2d_aclk", NULL,
 								   gate_base + 0x20, 3, &share_cnt_g2d_clk_en);
-	gates[LIGHT_VPSYS_G2D_CCLK] = thead_clk_light_gate_shared("clkgen_vpsys_g2d_cclk", NULL,
+	gates[LIGHT_VPSYS_G2D_CCLK] = thead_clk_light_gate_shared("clkgen_vpsys_g2d_cclk", "light_vpsys_g2d_cclk_div",
 								   gate_base + 0x20, 3, &share_cnt_g2d_clk_en);
 
-
+	/* we assume that the gate clock is a root clock  */
 	gates[LIGHT_VPSYS_FCE_PCLK] = thead_clk_light_gate_shared("clkgen_vpsys_fce_pclk", NULL,
 								   gate_base + 0x20, 2, &share_cnt_fce_clk_en);
 	gates[LIGHT_VPSYS_FCE_ACLK] = thead_clk_light_gate_shared("clkgen_vpsys_fce_aclk", NULL,

@@ -1005,6 +1005,8 @@ static int __maybe_unused light_efuse_runtime_suspend(struct device *dev)
 
 	dev_dbg(dev, "[%s,%d] ret = %d, pd status: 0x%lx\n", __func__, __LINE__, ret,
 			readl(priv->base + CON) & EFUSE_CON_POWER_MSK);
+	
+	clk_disable_unprepare(priv->clk);
 
 	return ret;
 }
@@ -1012,9 +1014,59 @@ static int __maybe_unused light_efuse_runtime_suspend(struct device *dev)
 static int __maybe_unused light_efuse_runtime_resume(struct device *dev)
 {
 	struct light_efuse_priv *priv = dev_get_drvdata(dev);
+	int ret;
 
 	dev_dbg(dev, "[%s,%d]efuse runtime power on\n", __func__, __LINE__);
 
+	ret = clk_prepare_enable(priv->clk);
+	if (ret) {
+		dev_err(dev, "failed to get efuse clk\n");
+		return ret;
+	}
+		
+	return efuse_poweron(priv->base);
+}
+
+static int __maybe_unused light_efuse_suspend(struct device *dev)
+{
+	struct light_efuse_priv *priv = dev_get_drvdata(dev);
+	u32 data;
+	int ret;
+
+	dev_dbg(dev, "[%s,%d]efuse suspend enter\n", __func__, __LINE__);
+
+	if (!efuse_poweron_status_get(priv->base))
+		return 0;
+
+	data = readl(priv->base + CON);
+	data |= EFUSE_CON_POWER_MSK;
+	writel(data, priv->base + CON);
+
+	ret = efuse_idle_check(priv->base);
+
+	ret |= efuse_status_check(priv->base);
+
+	dev_dbg(dev, "[%s,%d] ret = %d, pd status: 0x%lx\n", __func__, __LINE__, ret,
+			readl(priv->base + CON) & EFUSE_CON_POWER_MSK);
+	
+	clk_disable_unprepare(priv->clk);
+
+	return ret;
+}
+
+static int __maybe_unused light_efuse_resume(struct device *dev)
+{
+	struct light_efuse_priv *priv = dev_get_drvdata(dev);
+	int ret;
+
+	dev_dbg(dev, "[%s,%d]efuse resume enter\n", __func__, __LINE__);
+
+	ret = clk_prepare_enable(priv->clk);
+	if (ret) {
+		dev_err(dev, "failed to get efuse clk\n");
+		return ret;
+	}
+		
 	return efuse_poweron(priv->base);
 }
 
@@ -1035,9 +1087,18 @@ static int light_efuse_probe(struct platform_device *pdev)
 		return PTR_ERR(priv->base);
 
 	/* optional clock, default open */
-	priv->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(priv->clk))
-		priv->clk = NULL;
+	priv->clk = devm_clk_get(dev, "pclk");
+	if (IS_ERR_OR_NULL(priv->clk)) {
+		if (PTR_ERR(priv->clk) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "failed to get efuse clk\n");
+		return PTR_ERR(priv->clk);
+	}
+
+	ret = clk_prepare_enable(priv->clk);
+	if (ret) {
+		dev_err(dev, "failed to get efuse clk\n");
+		return ret;
+	}
 
 	priv->teesys_regs = syscon_regmap_lookup_by_phandle(dev->of_node, "thead,teesys");
 	if (IS_ERR(priv->teesys_regs)) {
@@ -1048,6 +1109,14 @@ static int light_efuse_probe(struct platform_device *pdev)
 	priv->dev = dev;
 
 	dev_set_drvdata(dev, priv);
+
+	pm_runtime_enable(dev);
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0) {
+		dev_err(dev, "failed to get the efuse device(%d)\n", ret);
+		pm_runtime_put_noidle(dev);
+		return ret;
+	}
 
 	ret = sysfs_create_group(&dev->kobj, &dev_attr_efuse_sysfs_group);
 	if (ret) {
@@ -1070,7 +1139,7 @@ static int light_efuse_probe(struct platform_device *pdev)
 	if (IS_ERR(nvmem))
 		return PTR_ERR_OR_ZERO(nvmem);
 
-	pm_runtime_enable(dev);
+	pm_runtime_put_sync(dev);
 
 	dev_info(dev, "succeed to register light efuse driver\n");
 
@@ -1079,6 +1148,7 @@ static int light_efuse_probe(struct platform_device *pdev)
 
 static const struct dev_pm_ops efuse_runtime_pm_ops = {
 	SET_RUNTIME_PM_OPS(light_efuse_runtime_suspend, light_efuse_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(light_efuse_suspend, light_efuse_resume)
 };
 
 static struct platform_driver light_efuse_driver = {

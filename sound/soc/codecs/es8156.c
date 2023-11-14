@@ -80,6 +80,38 @@ struct es8156_priv {
 
 	int pwr_count;
 	u32 mclk_sclk_ratio;
+
+	u32 suspend_reg_00;
+	u32 suspend_reg_01;
+	u32 suspend_reg_02;
+	u32 suspend_reg_03;
+	u32 suspend_reg_04;
+	u32 suspend_reg_05;
+	u32 suspend_reg_06;
+	u32 suspend_reg_07;
+	u32 suspend_reg_08;
+	u32 suspend_reg_09;
+	u32 suspend_reg_0A;
+	u32 suspend_reg_0B;
+	u32 suspend_reg_0C;
+	u32 suspend_reg_0D;
+	u32 suspend_reg_10;
+	u32 suspend_reg_11;
+	u32 suspend_reg_12;
+	u32 suspend_reg_13;
+	u32 suspend_reg_14;
+	u32 suspend_reg_15;
+	u32 suspend_reg_16;
+	u32 suspend_reg_17;
+	u32 suspend_reg_18;
+	u32 suspend_reg_19;
+	u32 suspend_reg_1A;
+	u32 suspend_reg_20;
+	u32 suspend_reg_21;
+	u32 suspend_reg_22;
+	u32 suspend_reg_23;
+	u32 suspend_reg_24;
+	u32 suspend_reg_25;
 };
 
 /*
@@ -153,8 +185,8 @@ static const struct snd_soc_dapm_widget es8156_dapm_widgets[] = {
 #define STATEconfirm       0x0C
 #define NORMAL_I2S         0x00
 #define NORMAL_LJ          0x01
-#define NORMAL_DSPA            0x03
-#define NORMAL_DSPB            0x07
+#define NORMAL_DSPA        0x03
+#define NORMAL_DSPB        0x07
 #define Format_Len24       0x00
 #define Format_Len20       0x01
 #define Format_Len18       0x02
@@ -183,7 +215,7 @@ static unsigned int MCLK_SOURCE;        // select MCLK source, MCLK_PIN or SCLK
 
 static int es8156_init_regs(struct snd_soc_component *codec)
 {
-	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+	//struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
    pr_debug("%s\n", __func__);
 
    snd_soc_component_write(codec,0x02,(MCLK_SOURCE<<7) + (SCLK_INV<<4) +  (EQ7bandOn<<3) + 0x04 + MSMode_MasterSelOn);
@@ -286,7 +318,7 @@ static int es8156_init_regs(struct snd_soc_component *codec)
    snd_soc_component_write(codec,0x0D,0x14);
    snd_soc_component_write(codec,0x18,0x00);
    snd_soc_component_write(codec,0x08,0x3F);
-  snd_soc_component_write(codec,0x00,0x02);
+   snd_soc_component_write(codec,0x00,0x02);
    snd_soc_component_write(codec,0x00,0x03);
    snd_soc_component_write(codec,0x25,0x20);
 
@@ -406,8 +438,8 @@ static int es8156_pcm_hw_params(struct snd_pcm_substream *substream,
 static int es8156_set_bias_level(struct snd_soc_component *codec,
 				 enum snd_soc_bias_level level)
 {
-	int ret, i;  
-	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+	//int ret, i;  
+	//struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
 
 	switch (level) 
 	{
@@ -418,6 +450,7 @@ static int es8156_set_bias_level(struct snd_soc_component *codec,
 			break;
 
 		case SND_SOC_BIAS_STANDBY:
+#if 0
 		/*
 		*open i2s clock 
 		*/
@@ -436,9 +469,11 @@ static int es8156_set_bias_level(struct snd_soc_component *codec,
 				}
 			}
 		}
+#endif
 		break;
 
 	case SND_SOC_BIAS_OFF:
+#if 0
        //snd_soc_component_write(codec,0x14,0x00);
        snd_soc_component_write(codec,0x19,0x02);
        snd_soc_component_write(codec,0x22,0x02);
@@ -454,6 +489,7 @@ static int es8156_set_bias_level(struct snd_soc_component *codec,
 		*/
 		if (!IS_ERR(priv->mclk))
 			clk_disable_unprepare(priv->mclk);
+#endif
 		break;
 	}
 	return 0;
@@ -485,18 +521,90 @@ static struct snd_soc_dai_driver es8156_dai = {
 	.symmetric_rates = 1,
 };
 
-
+#ifdef CONFIG_PM_SLEEP
 static int es8156_suspend(struct snd_soc_component *codec)
 {
+	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+
+	//printk("Entered: %s\n", __func__);
+
 	es8156_set_bias_level(codec, SND_SOC_BIAS_OFF);
-	printk("es8156_suspend\n");
+	priv->suspend_reg_00 = snd_soc_component_read(codec, ES8156_RESET_REG00);
+	priv->suspend_reg_01 = snd_soc_component_read(codec, ES8156_MAINCLOCK_CTL_REG01);
+	priv->suspend_reg_02 = snd_soc_component_read(codec, ES8156_SCLK_MODE_REG02);
+	priv->suspend_reg_03 = snd_soc_component_read(codec, ES8156_LRCLK_DIV_H_REG03);
+	priv->suspend_reg_04 = snd_soc_component_read(codec, ES8156_LRCLK_DIV_L_REG04);
+	priv->suspend_reg_05 = snd_soc_component_read(codec, ES8156_SCLK_DIV_REG05);
+	priv->suspend_reg_06 = snd_soc_component_read(codec, ES8156_NFS_CONFIG_REG06);
+	priv->suspend_reg_07 = snd_soc_component_read(codec, ES8156_MISC_CONTROL1_REG07);
+	priv->suspend_reg_08 = snd_soc_component_read(codec, ES8156_CLOCK_ON_OFF_REG08);
+	priv->suspend_reg_09 = snd_soc_component_read(codec, ES8156_MISC_CONTROL2_REG09);
+	priv->suspend_reg_0A = snd_soc_component_read(codec, ES8156_TIME_CONTROL1_REG0A);
+	priv->suspend_reg_0B = snd_soc_component_read(codec, ES8156_TIME_CONTROL2_REG0B);
+	priv->suspend_reg_0C = snd_soc_component_read(codec, ES8156_CHIP_STATUS_REG0C);
+	priv->suspend_reg_0D = snd_soc_component_read(codec, ES8156_P2S_CONTROL_REG0D);
+	priv->suspend_reg_10 = snd_soc_component_read(codec, ES8156_DAC_OSR_COUNTER_REG10);
+	priv->suspend_reg_11 = snd_soc_component_read(codec, ES8156_DAC_SDP_REG11);
+	priv->suspend_reg_12 = snd_soc_component_read(codec, ES8156_AUTOMUTE_SET_REG12);
+	priv->suspend_reg_13 = snd_soc_component_read(codec, ES8156_DAC_MUTE_REG13);
+	priv->suspend_reg_14 = snd_soc_component_read(codec, ES8156_VOLUME_CONTROL_REG14);
+	priv->suspend_reg_15 = snd_soc_component_read(codec, ES8156_ALC_CONFIG1_REG15);
+	priv->suspend_reg_16 = snd_soc_component_read(codec, ES8156_ALC_CONFIG2_REG16);
+	priv->suspend_reg_17 = snd_soc_component_read(codec, ES8156_ALC_CONFIG3_REG17);
+	priv->suspend_reg_18 = snd_soc_component_read(codec, ES8156_MISC_CONTROL3_REG18);
+	priv->suspend_reg_19 = snd_soc_component_read(codec, ES8156_EQ_CONTROL1_REG19);
+	priv->suspend_reg_1A = snd_soc_component_read(codec, ES8156_EQ_CONTROL2_REG1A);
+	priv->suspend_reg_20 = snd_soc_component_read(codec, ES8156_ANALOG_SYS1_REG20);
+	priv->suspend_reg_21 = snd_soc_component_read(codec, ES8156_ANALOG_SYS2_REG21);
+	priv->suspend_reg_22 = snd_soc_component_read(codec, ES8156_ANALOG_SYS3_REG22);
+	priv->suspend_reg_23 = snd_soc_component_read(codec, ES8156_ANALOG_SYS4_REG23);
+	priv->suspend_reg_24 = snd_soc_component_read(codec, ES8156_ANALOG_LP_REG24);
+	priv->suspend_reg_25 = snd_soc_component_read(codec, ES8156_ANALOG_SYS5_REG25);
+
 	return 0;
 }
 
 static int es8156_resume(struct snd_soc_component *codec)
 {	
+	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+
+	//printk("Entered: %s\n", __func__);
+
+	snd_soc_component_write(codec, ES8156_RESET_REG00, priv->suspend_reg_00);
+	snd_soc_component_write(codec, ES8156_MAINCLOCK_CTL_REG01, priv->suspend_reg_01);
+	snd_soc_component_write(codec, ES8156_SCLK_MODE_REG02, priv->suspend_reg_02);
+	snd_soc_component_write(codec, ES8156_LRCLK_DIV_H_REG03, priv->suspend_reg_03);
+	snd_soc_component_write(codec, ES8156_LRCLK_DIV_L_REG04, priv->suspend_reg_04);
+	snd_soc_component_write(codec, ES8156_SCLK_DIV_REG05, priv->suspend_reg_05);
+	snd_soc_component_write(codec, ES8156_NFS_CONFIG_REG06, priv->suspend_reg_06);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL1_REG07, priv->suspend_reg_07);
+	snd_soc_component_write(codec, ES8156_CLOCK_ON_OFF_REG08, priv->suspend_reg_08);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL2_REG09, priv->suspend_reg_09);
+	snd_soc_component_write(codec, ES8156_TIME_CONTROL1_REG0A, priv->suspend_reg_0A);
+	snd_soc_component_write(codec, ES8156_TIME_CONTROL2_REG0B, priv->suspend_reg_0B);
+	snd_soc_component_write(codec, ES8156_CHIP_STATUS_REG0C, priv->suspend_reg_0C);
+	snd_soc_component_write(codec, ES8156_P2S_CONTROL_REG0D, priv->suspend_reg_0D);
+	snd_soc_component_write(codec, ES8156_DAC_OSR_COUNTER_REG10, priv->suspend_reg_10);
+	snd_soc_component_write(codec, ES8156_DAC_SDP_REG11, priv->suspend_reg_11);
+	snd_soc_component_write(codec, ES8156_AUTOMUTE_SET_REG12, priv->suspend_reg_12);
+	snd_soc_component_write(codec, ES8156_DAC_MUTE_REG13, priv->suspend_reg_13);
+	snd_soc_component_write(codec, ES8156_VOLUME_CONTROL_REG14, priv->suspend_reg_14);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG1_REG15, priv->suspend_reg_15);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG2_REG16, priv->suspend_reg_16);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG3_REG17, priv->suspend_reg_17);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL3_REG18, priv->suspend_reg_18);
+	snd_soc_component_write(codec, ES8156_EQ_CONTROL1_REG19, priv->suspend_reg_19);
+	snd_soc_component_write(codec, ES8156_EQ_CONTROL2_REG1A, priv->suspend_reg_1A);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS1_REG20, priv->suspend_reg_20);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS2_REG21, priv->suspend_reg_21);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS3_REG22, priv->suspend_reg_22);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS4_REG23, priv->suspend_reg_23);
+	snd_soc_component_write(codec, ES8156_ANALOG_LP_REG24, priv->suspend_reg_24);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS5_REG25, priv->suspend_reg_25);
+
 	return 0;
 }
+#endif
 
 #ifdef HP_DET_FUNTION
 static irqreturn_t es8156_irq_handler(int irq, void *data)
@@ -614,8 +722,10 @@ static struct snd_soc_component_driver soc_codec_dev_es8156 = {
 	.name = "es8156",
 	.probe =	es8156_probe,
 	.remove =	es8156_remove,
+#ifdef CONFIG_PM_SLEEP
 	.suspend =	es8156_suspend,
 	.resume =	es8156_resume,
+#endif
 	.set_bias_level = es8156_set_bias_level,
 	.controls = es8156_snd_controls,
 	.num_controls = ARRAY_SIZE(es8156_snd_controls),
@@ -675,14 +785,16 @@ static int es8156_i2c_probe(struct i2c_client *i2c,
 	}
 
 	if (of_property_read_u32(np, "mclk-sclk-ratio", &es8156->mclk_sclk_ratio) != 0) {
-			es8156->mclk_sclk_ratio = 1;
+		es8156->mclk_sclk_ratio = 1;
 	}
-   Ratio *= es8156->mclk_sclk_ratio;
-   if (es8156->mclk_sclk_ratio == 1) {
-	MCLK_SOURCE = SCLK_PIN;
-   } else {
-	MCLK_SOURCE = MCLK_PIN;
-   }
+
+	Ratio *= es8156->mclk_sclk_ratio;
+
+   	if (es8156->mclk_sclk_ratio == 1) {
+		MCLK_SOURCE = SCLK_PIN;
+	} else {
+		MCLK_SOURCE = MCLK_PIN;
+	}
 
 	i2c_set_clientdata(i2c, es8156);
 #ifdef HP_DET_FUNTION
