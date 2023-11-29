@@ -405,7 +405,9 @@ config VECTOR
 
 config THEAD_ISA
 	bool "T-HEAD extension ISA in AFLAGS with -march=_xtheadc"
-	default n
+	default y
+	help
+	  Say N here if you want to disable xtheadc in the kernel.
 
 endmenu
 

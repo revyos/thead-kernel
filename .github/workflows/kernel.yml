@@ -67,12 +67,8 @@ jobs:
                   make revyos_beaglev_defconfig
                 fi
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
-                if [ x"${{ matrix.name }}" = x"gcc-13" ]; then
-                  echo "CONFIG_THEAD_ISA=n" >> .config
-                elif [ x"${{ matrix.name }}" = x"thead-gcc" ]; then
-                  echo "CONFIG_THEAD_ISA=y" >> .config
-                fi
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
+                cat .config | grep "CONFIG_THEAD_ISA"
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
 
                 # Copy deb
