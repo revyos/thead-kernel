@@ -50,10 +50,15 @@ endif
 # ISA string setting
 riscv-march-$(CONFIG_ARCH_RV32I)	:= rv32ima
 riscv-march-$(CONFIG_ARCH_RV64I)	:= rv64ima
-riscv-march-$(CONFIG_FPU)			:= $(riscv-march-y)fd
+riscv-march-$(CONFIG_FPU)		:= $(riscv-march-y)fd
 riscv-march-$(CONFIG_RISCV_ISA_C)	:= $(riscv-march-y)c
-riscv-march-$(CONFIG_VECTOR)		:= $(riscv-march-y)v0p7
-riscv-march-$(CONFIG_THEAD_ISA)		:= $(riscv-march-y)_xtheadc
+
+# Fix mainline build
+toolchain-have-v0p7 := $(call cc-option-yn, -march=$(riscv-march-y)v0p7)
+riscv-march-$(toolchain-have-v0p7) := $(riscv-march-y)v0p7
+
+toolchain-have-xtheadc := $(call cc-option-yn, -march=$(riscv-march-y)_xtheadc)
+riscv-march-$(toolchain-have-xtheadc) := $(riscv-march-y)_xtheadc
 
 # Newer binutils versions default to ISA spec version 20191213 which moves some
 # instructions from the I extension to the Zicsr and Zifencei extensions.
