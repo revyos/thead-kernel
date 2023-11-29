@@ -25,7 +25,7 @@ struct c910_priv {
 static gcsPLATFORM c910_platform;
 
 static const struct of_device_id c910_gc620_dt_ids[] = {
-	{ .compatible = "thead,c910-gc620", },
+	{ .compatible = "vivante,gc", },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, c910_gc620_dt_ids);
@@ -37,7 +37,7 @@ static gceSTATUS c910_adjustParam(IN gcsPLATFORM * Platform,
 	struct resource *res;
 	struct platform_device *pdev = Platform->device;
 
-	irq = platform_get_irq_byname(pdev, "irq_2d");
+	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return gcvSTATUS_NOT_FOUND;
 
@@ -58,15 +58,15 @@ static gceSTATUS c910_getPower(IN gcsPLATFORM * Platform)
 	struct c910_priv *c910 = Platform->priv;
 	struct platform_device *pdev = c910_platform.device;
 
-	c910->pclk = devm_clk_get(&pdev->dev, "pclk");
+	c910->pclk = devm_clk_get(&pdev->dev, "bus");
 	if (IS_ERR(c910->pclk))
 		return gcvSTATUS_NOT_FOUND;
 
-	c910->aclk = devm_clk_get(&pdev->dev, "aclk");
+	c910->aclk = devm_clk_get(&pdev->dev, "core");
 	if (IS_ERR(c910->aclk))
 		return gcvSTATUS_NOT_FOUND;
 
-	c910->cclk = devm_clk_get(&pdev->dev, "cclk");
+	c910->cclk = devm_clk_get(&pdev->dev, "shader");
 	if (IS_ERR(c910->cclk))
 		return gcvSTATUS_NOT_FOUND;
 
@@ -118,7 +118,7 @@ int gckPLATFORM_Init(struct platform_driver *pdrv, gcsPLATFORM **platform)
 	struct platform_device *pdev;
 	struct c910_priv *c910;
 
-	np = of_find_compatible_node(NULL, NULL, "thead,c910-gc620");
+	np = of_find_compatible_node(NULL, NULL, "vivante,gc");
 	if (!np)
 		return -ENODEV;
 	of_node_put(np);

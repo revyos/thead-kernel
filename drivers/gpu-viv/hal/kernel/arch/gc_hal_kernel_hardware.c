@@ -1947,6 +1947,7 @@ _SetHardwareOptions(
         gcmkASSERT(gcvSTATUS_TRUE == gckHARDWARE_IsFeatureAvailable(Hardware, gcvFEATURE_SECURITY_AHB));
 
         options->secureMode = gcvSECURE_IN_NORMAL;
+	pr_err("gcvSECURE_IN_NORMAL because of SECURITY\n");
 
         status = gckOS_QueryOption(Hardware->os, "TA", &data);
 
@@ -1958,6 +1959,7 @@ _SetHardwareOptions(
     else if (gckHARDWARE_IsFeatureAvailable(Hardware, gcvFEATURE_SECURITY_AHB))
     {
         options->secureMode = gcvSECURE_IN_NORMAL;
+	pr_err("gcvSECURE_IN_NORMAL because of SECURITY_AHB\n");
     }
 
     options->hasShader = database->NumShaderCores;
