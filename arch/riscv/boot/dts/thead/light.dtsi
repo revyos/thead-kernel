@@ -1047,7 +1047,7 @@
 			#size-cells = <0>;
 		};
 
-		g2d: gc620@ffecc80000 {
+/*		g2d: gc620@ffecc80000 {
 			compatible = "thead,c910-gc620";
 			reg = <0xff 0xecc80000 0x0 0x40000>;
 			interrupt-parent = <&intc>;
@@ -1058,6 +1058,19 @@
 				 <&vpsys_clk_gate LIGHT_VPSYS_G2D_CCLK>;
 			clock-names = "pclk", "aclk", "cclk";
 			status = "okay";
+		};*/
+
+		g2d: gpu@13040000 {
+			compatible = "vivante,gc";
+			reg = <0xff 0xecc80000 0x0 0x40000>;
+
+			clocks = <&vpsys_clk_gate LIGHT_VPSYS_G2D_PCLK>,
+				 <&vpsys_clk_gate LIGHT_VPSYS_G2D_ACLK>,
+				 <&vpsys_clk_gate LIGHT_VPSYS_G2D_CCLK>;
+			clock-names = "bus", "core", "shader";
+
+			interrupt-parent = <&intc>;
+			interrupts = <101>;
 		};
 
 		dsi0: dw-mipi-dsi0@ffef500000 {
