@@ -268,8 +268,7 @@
 	vcc_usb_en: regulator-usb-en {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_usb_en";
-		gpio = <&gpio2_porta 30 0>;	/* GPIO_ACTIVE_HIGH: 0 */
-		enable-active-high;
+		gpio = <&gpio2_porta 30 1>;	/* GPIO_ACTIVE_LOW: 1 */
 		regulator-boot-on;
 		regulator-always-on;
 		status = "okay";
