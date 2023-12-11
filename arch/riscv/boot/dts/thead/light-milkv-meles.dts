@@ -274,6 +274,25 @@
 		status = "okay";
 	};
 
+	dsi0_backlight: dsi0-backlight {
+		status = "okay";
+		compatible = "pwm-backlight";
+		pwms = <&pwm 5 25000>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <7>;
+	};
+
+	vcc_lcd_mipi0: vcc-lcd-mipi0 {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_lcd_mipi0";
+		gpio = <&gpio1_porta 25 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
 	aon {
 		compatible = "thead,light-aon";
 		mbox-names = "aon";
@@ -583,6 +602,12 @@
 				FM_QSPI0_CSN1   0x1     0x208   /* pwm2 */
 			>;
 		};
+
+		pinctrl_dsi0_panel_gpio: dsi0-panel-gpio-group {
+			thead,pins = <
+				FM_GPIO2_21	0x0	0x238
+			>;
+		};
 	};
 };
 
@@ -882,4 +907,68 @@
 
 &qspi1 {
 	status = "disabled";
+};
+
+&pwm {
+	status = "okay";
+};
+
+&dpu_enc0 {
+	status = "okay";
+
+	ports {
+		/* output */
+		port@1 {
+			reg = <1>;
+
+			enc0_out: endpoint {
+				remote-endpoint = <&dsi0_in>;
+			};
+		};
+	};
+};
+
+&dsi0 {
+        status = "okay";
+};
+
+&dhost_0 {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			dsi0_in: endpoint {
+				remote-endpoint = <&enc0_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+
+			dsi0_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+
+	panel@0 {
+		compatible = "radxa,display-10fhd-ad003";
+		reg = <0>;
+		backlight = <&dsi0_backlight>;
+
+		vdd-supply = <&vcc_lcd_mipi0>;
+		vccio-supply = <&vdd_1v8>;
+		reset-gpios = <&gpio2_porta 21 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_dsi0_panel_gpio>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&dsi0_out>;
+			};
+		};
+	};
 };
