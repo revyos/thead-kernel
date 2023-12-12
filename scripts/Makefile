@@ -6,6 +6,11 @@
 CRYPTO_LIBS = $(shell pkg-config --libs libcrypto 2> /dev/null || echo -lcrypto)
 CRYPTO_CFLAGS = $(shell pkg-config --cflags libcrypto 2> /dev/null)
 
+ifneq ($(KBUILD_SCRIPTROOT),)
+# skip build extract-cert when HOSTCC=cross
+CONFIG_SYSTEM_TRUSTED_KEYRING=
+endif
+
 hostprogs-always-$(CONFIG_BUILD_BIN2C)			+= bin2c
 hostprogs-always-$(CONFIG_KALLSYMS)			+= kallsyms
 hostprogs-always-$(BUILD_C_RECORDMCOUNT)		+= recordmcount

@@ -69,6 +69,17 @@ jobs:
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 cat .config | grep "CONFIG_THEAD_ISA"
+                # cross rebuild scripts TODO: rebuild deb instead of tar
+                mv .config ../
+                make O=../buildhost scripts
+                make KBUILD_SCRIPTROOT=../buildhost O=../buildtarget HOSTCC="${CROSS_COMPILE}gcc" scripts
+                find ../buildtarget/scripts -type f > ../scripts.rebuild
+                mkdir ../scripts
+                tar -c -f - -T ../scripts.rebuild |tar -xf - -C ../scripts
+                tar cf ../${{ matrix.board }}-scripts.tar ../scripts
+                rm -rf ../buildhost ../buildtarget ../scripts
+                mv ../.config .
+                sudo dcmd cp -v ../*.tar ${GITHUB_WORKSPACE}/rootfs/
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
 
                 # Copy deb

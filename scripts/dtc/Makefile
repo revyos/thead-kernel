@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0
 # scripts/dtc makefile
 
+ifneq ($(KBUILD_SCRIPTROOT),)
+# skip build dtc when HOSTCC=cross
+CONFIG_DTC=
+CHECK_DT_BINGDING=
+endif
+
 hostprogs-always-$(CONFIG_DTC)		+= dtc
 hostprogs-always-$(CHECK_DT_BINDING)	+= dtc
 

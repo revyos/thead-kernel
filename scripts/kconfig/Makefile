@@ -19,6 +19,12 @@ endif
 # We need this, in case the user has it in its environment
 unexport CONFIG_
 
+ifdef KBUILD_SCRIPTROOT
+CONF = $(KBUILD_SCRIPTROOT)/scripts/kconfig/conf
+else
+CONF = $(obj)/conf
+endif
+
 xconfig: $(obj)/qconf
 	$(Q)$< $(silent) $(Kconfig)
 
@@ -28,7 +34,7 @@ gconfig: $(obj)/gconf
 menuconfig: $(obj)/mconf
 	$(Q)$< $(silent) $(Kconfig)
 
-config: $(obj)/conf
+config: $(CONF)
 	$(Q)$< $(silent) --oldaskconfig $(Kconfig)
 
 nconfig: $(obj)/nconf
@@ -42,7 +48,7 @@ build_gconfig: $(obj)/gconf
 
 build_xconfig: $(obj)/qconf
 
-localyesconfig localmodconfig: $(obj)/conf
+localyesconfig localmodconfig: $(CONF)
 	$(Q)$(PERL) $(srctree)/$(src)/streamline_config.pl --$@ $(srctree) $(Kconfig) > .tmp.config
 	$(Q)if [ -f .config ]; then 				\
 		cmp -s .tmp.config .config ||			\
@@ -67,15 +73,15 @@ simple-targets := oldconfig allnoconfig allyesconfig allmodconfig \
 
 PHONY += $(simple-targets)
 
-$(simple-targets): $(obj)/conf
+$(simple-targets): $(CONF)
 	$(Q)$< $(silent) --$@ $(Kconfig)
 
 PHONY += savedefconfig defconfig
 
-savedefconfig: $(obj)/conf
+savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=defconfig $(Kconfig)
 
-defconfig: $(obj)/conf
+defconfig: $(CONF)
 ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG)),)
 	@$(kecho) "*** Default configuration is based on '$(KBUILD_DEFCONFIG)'"
 	$(Q)$< $(silent) --defconfig=arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG) $(Kconfig)
@@ -84,12 +90,12 @@ else
 	$(Q)$(MAKE) -f $(srctree)/Makefile $(KBUILD_DEFCONFIG)
 endif
 
-%_defconfig: $(obj)/conf
+%_defconfig: $(CONF)
 	$(Q)$< $(silent) --defconfig=arch/$(SRCARCH)/configs/$@ $(Kconfig)
 
 configfiles=$(wildcard $(srctree)/kernel/configs/$@ $(srctree)/arch/$(SRCARCH)/configs/$@)
 
-%.config: $(obj)/conf
+%.config: $(CONF)
 	$(if $(call configfiles),, $(error No configuration exists for this target on this architecture))
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/kconfig/merge_config.sh -m .config $(configfiles)
 	$(Q)$(MAKE) -f $(srctree)/Makefile olddefconfig
@@ -110,7 +116,7 @@ tinyconfig:
 
 # CHECK: -o cache_dir=<path> working?
 PHONY += testconfig
-testconfig: $(obj)/conf
+testconfig: $(CONF)
 	$(Q)$(PYTHON3) -B -m pytest $(srctree)/$(src)/tests \
 	-o cache_dir=$(abspath $(obj)/tests/.cache) \
 	$(if $(findstring 1,$(KBUILD_VERBOSE)),--capture=no)

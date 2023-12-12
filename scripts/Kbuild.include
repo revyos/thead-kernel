@@ -219,12 +219,18 @@ if_changed = $(if $(newer-prereqs)$(cmd-check),                              \
 	$(cmd);                                                              \
 	printf '%s\n' 'cmd_$@ := $(make-cmd)' > $(dot-target).cmd, @:)
 
+ifdef KBUILD_SCRIPTROOT
+FIXDEP = $(KBUILD_SCRIPTROOT)/scripts/basic/fixdep
+else
+FIXDEP = scripts/basic/fixdep
+endif
+
 # Execute the command and also postprocess generated .d dependencies file.
 if_changed_dep = $(if $(newer-prereqs)$(cmd-check),$(cmd_and_fixdep),@:)
 
 cmd_and_fixdep =                                                             \
 	$(cmd);                                                              \
-	scripts/basic/fixdep $(depfile) $@ '$(make-cmd)' > $(dot-target).cmd;\
+	$(FIXDEP) $(depfile) $@ '$(make-cmd)' > $(dot-target).cmd;\
 	rm -f $(depfile)
 
 # Usage: $(call if_changed_rule,foo)
