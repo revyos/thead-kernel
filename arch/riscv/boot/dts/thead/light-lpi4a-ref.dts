@@ -865,7 +865,7 @@
 };
 
 &sdhci0 {
-	max-frequency = <198000000>;
+	max-frequency = <100000000>;
 	bus-width = <4>;
 	pull_up;
 	wprtn_ignore;
