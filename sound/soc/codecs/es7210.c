@@ -804,7 +804,7 @@ static int es7210_pcm_hw_params(struct snd_pcm_substream *substream,
         return 0;
 }
 
-#define es7210_RATES SNDRV_PCM_RATE_8000_96000
+#define es7210_RATES SNDRV_PCM_RATE_8000_48000|SNDRV_PCM_RATE_64000|SNDRV_PCM_RATE_88200
 
 #define es7210_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE | SNDRV_PCM_FMTBIT_S24_3LE |\
     SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE)
@@ -826,7 +826,6 @@ static struct snd_soc_dai_driver es7210_dai0 = {
                 .formats = es7210_FORMATS,
         },
         .ops = &es7210_ops,
-        .symmetric_rates = 1,
 };
 
 
@@ -840,7 +839,6 @@ static struct snd_soc_dai_driver es7210_dai1 = {
                 .formats = es7210_FORMATS,
         },
         .ops = &es7210_ops,
-        .symmetric_rates = 1,
 };
 
 static struct snd_soc_dai_driver es7210_dai2 = {
@@ -853,7 +851,6 @@ static struct snd_soc_dai_driver es7210_dai2 = {
                 .formats = es7210_FORMATS,
         },
         .ops = &es7210_ops,
-        .symmetric_rates = 1,
 };
 
 static struct snd_soc_dai_driver es7210_dai3 = {
@@ -866,7 +863,6 @@ static struct snd_soc_dai_driver es7210_dai3 = {
                 .formats = es7210_FORMATS,
         },
         .ops = &es7210_ops,
-        .symmetric_rates = 1,
 };
 
 static struct snd_soc_dai_driver *es7210_dai[] = {

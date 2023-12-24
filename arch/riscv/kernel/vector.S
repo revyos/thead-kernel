@@ -211,8 +211,6 @@ ENTRY(__vstate_restore)
 #endif
 
 	mv	a0,  t2
-	ld	t0,  TASK_THREAD_VSTART_V0(a0)
-	csrw	CSR_VSTART, t0
 	ld	t0,  TASK_THREAD_VXSAT_V0(a0)
 	csrw	CSR_VXSAT, t0
 	ld	t0,  TASK_THREAD_VXRM_V0(a0)
@@ -229,6 +227,9 @@ ENTRY(__vstate_restore)
 1:	vsetvli zero,zero,e64,m2,d1
 2:
 #endif
+	/* vsetvl & vsetvli would reset vstart to zero */
+	ld	t0,  TASK_THREAD_VSTART_V0(a0)
+	csrw	CSR_VSTART, t0
 	csrc	sstatus, t1
 	ret
 ENDPROC(__vstate_restore)

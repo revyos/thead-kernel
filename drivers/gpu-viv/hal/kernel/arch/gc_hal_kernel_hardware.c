@@ -16821,8 +16821,31 @@ gckHARDWARE_SetClock(
     gctUINT32 core = Core;
     gctUINT32 mcScale = MCScale;
     gctUINT32 shScale = SHScale;
+    gceCHIPPOWERSTATE statesStored,state;
 
     gcmkHEADER();
+
+    gckHARDWARE_QueryPowerState(
+                    Hardware, &statesStored
+                    );
+    switch(statesStored)
+        {
+            case gcvPOWER_OFF:
+            state = gcvPOWER_OFF_BROADCAST;
+            break;
+            case gcvPOWER_IDLE:
+            state = gcvPOWER_IDLE_BROADCAST;
+            break;
+            case gcvPOWER_SUSPEND:
+            state = gcvPOWER_SUSPEND_BROADCAST;
+            break;
+            case gcvPOWER_ON:
+            state = gcvPOWER_ON_AUTO;
+            break;
+            default:
+            state = statesStored;
+            break;
+        }
 
     status = gckOS_QueryOption(Hardware->os, "powerManagement", &powerManagement);
     if (gcmIS_ERROR(status))
@@ -16836,9 +16859,7 @@ gckHARDWARE_SetClock(
             Hardware, gcvFALSE
             ));
 
-        gcmkPRINT("Warning: Power management status will be changed forever!\n");
     }
-
     gcmkONERROR(gckHARDWARE_SetPowerState(
         Hardware, gcvPOWER_ON_AUTO
         ));
@@ -16975,6 +16996,15 @@ gckHARDWARE_SetClock(
     globalAcquired = gcvFALSE;
 
     gcmkFOOTER_NO();
+    if (powerManagement)
+    {
+        gcmkONERROR(gckHARDWARE_EnablePowerManagement(
+            Hardware, gcvTRUE
+            ));
+    }
+    gckHARDWARE_SetPowerState(
+                    Hardware, state
+                    );
 
     return gcvSTATUS_OK;
 
@@ -16988,7 +17018,6 @@ OnError:
     }
 
     gcmkFOOTER_NO();
-
     return status;
 }
 

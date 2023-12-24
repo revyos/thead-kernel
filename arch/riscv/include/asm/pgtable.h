@@ -521,6 +521,8 @@ extern uintptr_t dtb_early_pa;
 void setup_bootmem(void);
 void paging_init(void);
 
+extern u64 satp_mode;
+
 #define FIRST_USER_ADDRESS  0
 
 /*

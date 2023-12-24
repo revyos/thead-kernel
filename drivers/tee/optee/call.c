@@ -6,6 +6,7 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/freezer.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -22,6 +23,8 @@ struct optee_call_waiter {
 	struct list_head list_node;
 	struct completion c;
 };
+
+struct kref sess_refcount = KREF_INIT(1);
 
 static void optee_cq_wait_init(struct optee_call_queue *cq,
 			       struct optee_call_waiter *w)
@@ -51,7 +54,12 @@ static void optee_cq_wait_init(struct optee_call_queue *cq,
 static void optee_cq_wait_for_completion(struct optee_call_queue *cq,
 					 struct optee_call_waiter *w)
 {
-	wait_for_completion(&w->c);
+	/*
+	 * wait_for_completion but allow hibernation/suspend
+     * to freeze the waiting task
+	 */
+	while (wait_for_completion_interruptible(&w->c))
+		try_to_freeze();
 
 	mutex_lock(&cq->mutex);
 
@@ -273,6 +281,7 @@ int optee_open_session(struct tee_context *ctx,
 		mutex_lock(&ctxdata->mutex);
 		list_add(&sess->list_node, &ctxdata->sess_list);
 		mutex_unlock(&ctxdata->mutex);
+		kref_get(&sess_refcount);
 	} else {
 		kfree(sess);
 	}
@@ -291,6 +300,15 @@ out:
 	tee_shm_free(shm);
 
 	return rc;
+}
+
+static void session_release(struct kref *ref)
+{
+}
+
+void session_put(void)
+{
+	kref_put(&sess_refcount, session_release);
 }
 
 int optee_close_session(struct tee_context *ctx, u32 session)
@@ -320,6 +338,9 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 	optee_do_call_with_arg(ctx, msg_parg);
 
 	tee_shm_free(shm);
+
+	session_put();
+
 	return 0;
 }
 

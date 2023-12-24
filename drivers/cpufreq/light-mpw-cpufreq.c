@@ -240,6 +240,15 @@ static int light_cpufreq_suspend(struct cpufreq_policy *policy)
 		return ret;
 	}
 
+/*
+ * skip to siwtch pll during reboot process
+ */
+	mutex_lock(&cpufreq_lock);
+	if (cpufreq_denied) {
+		pr_debug("Denied to switch CPU PLL temporarily on reboot\n");
+		mutex_unlock(&cpufreq_lock);
+		return 0;
+	}
 	/*
 	 * Only CPU PLL0 would be active after STR resume. We should switch
 	 * CPU PLL to be PLL0 after policy stopped.
@@ -247,12 +256,36 @@ static int light_cpufreq_suspend(struct cpufreq_policy *policy)
 	if (_light_get_pllid() == LIGHT_CPU_PLL_IDX(1))
 		_light_switch_pllid(LIGHT_CPU_PLL_IDX(0), policy->suspend_freq);
 
+	/*
+	 * switch pll1 to min_freq, as pll1 also needs to be a known value
+	 * or unexpected errors would come out during recovery.
+	 */
+	clk_prepare_enable(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
+	clk_set_rate(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk, min_freq * 1000);
+	clk_disable_unprepare(clks[LIGHT_CPU_PLL1_FOUTPOSTDIV].clk);
+	mutex_unlock(&cpufreq_lock);
 	return 0;
 }
 
 static int light_cpufreq_resume(struct cpufreq_policy *policy)
 {
-	return 0;
+    int ret;		
+
+    ret = __cpufreq_driver_target(policy, min_freq, CPUFREQ_RELATION_H);
+	if (ret)
+		pr_err("%s: unable to set restore-freq: %u. err: %d\n",
+				__func__, min_freq, ret);
+	/*
+	 * CPU PLL0 with 300M would be active after STR resume. As we switch CPU PLL
+	 * to PLL0 with highest frequency when suspend, switch PLL0 with right one
+	 * after resume.
+	 */
+	mutex_lock(&cpufreq_lock);
+	if(_light_get_pllid() == LIGHT_CPU_PLL_IDX(1))
+		_light_switch_pllid(LIGHT_CPU_PLL_IDX(0), min_freq);
+	mutex_unlock(&cpufreq_lock);
+
+	return ret;
 }
 
 static int light_cpufreq_init(struct cpufreq_policy *policy)

@@ -61,6 +61,17 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/io.h>
+#include <linux/clk.h>
+#include <linux/devfreq.h>
+#include <linux/device.h>
+#include <linux/module.h>
+#include <linux/of_device.h>
+#include <linux/pm_opp.h>
+#include <linux/platform_device.h>
+#include <linux/devfreq-event.h>
+#include <linux/export.h>
+#include <linux/of.h>
+#include <linux/regulator/consumer.h>
 
 #define _GC_OBJ_ZONE    gcvZONE_DEVICE
 
@@ -312,137 +323,36 @@ int gc_load_show(void* m, void* data)
 {
     int len = 0;
     gctUINT32 i = 0;
-    gceSTATUS status = gcvSTATUS_OK;
+    
     gckGALDEVICE device = galDevice;
-    gceCHIPPOWERSTATE statesStored, state;
-    gctUINT32 load[gcvCORE_3D_MAX + 1] = {0};
-    gctUINT32 hi_total_cycle_count[gcvCORE_3D_MAX + 1] = {0};
-    gctUINT32 hi_total_idle_cycle_count[gcvCORE_3D_MAX + 1] = {0};
-    static gctBOOL profilerEnable[gcvCORE_3D_MAX + 1] = {gcvFALSE};
-
+    
 #ifdef CONFIG_DEBUG_FS
     void* ptr = m;
 #else
     char* ptr = (char*)m;
 #endif
 
-    if (!device)
+    if (!device) {
         return -ENXIO;
-
-    for (i = 0; i <= gcvCORE_3D_MAX; i++)
-    {
-        if (device->kernels[i])
-        {
-            if (device->kernels[i]->hardware)
-            {
-                gckHARDWARE Hardware = device->kernels[i]->hardware;
-                gctBOOL powerManagement = Hardware->options.powerManagement;
-
-                if (powerManagement)
-                {
-                    gcmkONERROR(gckHARDWARE_EnablePowerManagement(
-                        Hardware, gcvFALSE
-                        ));
-                }
-
-                gcmkONERROR(gckHARDWARE_QueryPowerState(
-                    Hardware, &statesStored
-                    ));
-
-                gcmkONERROR(gckHARDWARE_SetPowerState(
-                    Hardware, gcvPOWER_ON_AUTO
-                    ));
-
-                if (!profilerEnable[i])
-                {
-                    gcmkONERROR(gckHARDWARE_SetGpuProfiler(
-                        Hardware,
-                        gcvTRUE
-                        ));
-
-                    gcmkONERROR(gckHARDWARE_InitProfiler(Hardware));
-
-                    profilerEnable[i] = gcvTRUE;
-                }
-
-                Hardware->waitCount = 200 * 100;
-            }
-        }
     }
+        
+    
 
-    for (i = 0; i <= gcvCORE_3D_MAX; i++)
-    {
-        if (device->kernels[i])
+        for (i = 0; i <= gcvCORE_2D_MAX; i++)
         {
-            if (device->kernels[i]->hardware)
+            if (device->kernels[i])
             {
-                gcmkONERROR(gckHARDWARE_CleanCycleCount(device->kernels[i]->hardware));
-            }
-        }
-    }
-
-    for (i = 0; i <= gcvCORE_3D_MAX; i++)
-    {
-        if (device->kernels[i])
-        {
-            if (device->kernels[i]->hardware)
-            {
-                gcmkONERROR(gckHARDWARE_QueryCycleCount(device->kernels[i]->hardware, &hi_total_cycle_count[i], &hi_total_idle_cycle_count[i]));
-            }
-        }
-    }
-
-    for (i = 0; i <= gcvCORE_3D_MAX; i++)
-    {
-        if (device->kernels[i])
-        {
-            if (device->kernels[i]->hardware)
-            {
-                gckHARDWARE Hardware = device->kernels[i]->hardware;
-                gctBOOL powerManagement = Hardware->options.powerManagement;
-
-                switch(statesStored)
+                if (device->kernels[i]->hardware)
                 {
-                case gcvPOWER_OFF:
-                    state = gcvPOWER_OFF_BROADCAST;
-                    break;
-                case gcvPOWER_IDLE:
-                    state = gcvPOWER_IDLE_BROADCAST;
-                    break;
-                case gcvPOWER_SUSPEND:
-                    state = gcvPOWER_SUSPEND_BROADCAST;
-                    break;
-                case gcvPOWER_ON:
-                    state = gcvPOWER_ON_AUTO;
-                    break;
-                default:
-                    state = statesStored;
-                    break;
-                }
 
-                Hardware->waitCount = 200;
-
-                if (powerManagement)
-                {
-                    gcmkONERROR(gckHARDWARE_EnablePowerManagement(
-                        Hardware, gcvTRUE
-                        ));
-                }
-
-                gcmkONERROR(gckHARDWARE_SetPowerState(
-                    Hardware, state
-                    ));
-
-                load[i] = (hi_total_cycle_count[i] - hi_total_idle_cycle_count[i]) * 100 / hi_total_cycle_count[i];
 
                 len += fs_printf(ptr, "core      : %d\n", i);
-                len += fs_printf(ptr + len, "load      : %d%%\n",load[i]);
+                len += fs_printf(ptr + len, "load      : %d%%\n",device->kernels[i]->cur_load);
                 len += fs_printf(ptr + len, "\n");
+                }
             }
         }
-    }
 
-OnError:
     return len;
 }
 
@@ -2419,6 +2329,154 @@ _StopPreemptThread(
 }
 #endif
 
+/******************************************************************************\
+******************************* G2D Devfreq support START***********************
+\******************************************************************************/
+
+static int gc_df_target(struct device * dev, unsigned long *freq, u32 flags) {
+
+    int i = 0;
+    gctUINT32 _freq = 64;
+    gckHARDWARE hardware;
+    gckGALDEVICE device = galDevice;
+    struct dev_pm_opp *opp;
+
+    opp = devfreq_recommended_opp(dev, freq, flags);
+    if (IS_ERR(opp)) {
+        dev_info(dev, "Failed to find opp for %lu Hz\n", *freq);
+        return PTR_ERR(opp);
+    }
+    dev_pm_opp_put(opp);
+
+    switch (*freq)
+    {
+    case 396000000:
+        _freq = 64;
+        break;
+    case 198000000:
+        _freq = 32;
+        break;
+    case 99000000:
+        _freq = 16;
+        break;
+    case 49500000:
+        _freq = 8;
+        break;
+    default:
+        break;
+    }
+
+    for(i = 0; i < gcvCORE_2D_MAX; i++) {
+        if(device->kernels[i]) {
+            hardware = device->kernels[i]->hardware;
+            if(hardware->clockState) {
+                gckHARDWARE_SetClock(hardware, i, _freq, _freq);
+                device->kernels[i]->cur_freq = *freq;
+            }
+        }
+    }
+
+    return 0;
+
+}
+
+static int gc_df_status(struct device *dev, struct devfreq_dev_status *stat) {
+    gckGALDEVICE device = galDevice;
+    gckKERNEL kernel = _GetValidKernel(device);
+    gctUINT64 on = 0;
+    gctUINT64 off = 0;
+    gctUINT64 idle = 0;
+    gctUINT64 suspend = 0;
+    int i = 0;
+
+    gckHARDWARE_QueryStateTimer(kernel->hardware, &on, &off, &idle, &suspend);
+    for(i = 0; i < gcvCORE_2D_MAX; i++) {
+        if(device->kernels[i]) {
+            stat->current_frequency = device->kernels[i]->cur_freq;
+            stat->busy_time = on - device->kernels[i]->cur_on;
+            stat->total_time = on - device->kernels[i]->cur_on +
+                                idle - device->kernels[i]->cur_idel +
+                                suspend - device->kernels[i]->cur_suspend +
+                                off - device->kernels[i]->cur_off;
+            device->kernels[i]->cur_load = stat->busy_time * 100 / stat->total_time;
+            device->kernels[i]->cur_on = on;
+            device->kernels[i]->cur_idel = idle;
+            device->kernels[i]->cur_suspend = suspend;
+            device->kernels[i]->cur_off = off;
+        }
+    }
+
+    return 0;
+
+}
+
+static int gc_df_get_cur_freq(struct device *dev, unsigned long *freq) {
+    int i = 0;
+    gckGALDEVICE device = galDevice;
+    for(i = 0; i < gcvCORE_2D_MAX; i++) {
+        if(device->kernels[i]) {
+            *freq = device->kernels[i]->cur_freq;
+        }
+    }
+
+    return 0;
+}
+
+struct devfreq_simple_ondemand_data galcore_gov_data;
+
+static struct devfreq_dev_profile gc_df_profile = {
+    .polling_ms = 500,
+    .target = gc_df_target,
+    .get_dev_status = gc_df_status,
+    .get_cur_freq = gc_df_get_cur_freq,
+};
+
+gceSTATUS
+g2d_EnableDevfreq(void) {
+    gceSTATUS status = gcvSTATUS_OK;
+    struct clk *new_clk;
+    int ret = 0;
+    gckGALDEVICE device = galDevice;
+    int i = 0;
+
+    ret = dev_pm_opp_of_add_table(galcore_device);
+    if(ret) {
+        gcmkPRINT("add table failed \n");
+    }
+
+    new_clk = devm_clk_get(galcore_device, "cclk");
+    clk_set_rate(new_clk, 792000000);
+    for(i = 0; i < gcvCORE_2D_MAX; i++) {
+        if(device->kernels[i]) {
+            device->kernels[i]->cur_freq = clk_get_rate(new_clk) / 2;
+            device->kernels[i]->cur_idel = 0;
+            device->kernels[i]->cur_off = 0;
+            device->kernels[i]->cur_on = 0;
+            device->kernels[i]->cur_suspend = 0;
+            device->kernels[i]->cur_load = 0;
+            gc_df_profile.initial_freq = device->kernels[i]->cur_freq;
+        }
+
+    }
+
+    galcore_gov_data.upthreshold = 80;
+    galcore_gov_data.downdifferential = 5;
+
+    galDevice->g2d_devfreq = devm_devfreq_add_device(galcore_device, &gc_df_profile, DEVFREQ_GOV_SIMPLE_ONDEMAND, &galcore_gov_data);
+
+    if(IS_ERR(galDevice->g2d_devfreq)) {
+        gcmkPRINT("Errot: init devgreq %lx\n", (unsigned long)galcore_device);
+        status = gcvSTATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+/******************************************************************************\
+******************************* G2D Devfreq support END ************************
+\******************************************************************************/
+
+
 /*******************************************************************************
 **
 **  gckGALDEVICE_Construct
@@ -2788,6 +2846,8 @@ gckGALDEVICE_Construct(
 
     /* Return pointer to the device. */
     *Device = galDevice = device;
+    g2d_EnableDevfreq();
+    devfreq_suspend_device(galDevice->g2d_devfreq);
 
 OnError:
     if (gcmIS_ERROR(status))
@@ -3064,6 +3124,7 @@ gckGALDEVICE_Destroy(
 
         /* Free the device. */
         kfree(Device);
+
     }
 
     gcmkFOOTER_NO();
@@ -3219,4 +3280,3 @@ OnError:
     gcmkFOOTER();
     return status;
 }
-

@@ -45,7 +45,7 @@
 
 #define LIGHT_I2S_DMABUF_SIZE     (64 * 1024)
 
-#define LIGHT_RATES SNDRV_PCM_RATE_8000_384000
+#define LIGHT_RATES SNDRV_PCM_RATE_8000_192000
 #define LIGHT_FMTS (SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S8)
 
 #define LIGHT_AUDIO_PAD_CONFIG(idx)   (i2s_priv->cfg_off + ((idx-25) >> 1) * 4)
@@ -110,6 +110,7 @@ static void light_i2s_set_div_sclk(struct light_i2s_priv *chip, u32 sample_rate,
 	}
 
 	div0 = (div + div % sample_rate) / sample_rate / div_val;
+
 	writel(div0, chip->regs + I2S_DIV0_LEVEL);
 	light_audio_cpr_set(chip, CPR_PERI_DIV_SEL_REG, CPR_AUDIO_DIV0_SEL_MSK, CPR_AUDIO_DIV0_SEL(cpr_div));
 }
@@ -235,7 +236,6 @@ static int light_i2s_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-    	regmap_read(priv->regmap, I2S_FUNCMODE, &priv->suspend_funcmode);
 		if (tx) {
 			dmaengine_pause(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
 			light_snd_txctrl(priv, 0);
@@ -318,7 +318,7 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 		len = 32;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
-		val |= I2S_DATA_WIDTH_24BIT;
+		val |= I2S_DATA_24BIT_WIDTH_32BIT;
 		len = 32;
 		break;
 	case SNDRV_PCM_FORMAT_S32_LE:
@@ -650,8 +650,7 @@ static int light_i2s_suspend(struct device *dev)
 {
     struct light_i2s_priv *priv = dev_get_drvdata(dev);
 
-	if (priv->state == I2S_STATE_IDLE)
-		return 0;
+	pm_runtime_get_sync(dev);
 
 	regmap_read(priv->regmap, I2S_DIV0_LEVEL, &priv->suspend_div0_level);
 	regmap_read(priv->regmap, I2S_DIV3_LEVEL, &priv->suspend_div3_level);
@@ -665,6 +664,7 @@ static int light_i2s_suspend(struct device *dev)
 	regmap_read(priv->regmap, I2S_IMR, &priv->suspend_imr);
 	regmap_read(priv->regmap, I2S_DMATDLR, &priv->suspend_dmatdlr);
 	regmap_read(priv->regmap, I2S_DMARDLR, &priv->suspend_dmardlr);
+	regmap_read(priv->regmap, I2S_FUNCMODE, &priv->suspend_funcmode);
 
 	if (strcmp(priv->name, AP_I2S)) {
 		regmap_read(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, &priv->cpr_peri_div_sel);
@@ -679,7 +679,7 @@ static int light_i2s_suspend(struct device *dev)
 			regmap_update_bits(priv->audio_cpr_regmap, CPR_IP_RST_REG, CPR_I2S2_SRST_N_SEL_MSK, CPR_I2S2_SRST_N_SEL(0));
 	}
 
-    clk_disable_unprepare(priv->clk);
+    pm_runtime_put_sync(dev);
 
 	return 0;
 }
@@ -689,14 +689,7 @@ static int light_i2s_resume(struct device *dev)
     struct light_i2s_priv *priv = dev_get_drvdata(dev);
     int ret;
 
-	if (priv->state == I2S_STATE_IDLE)
-		return 0;
-
-    ret = clk_prepare_enable(priv->clk);
-    if (ret) {
-            dev_err(priv->dev, "clock enable failed %d\n", ret);
-            return ret;
-    }
+    pm_runtime_get_sync(dev);
 
 	if (strcmp(priv->name, AP_I2S)) {
 		if (!strcmp(priv->name, AUDIO_I2S0))
@@ -717,6 +710,8 @@ static int light_i2s_resume(struct device *dev)
 	regmap_write(priv->regmap, I2S_IISCNF_OUT, priv->suspend_ii2cnf_out);
 	regmap_write(priv->regmap, I2S_DIV0_LEVEL, priv->suspend_div0_level);
 	regmap_write(priv->regmap, I2S_DIV3_LEVEL, priv->suspend_div3_level);
+
+	pm_runtime_put_sync(dev);
 
     return ret;
 }

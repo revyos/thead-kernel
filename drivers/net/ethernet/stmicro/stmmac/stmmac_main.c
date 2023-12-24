@@ -738,6 +738,7 @@ int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
 	struct timespec64 now;
 	u32 sec_inc = 0;
 	u64 temp = 0;
+	int ret;
 
 	if (!(priv->dma_cap.time_stamp || priv->dma_cap.atime_stamp))
 		return -EOPNOTSUPP;
@@ -761,14 +762,26 @@ int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
 	 */
 	temp = (u64)(temp << 32);
 	priv->default_addend = div_u64(temp, priv->plat->clk_ptp_rate);
-	stmmac_config_addend(priv, priv->ptpaddr, priv->default_addend);
-
+	ret = stmmac_config_addend(priv, priv->ptpaddr, priv->default_addend);
+	if(ret < 0)
+	{
+		netdev_warn(priv->dev,
+			    "failed to config PTP addend: %pe\n",
+			    ERR_PTR(ret));
+		return ret;
+	}
 	/* initialize system time */
 	ktime_get_real_ts64(&now);
 
 	/* lower 32 bits of tv_sec are safe until y2106 */
-	stmmac_init_systime(priv, priv->ptpaddr, (u32)now.tv_sec, now.tv_nsec);
-
+	ret = stmmac_init_systime(priv, priv->ptpaddr, (u32)now.tv_sec, now.tv_nsec);
+	if(ret < 0)
+	{
+		netdev_warn(priv->dev,
+			    "failed to init systime: %pe\n",
+			    ERR_PTR(ret));
+		return ret;
+	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(stmmac_init_tstamp_counter);
@@ -3840,10 +3853,10 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv, u32 queue)
 		
 		if(likely(!buf->rx_skbuff)){
 			len = stmmac_get_rx_buf_frsize(priv);
-			skb = netdev_alloc_skb(priv->dev, len);
+			skb = __netdev_alloc_skb(priv->dev, len, gfp);
 			if (!skb){
 				//priv->dev->stats.rx_dropped += (1ul<<32);
-				netdev_err(priv->dev, "%s: dalloc_skb failed,dirty ring %d :\n", __func__,dirty);
+				netdev_dbg(priv->dev, "%s: dalloc_skb failed,dirty ring %d :\n", __func__,dirty);
 				break;
 			}
 			if(stmmac_get_skb_dma_addr(priv,skb,&buf->addr) < 0){

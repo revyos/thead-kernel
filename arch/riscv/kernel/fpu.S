@@ -65,9 +65,19 @@ ENDPROC(__fstate_save)
 ENTRY(__fstate_restore)
 	li  a2,  TASK_THREAD_F0
 	add a0, a0, a2
+
+	/* Enable FPU */
 	li t1, SR_FS
-	lw t0, TASK_THREAD_FCSR_F0(a0)
 	csrs CSR_STATUS, t1
+
+	/* Restore fcsr[0-7] */
+	frcsr t1
+	srli t1, t1, 8
+	slli t1, t1, 8
+	lbu t0, TASK_THREAD_FCSR_F0(a0)
+	or t0, t1, t0
+
+	/* Restore f0 - f31 */
 	fld f0,  TASK_THREAD_F0_F0(a0)
 	fld f1,  TASK_THREAD_F1_F0(a0)
 	fld f2,  TASK_THREAD_F2_F0(a0)

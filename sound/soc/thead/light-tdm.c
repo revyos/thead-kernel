@@ -123,6 +123,7 @@ static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
     if (priv->slot_num != 1) {
         return 0;
     }
+    printk("%s enter\n", __func__);
 
     pm_runtime_resume_and_get(priv->dev);
     
@@ -354,10 +355,12 @@ static int light_tdm_suspend(struct device *dev)
 {
     struct light_tdm_priv *priv = dev_get_drvdata(dev);
 
-    if (priv->slot_num != 1  || priv->state == TDM_STATE_IDLE) {
+    if (priv->slot_num != 1)  {
         return 0;
     }
 
+    pm_runtime_get_sync(dev);
+    
 	regmap_read(priv->regmap, TDM_TDMCTL, &priv->suspend_tdmctl);
 	regmap_read(priv->regmap, TDM_CHOFFSET1, &priv->suspend_choffset1);
 	regmap_read(priv->regmap, TDM_CHOFFSET2, &priv->suspend_choffset2);
@@ -377,7 +380,7 @@ static int light_tdm_suspend(struct device *dev)
 	regmap_update_bits(priv->audio_cpr_regmap,
 							CPR_IP_RST_REG, CPR_TDM_SRST_N_SEL_MSK, CPR_TDM_SRST_N_SEL(0));
 
-    clk_disable_unprepare(priv->clk);
+    pm_runtime_put_sync(dev);
 
 	return 0;
 }
@@ -387,15 +390,10 @@ static int light_tdm_resume(struct device *dev)
     struct light_tdm_priv *priv = dev_get_drvdata(dev);
     int ret;
 
-    if (priv->slot_num != 1  || priv->state == TDM_STATE_IDLE) {
+    if (priv->slot_num != 1) {
         return 0;
     }
-
-    ret = clk_prepare_enable(priv->clk);
-    if (ret) {
-            dev_err(priv->dev, "clock enable failed %d\n", ret);
-            return ret;
-    }
+    pm_runtime_get_sync(dev);
 
     regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
     regmap_write(priv->audio_cpr_regmap, CPR_PERI_CLK_SEL_REG, priv->cpr_peri_clk_sel);
@@ -415,6 +413,8 @@ static int light_tdm_resume(struct device *dev)
 	regmap_write(priv->regmap, TDM_IMR, priv->suspend_imr);
 	regmap_write(priv->regmap, TDM_DMADL, priv->suspend_dmadl);
 	regmap_write(priv->regmap, TDM_DIV0_LEVEL, priv->suspend_div0level);
+
+    pm_runtime_put_sync(dev);
 
     return ret;
 }
@@ -442,7 +442,7 @@ static int light_tdm_probe(struct platform_device *pdev)
     struct device *dev = &pdev->dev;
 
     int data_register, ret = 0;
-
+    printk("%s enter\n", __func__);
     tdm_priv = devm_kzalloc(&pdev->dev, sizeof(struct light_tdm_priv), GFP_KERNEL);
     if (!tdm_priv) {
         return -ENOMEM;

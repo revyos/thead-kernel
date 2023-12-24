@@ -90,7 +90,7 @@ static int light_suspend_prepare(void)
 	int ret;
 	aon_pm_ctrl->suspend_flag = true;
 	struct light_aon_msg_pm_ctrl msg = {0};
-	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_REQUIRE_STR, false);
+	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_REQUIRE_STR, true);
 	if (ret) {
 		pr_err("[%s,%d]failed to initiate Suspend to Ram process to AON subsystem\n",__func__, __LINE__);
 		return ret;
@@ -98,9 +98,15 @@ static int light_suspend_prepare(void)
 	return 0;
 }
 
-static void light_resume_wake(void)
+static void light_resume_finish(void)
 {
+	int ret;
 	aon_pm_ctrl->suspend_flag = false;
+	struct light_aon_msg_pm_ctrl msg = {0};
+	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_RESUME_STR, true);
+	if (ret) {
+		pr_err("[%s,%d]failed to clear lowpower state\n",__func__, __LINE__);
+	}
 }
 
 static int thead_cpuhp_offline(unsigned int cpu)
@@ -111,7 +117,7 @@ static int thead_cpuhp_offline(unsigned int cpu)
 		struct light_aon_msg_pm_ctrl msg = {0};
 		msg.rpc.cpu_info.cpu_id = (u16)cpu;
 		msg.rpc.cpu_info.status = 0;
-		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, false);
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, true);
 		if (ret) {
 			pr_info("failed to notify aon subsys with cpuhp...%08x\n", ret);
 			return ret;
@@ -128,7 +134,7 @@ static int thead_cpuhp_online(unsigned int cpu)
 		struct light_aon_msg_pm_ctrl msg = {0};
 		msg.rpc.cpu_info.cpu_id = (u16)cpu;
 		msg.rpc.cpu_info.status = 1;
-		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, false);
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, true);
 		if (ret) {
 			pr_info("[%s,%d]failed to bring up aon subsys with cpuhp...%08x\n", __func__, __LINE__, ret);
 			return ret;
@@ -146,7 +152,37 @@ static const struct platform_suspend_ops light_suspend_ops = {
 	.enter = light_suspend_enter,
 	.valid = suspend_valid_only_mem,
 	.prepare_late = light_suspend_prepare,
-	.wake = light_resume_wake,
+	.finish = light_resume_finish,
+};
+
+#define C906_RESET_REG                  0xfffff4403c
+
+static void boot_audio(void) {
+	uint64_t *v_addr = ioremap(C906_RESET_REG, 4);
+	if(!v_addr) {
+		printk("io remap failed\r\n");
+		return;
+	}
+	writel(0x37, (volatile void *)v_addr);
+	writel(0x3f, (volatile void *)v_addr);
+	iounmap(C906_RESET_REG);
+}
+
+//this is called after dpm_suspend_end,before snapshot
+static int light_hibernation_pre_snapshot(void)
+{
+	return 0;
+}
+//called before dpm_resume_start after slave cores up
+static void light_hibernation_platform_finish(void)
+{
+	boot_audio();
+	return;
+}
+
+static const struct platform_hibernation_ops light_hibernation_allmode_ops = {
+	.pre_snapshot = light_hibernation_pre_snapshot,
+	.finish = light_hibernation_platform_finish,
 };
 
 static int light_pm_probe(struct platform_device *pdev)
@@ -161,12 +197,14 @@ static int light_pm_probe(struct platform_device *pdev)
 	aon_pm_ctrl = pm_ctrl;
 
 	ret = light_aon_get_handle(&(aon_pm_ctrl->ipc_handle));
-	if (ret == -EPROBE_DEFER) {
-		pr_err("[%s, %d]failed to register ipc_handler.\n",__func__, __LINE__);
+	if (ret == -EPROBE_DEFER)
 		return ret;
-	}
 
 	suspend_set_ops(&light_suspend_ops);
+
+	/*only save BSS and data section for audio*/
+	hibernate_register_nosave_region(__phys_to_pfn(0x32000000), __phys_to_pfn(0x36600000));
+	hibernation_set_allmode_ops(&light_hibernation_allmode_ops);
 
 	ret = cpuhp_setup_state_nocalls(CPUHP_BP_PREPARE_DYN, "soc/thead:online",
 			thead_cpuhp_online,

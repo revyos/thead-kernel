@@ -42,7 +42,7 @@ config RISCV
 	select CLONE_BACKWARDS
 	select CLINT_TIMER if !MMU
 	select COMMON_CLK
-	select CPU_PM if CPU_IDLE
+	select CPU_PM if CPU_IDLE || HIBERNATION
 	select COMPAT_BINFMT_ELF if BINFMT_ELF && COMPAT
 	select EDAC_SUPPORT
 	select DMA_DIRECT_REMAP
@@ -572,6 +572,12 @@ source "kernel/power/Kconfig"
 
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
+
+config ARCH_HIBERNATION_POSSIBLE
+	def_bool y
+
+config ARCH_HIBERNATION_HEADER
+	def_bool HIBERNATION
 
 endmenu
 

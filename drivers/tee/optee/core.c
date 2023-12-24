@@ -15,6 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/suspend.h>
 #include <linux/tee_drv.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -265,6 +266,8 @@ static int optee_open(struct tee_context *ctx)
 	return 0;
 }
 
+extern void session_put(void);
+
 static void optee_release(struct tee_context *ctx)
 {
 	struct optee_context_data *ctxdata = ctx->data;
@@ -301,6 +304,7 @@ static void optee_release(struct tee_context *ctx)
 			arg->cmd = OPTEE_MSG_CMD_CLOSE_SESSION;
 			arg->session = sess->session_id;
 			optee_do_call_with_arg(ctx, parg);
+			session_put();
 		}
 		kfree(sess);
 	}
@@ -606,6 +610,8 @@ static optee_invoke_fn *get_invoke_func(struct device *dev)
 	return ERR_PTR(-EINVAL);
 }
 
+extern struct kref sess_refcount;
+
 static int optee_remove(struct platform_device *pdev)
 {
 	struct optee *optee = platform_get_drvdata(pdev);
@@ -763,6 +769,47 @@ err:
 	return rc;
 }
 
+#ifdef CONFIG_PM
+#ifdef CONFIG_SUSPEND
+static int __maybe_unused tee_driver_suspend(struct device *dev)
+{
+    int ret = 0;
+	unsigned int ref_count;
+
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		pr_info("STR mode suspend in\r\n");
+		return 0;
+	} else {
+		ref_count = kref_read(&sess_refcount);
+		if (ref_count > 1) {
+			pr_info("tee_driver_suspend failed[%d] \r\n", ref_count);
+			ret = -1;
+		} else {
+			pr_info("tee_driver_suspend success[%d] \r\n", ref_count);
+			ret = 0;
+		}
+	}
+
+	return ret;
+}
+
+static int __maybe_unused tee_driver_resume(struct device *dev)
+{
+
+	int ret = 0;
+
+	return ret;
+}
+#else
+#define tee_driver_suspend NULL
+#define tee_driver_resume NULL
+#endif
+
+static const struct dev_pm_ops tee_driver_pm_ops = {
+    SET_SYSTEM_SLEEP_PM_OPS(tee_driver_suspend, tee_driver_resume)
+};
+#endif
+
 static const struct of_device_id optee_dt_match[] = {
 	{ .compatible = "linaro,optee-tz" },
 	{},
@@ -775,9 +822,14 @@ static struct platform_driver optee_driver = {
 	.driver = {
 		.name = "optee",
 		.of_match_table = optee_dt_match,
+#ifdef CONFIG_PM
+		.pm = &tee_driver_pm_ops,
+#endif
 	},
 };
 module_platform_driver(optee_driver);
+
+
 
 MODULE_AUTHOR("Linaro");
 MODULE_DESCRIPTION("OP-TEE driver");
