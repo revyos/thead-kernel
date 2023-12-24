@@ -75,7 +75,7 @@ static inline void __vstate_clean(struct pt_regs *regs)
 static inline void vstate_save(struct task_struct *task,
 			       struct pt_regs *regs)
 {
-	if ((regs->status & SR_VS) == SR_VS_DIRTY) {
+	if ((regs->status & SR_VS) != SR_VS_OFF) {
 		__vstate_save(task);
 		__vstate_clean(regs);
 	}

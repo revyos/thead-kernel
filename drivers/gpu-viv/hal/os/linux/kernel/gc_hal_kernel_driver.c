@@ -62,7 +62,8 @@
 #include "gc_hal_driver.h"
 
 #include <linux/platform_device.h>
-
+#include <linux/devfreq.h>
+#include <linux/devfreq-event.h>
 /* Zone used for header/footer. */
 #define _GC_OBJ_ZONE    gcvZONE_DRIVER
 
@@ -821,6 +822,8 @@ static int drv_open(
     filp->private_data = data;
 
     /* Success. */
+    atomic_inc_return(&galDevice->openNum);
+    devfreq_resume_device(galDevice->g2d_devfreq);
     gcmkFOOTER_NO();
     return 0;
 }
@@ -887,6 +890,9 @@ static int drv_release(
     kfree(data);
     filp->private_data = NULL;
 
+    if(atomic_dec_return(&galDevice->openNum) == 0) {
+        devfreq_suspend_device(galDevice->g2d_devfreq);
+    }
     /* Success. */
     ret = 0;
 
@@ -1522,6 +1528,7 @@ static int gpu_suspend(struct platform_device *dev, pm_message_t state)
             {
                 status = gckHARDWARE_SetPowerState(device->kernels[i]->hardware, gcvPOWER_OFF);
             }
+
 
             if (gcmIS_ERROR(status))
             {

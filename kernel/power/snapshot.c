@@ -76,6 +76,40 @@ static inline void hibernate_restore_protect_page(void *page_address) {}
 static inline void hibernate_restore_unprotect_page(void *page_address) {}
 #endif /* CONFIG_STRICT_KERNEL_RWX  && CONFIG_ARCH_HAS_SET_MEMORY */
 
+
+/*
+ * The calls to set_direct_map_*() should not fail because remapping a page
+ * here means that we only update protection bits in an existing PTE.
+ * It is still worth to have a warning here if something changes and this
+ * will no longer be the case.
+ */
+static inline void hibernate_map_page(struct page *page)
+{
+	if (IS_ENABLED(CONFIG_ARCH_HAS_SET_DIRECT_MAP)) {
+		int ret = set_direct_map_default_noflush(page);
+
+		if (ret)
+			pr_warn_once("Failed to remap page\n");
+	} else {
+		debug_pagealloc_map_pages(page, 1);
+	}
+}
+
+static inline void hibernate_unmap_page(struct page *page)
+{
+	if (IS_ENABLED(CONFIG_ARCH_HAS_SET_DIRECT_MAP)) {
+		unsigned long addr = (unsigned long)page_address(page);
+		int ret  = set_direct_map_invalid_noflush(page);
+
+		if (ret)
+			pr_warn_once("Failed to remap page\n");
+
+		flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
+	} else {
+		debug_pagealloc_unmap_pages(page, 1);
+	}
+}
+
 static int swsusp_page_is_free(struct page *);
 static void swsusp_set_page_forbidden(struct page *);
 static void swsusp_unset_page_forbidden(struct page *);
@@ -909,6 +943,7 @@ struct nosave_region {
 };
 
 static LIST_HEAD(nosave_regions);
+static DEFINE_MUTEX(nosave_regions_list_lock);
 
 static void recycle_zone_bm_rtree(struct mem_zone_bm_rtree *zone)
 {
@@ -974,6 +1009,87 @@ void __init register_nosave_region(unsigned long start_pfn, unsigned long end_pf
 		(unsigned long long) start_pfn << PAGE_SHIFT,
 		((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
 }
+
+/**
+ * hibernate_register_nosave_region - Register a region of unsaveable memory.
+ *
+ * Register a range of page frames the contents of which should not be saved
+ * during hibernation (To be used in the running driver code,before start hibernation).
+ */
+int hibernate_register_nosave_region(unsigned long start_pfn, unsigned long end_pfn)
+{
+	struct nosave_region *region;
+
+	if (start_pfn >= end_pfn)
+	{
+		pr_warn(": start_pfn should smaller than end_pfn\n", __func__);
+		return -1;
+	}
+	region = kmalloc(sizeof(struct nosave_region),
+				GFP_KERNEL);
+	if (!region)
+	{
+		pr_err("%s: Failed to allocate %zu bytes\n", __func__,
+		      sizeof(struct nosave_region));
+		return -1;
+	}
+	region->start_pfn = start_pfn;
+	region->end_pfn = end_pfn;
+	mutex_lock(&nosave_regions_list_lock);
+	list_add_tail(&region->list, &nosave_regions);
+	mutex_unlock(&nosave_regions_list_lock);
+ Report:
+	pr_info("Registered nosave memory: [mem %#010llx-%#010llx]\n",
+		(unsigned long long) start_pfn << PAGE_SHIFT,
+		((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hibernate_register_nosave_region);
+
+/**
+ * hibernate_remove_nosave_region - UnRegister a region of unsaveable memory.
+ *
+ * Remove page frames  of which regitstered as unsaveable memory berfore
+ *  (To be used in the running driver code,before start hibernation).
+ */
+int hibernate_remove_nosave_region(unsigned long start_pfn, unsigned long end_pfn)
+{
+	struct nosave_region *region, *tmp;
+	int found = 0;
+	mutex_lock(&nosave_regions_list_lock);
+	if (list_empty(&nosave_regions))
+	{
+		mutex_unlock(&nosave_regions_list_lock);
+		return 0;
+	}
+
+	list_for_each_entry_safe(region, tmp, &nosave_regions, list) {
+		if(!region) {
+			break;
+		}
+		/*need to remove all,so not break found first one*/
+		if((region->start_pfn == start_pfn) && (region->end_pfn == end_pfn)) {
+			list_del(&region->list);
+			kfree(region);
+			found++;
+			pr_info("Unregistered nosave memory: [mem %#010llx-%#010llx]\n",
+				(unsigned long long) start_pfn << PAGE_SHIFT,
+				((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
+		}
+	}
+	mutex_unlock(&nosave_regions_list_lock);
+
+	if(!found) {
+		pr_warn("Not find  nosave memory: [mem %#010llx-%#010llx]\n",
+			(unsigned long long) start_pfn << PAGE_SHIFT,
+			((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
+		return -1;
+	}
+	if(found > 1)
+		pr_warn("More than one region find in  nosave memory,actual find %d\n",found);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hibernate_remove_nosave_region);
 
 /*
  * Set bits in this map correspond to the page frames the contents of which
@@ -1287,6 +1403,20 @@ static struct page *saveable_page(struct zone *zone, unsigned long pfn)
 	if (!pfn_valid(pfn))
 		return NULL;
 
+	/* For no-map reserved mem in Riscv pfn_valid() return true,
+	 * but ARM64 no-map reserved mem pfn_valid() return flase
+	 * (defined in arch/arm64/mm/init.c int pfn_valid(unsigned long pfn)
+	 * like below code)
+	 * 		...
+	 * 		return memblock_is_map_memory(addr);
+	 *
+	 * Thus,for Riscv add check memblock_is_map_memory too.
+	 */
+	#ifdef CONFIG_RISCV
+	if(!memblock_is_map_memory(__pfn_to_phys(pfn)))
+		return NULL;
+	#endif
+
 	page = pfn_to_online_page(pfn);
 	if (!page || page_zone(page) != zone)
 		return NULL;
@@ -1356,9 +1486,9 @@ static void safe_copy_page(void *dst, struct page *s_page)
 	if (kernel_page_present(s_page)) {
 		do_copy_page(dst, page_address(s_page));
 	} else {
-		kernel_map_pages(s_page, 1, 1);
+		hibernate_map_page(s_page);
 		do_copy_page(dst, page_address(s_page));
-		kernel_map_pages(s_page, 1, 0);
+		hibernate_unmap_page(s_page);
 	}
 }
 
@@ -1412,7 +1542,7 @@ static void copy_data_pages(struct memory_bitmap *copy_bm,
 {
 	struct zone *zone;
 	unsigned long pfn;
-
+	unsigned long pfn_pre = 0;
 	for_each_populated_zone(zone) {
 		unsigned long max_zone_pfn;
 
@@ -1428,6 +1558,17 @@ static void copy_data_pages(struct memory_bitmap *copy_bm,
 		pfn = memory_bm_next_pfn(orig_bm);
 		if (unlikely(pfn == BM_END_OF_MAP))
 			break;
+		
+		/* show debug info,detail show copied pfn */
+		if( (pfn_pre+1) != pfn)
+		{
+			if(pfn_pre != 0) 
+				pm_pr_dbg(" end:[%lx]\n",pfn_pre);
+			pm_pr_dbg(" start:[%lx] %s \n",pfn,
+					kernel_page_present(pfn_to_page(pfn))? "present":"not-present");
+		}
+		pfn_pre = pfn;
+
 		copy_data_page(memory_bm_next_pfn(copy_bm), pfn);
 	}
 }

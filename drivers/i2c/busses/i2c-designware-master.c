@@ -648,7 +648,9 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 		 * Anytime TX_ABRT is set, the contents of the tx/rx
 		 * buffers are flushed. Make sure to skip them.
 		 */
-		regmap_write(dev->map, DW_IC_INTR_MASK, 0);
+		if (!dev->dw_i2c_enable_dma) {
+			regmap_write(dev->map, DW_IC_INTR_MASK, 0);
+		}
 		goto tx_aborted;
 	}
 

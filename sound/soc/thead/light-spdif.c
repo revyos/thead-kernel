@@ -330,8 +330,7 @@ static int light_spdif_suspend(struct device *dev)
 {
     struct light_spdif_priv *priv = dev_get_drvdata(dev);
 
-	if (priv->state == SPDIF_STATE_IDLE)
-		return 0;
+    pm_runtime_get_sync(dev);
 
     regmap_read(priv->regmap, SPDIF_TX_EN, &priv->suspend_tx_en);
     regmap_read(priv->regmap, SPDIF_TX_CTL, &priv->suspend_tx_ctl);
@@ -354,7 +353,7 @@ static int light_spdif_suspend(struct device *dev)
                                 CPR_IP_RST_REG, CPR_SPDIF1_SRST_N_SEL_MSK, CPR_SPDIF1_SRST_N_SEL(0));
     }
 
-    clk_disable_unprepare(priv->clk);
+    pm_runtime_put_sync(dev);
 
 	return 0;
 }
@@ -364,14 +363,7 @@ static int light_spdif_resume(struct device *dev)
     struct light_spdif_priv *priv = dev_get_drvdata(dev);
     int ret;
 
-	if (priv->state == SPDIF_STATE_IDLE)
-		return 0;
-
-    ret = clk_prepare_enable(priv->clk);
-    if (ret) {
-            dev_err(priv->dev, "clock enable failed %d\n", ret);
-            return ret;
-    }
+	pm_runtime_get_sync(dev);
 
     regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
     regmap_write(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, priv->cpr_peri_ctrl);
@@ -394,6 +386,8 @@ static int light_spdif_resume(struct device *dev)
     regmap_write(priv->regmap, SPDIF_RX_EN, priv->suspend_rx_en);
     regmap_write(priv->regmap, SPDIF_RX_CTL, priv->suspend_rx_ctl);
     regmap_write(priv->regmap, SPDIF_RX_DMA_EN, priv->suspend_rx_dma_en);
+
+    pm_runtime_put_sync(dev);
 
     return ret;
 }

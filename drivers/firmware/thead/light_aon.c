@@ -14,7 +14,8 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
-#define MAX_RX_TIMEOUT		(msecs_to_jiffies(300))
+/* wait for response for 3000ms instead of 300ms (fix me pls)*/
+#define MAX_RX_TIMEOUT		(msecs_to_jiffies(3000))
 #define MAX_TX_TIMEOUT		(msecs_to_jiffies(500))
 
 struct light_aon_chan {
