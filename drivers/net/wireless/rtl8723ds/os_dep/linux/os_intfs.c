@@ -5162,7 +5162,7 @@ int rtw_suspend_normal(_adapter *padapter)
 
 	if ((rtw_hal_check_ips_status(padapter) == _TRUE)
 	    || (adapter_to_pwrctl(padapter)->rf_pwrstate == rf_off))
-		RTW_PRINT("%s: ### ERROR #### driver in IPS ####ERROR###!!!\n", __FUNCTION__);
+		RTW_PRINT("%s: driver in IPS!!!\n", __FUNCTION__);
 
 
 #ifdef CONFIG_CONCURRENT_MODE

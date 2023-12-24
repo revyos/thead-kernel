@@ -50,7 +50,7 @@
 
 #define LIGHT_I2S_DMABUF_SIZE     (64 * 1024 * 10)
 
-#define LIGHT_RATES SNDRV_PCM_RATE_8000_384000
+#define LIGHT_RATES SNDRV_PCM_RATE_8000_192000
 #define LIGHT_FMTS (SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S8)
 
 #define LIGHT_AUDIO_PAD_CONFIG(idx)   (priv->cfg_off + ((idx-25) >> 1) * 4)
@@ -194,7 +194,6 @@ static int light_i2s_8ch_dai_trigger(struct snd_pcm_substream *substream, int cm
 		}
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-    	regmap_read(priv->regmap, I2S_FUNCMODE, &priv->suspend_funcmode);
 		if (tx) {
 			dmaengine_pause(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
 			light_snd_txctrl(priv, 0);
@@ -463,58 +462,6 @@ static const struct snd_soc_dai_ops light_hdmi_dai_ops = {
 static struct snd_soc_dai_driver light_i2s_8ch_soc_dai[] = {
 	{
 		.probe = light_i2s_8ch_dai_probe,
-		.name			= "light-i2s-dai-8ch-sd0",
-		.playback = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.capture = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.ops = &light_i2s_8ch_dai_ops,
-	},
-	{
-		.probe = light_i2s_8ch_dai_probe,
-		.name			= "light-i2s-dai-8ch-sd1",
-		.playback = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.capture = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.ops = &light_i2s_8ch_dai_ops,
-	},
-	{
-		.probe = light_i2s_8ch_dai_probe,
-		.name			= "light-i2s-dai-8ch-sd2",
-		.playback = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.capture = {
-			.rates		= LIGHT_RATES,
-			.formats	= LIGHT_FMTS,
-			.channels_min	= 1,
-			.channels_max	= 2,
-		},
-		.ops = &light_i2s_8ch_dai_ops,
-	},
-	{
-		.probe = light_i2s_8ch_dai_probe,
-		.name			= "light-i2s-dai-8ch-sd3",
 		.playback = {
 			.rates		= LIGHT_RATES,
 			.formats	= LIGHT_FMTS,
@@ -635,9 +582,11 @@ static int light_i2s_8ch_suspend(struct device *dev)
 {
     struct light_i2s_priv *priv = dev_get_drvdata(dev);
 
-	if(!priv->regmap || priv->state == I2S_STATE_IDLE) {
+	if(!priv->regmap) {
 		return 0;
 	}
+
+	pm_runtime_get_sync(dev);
 
 	regmap_read(priv->regmap, I2S_DIV0_LEVEL, &priv->suspend_div0_level);
 	regmap_read(priv->regmap, I2S_DIV3_LEVEL, &priv->suspend_div3_level);
@@ -651,6 +600,7 @@ static int light_i2s_8ch_suspend(struct device *dev)
 	regmap_read(priv->regmap, I2S_IMR, &priv->suspend_imr);
 	regmap_read(priv->regmap, I2S_DMATDLR, &priv->suspend_dmatdlr);
 	regmap_read(priv->regmap, I2S_DMARDLR, &priv->suspend_dmardlr);
+	regmap_read(priv->regmap, I2S_FUNCMODE, &priv->suspend_funcmode);
 
     regmap_read(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, &priv->cpr_peri_div_sel);
     regmap_read(priv->audio_cpr_regmap, CPR_PERI_CTRL_REG, &priv->cpr_peri_ctrl);
@@ -659,7 +609,7 @@ static int light_i2s_8ch_suspend(struct device *dev)
 	regmap_update_bits(priv->audio_cpr_regmap,
 							CPR_IP_RST_REG, CPR_I2S8CH_SRST_N_SEL_MSK, CPR_I2S8CH_SRST_N_SEL(0));
 
-    clk_disable_unprepare(priv->clk);
+    pm_runtime_put_sync(dev);
 
 	return 0;
 }
@@ -669,15 +619,11 @@ static int light_i2s_8ch_resume(struct device *dev)
     struct light_i2s_priv *priv = dev_get_drvdata(dev);
     int ret;
 
-	if(!priv->regmap || priv->state == I2S_STATE_IDLE) {
+	if(!priv->regmap) {
 		return 0;
 	}
 
-    ret = clk_prepare_enable(priv->clk);
-    if (ret) {
-            dev_err(priv->dev, "clock enable failed %d\n", ret);
-            return ret;
-    }
+    pm_runtime_get_sync(dev);
 
     regmap_update_bits(priv->audio_cpr_regmap,
                         CPR_IP_RST_REG, CPR_I2S8CH_SRST_N_SEL_MSK, CPR_I2S8CH_SRST_N_SEL(1));
@@ -694,6 +640,8 @@ static int light_i2s_8ch_resume(struct device *dev)
 	regmap_write(priv->regmap, I2S_DIV0_LEVEL, priv->suspend_div0_level);
 	regmap_write(priv->regmap, I2S_DIV3_LEVEL, priv->suspend_div3_level);
     regmap_write(priv->audio_cpr_regmap, CPR_PERI_DIV_SEL_REG, priv->cpr_peri_div_sel);
+
+	pm_runtime_put_sync(dev);
 
     return ret;
 }

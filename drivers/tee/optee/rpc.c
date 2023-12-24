@@ -7,6 +7,7 @@
 
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/freezer.h>
 #include <linux/i2c.h>
 #include <linux/io.h>
 #include <linux/slab.h>
@@ -46,7 +47,6 @@ static void handle_rpc_func_cmd_get_time(struct optee_msg_arg *arg)
 	ktime_get_real_ts64(&ts);
 	arg->params[0].u.value.a = ts.tv_sec;
 	arg->params[0].u.value.b = ts.tv_nsec;
-
 	arg->ret = TEEC_SUCCESS;
 	return;
 bad:
@@ -171,7 +171,12 @@ static void wq_sleep(struct optee_wait_queue *wq, u32 key)
 	struct wq_entry *w = wq_entry_get(wq, key);
 
 	if (w) {
-		wait_for_completion(&w->c);
+		/*
+		 * wait_for_completion but allow hibernation/suspend
+		 * to freeze the waiting task
+		 */
+		while (wait_for_completion_interruptible(&w->c))
+			try_to_freeze();
 		mutex_lock(&wq->mu);
 		list_del(&w->link);
 		mutex_unlock(&wq->mu);

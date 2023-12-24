@@ -35,7 +35,8 @@ static int light_vpsys_clk_probe(struct platform_device *pdev)
 		return PTR_ERR(gate_base);
 
 	// DIV & CDE
-	gates[LIGHT_VPSYS_G2D_CCLK_DIV] = thead_clk_light_divider("light_vpsys_g2d_cclk_div", "video_pll_foutvco", gate_base + 0x30, 0, 4, 4, MUX_TYPE_DIV, 3, 9);
+	gates[LIGHT_VPSYS_G2D_CCLK_DIV] = thead_clk_light_divider("light_vpsys_g2d_cclk_div", "video_pll_foutvco", gate_base + 0x30, 0, 4, 4, MUX_TYPE_DIV, 3, 15);
+	gates[LIGHT_VPSYS_DEC_CCLK_DIV] = thead_clk_light_divider("light_vpsys_dec_cclk_div", "video_pll_foutvco", gate_base + 0x24, 0, 4, 4, MUX_TYPE_DIV, 4, 15);
 
 	/* G2D clock configuration : Completed the upward configuration of CCLK */
 	gates[LIGHT_VPSYS_G2D_PCLK] = thead_clk_light_gate_shared("clkgen_vpsys_g2d_pclk", NULL,
@@ -51,11 +52,12 @@ static int light_vpsys_clk_probe(struct platform_device *pdev)
 	gates[LIGHT_VPSYS_FCE_ACLK] = thead_clk_light_gate_shared("clkgen_vpsys_fce_aclk", NULL,
 								   gate_base + 0x20, 2, &share_cnt_fce_clk_en);
 
+	/* VENC&VDEC clock configuration : Completed the upward configuration of CCLK */
 	gates[LIGHT_VPSYS_VDEC_ACLK] = thead_clk_light_gate("clkgen_vdec_aclk", NULL, gate_base + 0x20, 4);
-	gates[LIGHT_VPSYS_VDEC_CCLK] = thead_clk_light_gate("clkgen_vdec_cclk", NULL, gate_base + 0x20, 5);
+	gates[LIGHT_VPSYS_VDEC_CCLK] = thead_clk_light_gate("clkgen_vdec_cclk", "light_vpsys_dec_cclk_div", gate_base + 0x20, 5);
 	gates[LIGHT_VPSYS_VDEC_PCLK] = thead_clk_light_gate("clkgen_vdec_pclk", NULL, gate_base + 0x20, 6);
 
-	gates[LIGHT_VPSYS_VENC_CCLK] = thead_clk_light_gate("clkgen_venc_cclk", NULL, gate_base + 0x20, 8);
+	gates[LIGHT_VPSYS_VENC_CCLK] = thead_clk_light_gate("clkgen_venc_cclk", "clkgen_vpsys_venc_cclk", gate_base + 0x20, 8);
 	gates[LIGHT_VPSYS_VENC_PCLK] = thead_clk_light_gate("clkgen_venc_pclk", NULL, gate_base + 0x20, 9);
 	gates[LIGHT_VPSYS_VENC_ACLK] = thead_clk_light_gate("clkgen_venc_aclk", NULL, gate_base + 0x20, 7);
 

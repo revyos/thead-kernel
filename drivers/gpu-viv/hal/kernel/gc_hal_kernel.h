@@ -599,7 +599,6 @@ struct _gckKERNEL
     gcsTIMER                    timers[8];
     gctUINT32                   timeOut;
 
-
 #if gcdDVFS
     gckDVFS                     dvfs;
 #endif
@@ -662,6 +661,12 @@ struct _gckKERNEL
     gctSEMAPHORE                preemptSema;
     gcePREEMPTION_MODE          preemptionMode;
 #endif
+    gctUINT64                   cur_on;
+    gctUINT64                   cur_idel;
+    gctUINT64                   cur_off;
+    gctUINT64                   cur_suspend;
+    gctUINT64                   cur_load;
+    unsigned int                cur_freq;
 };
 
 struct _FrequencyHistory

@@ -36,12 +36,14 @@
 /* clock divider for speed */
 #define GMAC_CLKDIV_125M	(GMAC_CLK_PLLOUT_250M / GMAC_GMII_RGMII_RATE)
 #define GMAC_CLKDIV_25M		(GMAC_CLK_PLLOUT_250M / GMAC_MII_RATE)
+#define GMAC_PTP_CLK_RATE	50000000 //50MHz
 
 struct thead_dwmac_ops {
 	void (*set_clk_source)(struct plat_stmmacenet_data *plat_dat);
 	void (*set_clk_pll)(struct plat_stmmacenet_data *plat_dat);
 	void (*set_clk_div)(struct plat_stmmacenet_data *plat_dat, unsigned int speed);
 	void (*enable_clk)(struct plat_stmmacenet_data *plat_dat);
+	void (*set_ptp_div)(struct plat_stmmacenet_data *plat_dat,unsigned int ptp_clk_rate);
 };
 
 struct thead_dwmac_priv_data {
@@ -352,6 +354,35 @@ static void thead_dwmac_light_set_clk_div(struct plat_stmmacenet_data *plat_dat,
 	}
 }
 
+static void thead_dwmac_light_set_ptp_clk_div(struct plat_stmmacenet_data *plat_dat,unsigned int ptp_clk_rate)
+{
+	unsigned int div;
+	unsigned int reg;
+	struct thead_dwmac_priv_data *thead_plat_dat = plat_dat->bsp_priv;
+	void __iomem *gmac_clk_reg = thead_plat_dat->gmac_clk_reg;
+	unsigned long src_freq = thead_plat_dat->gmac_pll_clk_freq;
+
+	if (gmac_clk_reg == NULL)
+		return;
+	if(!ptp_clk_rate || !src_freq)
+	{
+		pr_warn("invalid gmac pll freq %lu or ptp_clk_rate %d\n", src_freq,ptp_clk_rate);
+		return;
+	}
+	/* disable clk_div */
+	reg = readl(gmac_clk_reg + GMAC_CLK_CFG5);
+	reg &= ~BIT(31);
+	writel(reg, gmac_clk_reg + GMAC_CLK_CFG5);
+
+	div = src_freq / ptp_clk_rate;
+	writel(div,gmac_clk_reg + GMAC_CLK_CFG5);
+
+	/* enable clk_div */
+	reg = div | BIT(31);
+	writel(reg, gmac_clk_reg + GMAC_CLK_CFG5);
+	return ;
+}
+
 /* enable gmac clock */
 static void thead_dwmac_ice_enable_clk(struct plat_stmmacenet_data *plat_dat)
 {
@@ -659,6 +690,8 @@ int thead_dwmac_clk_init(struct platform_device *pdev, void *bsp_priv)
 	if (thead_plat_dat->ops->enable_clk)
 		thead_plat_dat->ops->enable_clk(plat_dat);
 	
+	if (thead_plat_dat->ops->set_ptp_div)
+		thead_plat_dat->ops->set_ptp_div(plat_dat,plat_dat->clk_ptp_rate);
 	//thead_dwmac_dump_priv_reg(pdev,bsp_priv);
 	return ret;
 }
@@ -770,6 +803,8 @@ static int thead_dwmac_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_remove_config_dt;
 	
+	plat_dat->clk_ptp_rate = GMAC_PTP_CLK_RATE;
+
 	ret = thead_dwmac_clk_enable(pdev, plat_dat->bsp_priv);
 	if (ret)
 			goto err_remove_config_dt;
@@ -932,6 +967,7 @@ static struct thead_dwmac_ops thead_ice_dwmac_data = {
 static struct thead_dwmac_ops thead_light_dwmac_data = {
 	.set_clk_div = thead_dwmac_light_set_clk_div,
 	.enable_clk = thead_dwmac_light_enable_clk,
+	.set_ptp_div = thead_dwmac_light_set_ptp_clk_div,
 };
 
 static const struct of_device_id thead_dwmac_match[] = {

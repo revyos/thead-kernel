@@ -69,10 +69,6 @@ ENTRY(__vstate_restore)
 	.word 0x12050c07	/* vlb.v	v24, (a0)	*/
 
 	mv	a0,  t2
-	ld	t0,  TASK_THREAD_VSTART_V0(a0)
-	csrw	CSR_VSTART, t0
-	ld	t0,  TASK_THREAD_VXSAT_V0(a0)
-	csrw	CSR_VXSAT, t0
 	ld	t0,  TASK_THREAD_VXRM_V0(a0)
 	csrw	CSR_VXRM, t0
 	ld	t0,  TASK_THREAD_VL_V0(a0)
@@ -80,6 +76,9 @@ ENTRY(__vstate_restore)
 
 	.word 0x8072fe57 	/* vsetvl	t3, t0, t2	*/
 
+	/* vsetvl & vsetvli would reset vstart to zero */
+	ld	t0,  TASK_THREAD_VSTART_V0(a0)
+	csrw	CSR_VSTART, t0
 	csrc	sstatus, t1
 	ret
 ENDPROC(__vstate_restore)

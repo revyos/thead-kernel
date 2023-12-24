@@ -31,6 +31,13 @@ unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)]
 							__page_aligned_bss;
 EXPORT_SYMBOL(empty_zero_page);
 
+#ifdef CONFIG_64BIT
+u64 satp_mode __ro_after_init = SATP_MODE_39;
+#else
+u64 satp_mode __ro_after_init = SATP_MODE_32;
+#endif
+EXPORT_SYMBOL(satp_mode);
+
 extern char _start[];
 #define DTB_EARLY_BASE_VA      PGDIR_SIZE
 void *dtb_early_va __initdata;

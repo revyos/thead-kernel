@@ -65,7 +65,7 @@ static int light_vosys_clk_probe(struct platform_device *pdev)
 	gates[LIGHT_CLKGEN_MIPIDSI1_CFG_CLK] = thead_clk_light_gate("clkgen_mipidsi1_cfg_clk", NULL, gate_base + 0x50, 16);
 	gates[LIGHT_CLKGEN_MIPIDSI0_REFCLK] = thead_clk_light_gate("clkgen_mipidsi0_refclk", NULL, gate_base + 0x50, 17);
 	gates[LIGHT_CLKGEN_MIPIDSI1_REFCLK] = thead_clk_light_gate("clkgen_mipidsi1_refclk", NULL, gate_base + 0x50, 18);
-	gates[LIGHT_CLKGEN_GPU_CORE_CLK] = thead_clk_light_gate("clkgen_gpu_core_clk", NULL, gate_base + 0x50, 3);
+	gates[LIGHT_CLKGEN_GPU_CORE_CLK] = thead_clk_light_gate("clkgen_gpu_core_clk", "vosys_aclk_m", gate_base + 0x50, 3);
 	gates[LIGHT_CLKGEN_GPU_CFG_ACLK] = thead_clk_light_gate("clkgen_gpu_cfg_aclk", NULL, gate_base + 0x50, 4);
 	gates[LIGHT_CLKGEN_DPU_HCLK] = thead_clk_light_gate("clkgen_dpu_hclk", NULL, gate_base + 0x50, 7);
 	gates[LIGHT_CLKGEN_DPU_ACLK] = thead_clk_light_gate("clkgen_dpu_aclk", NULL, gate_base + 0x50, 8);

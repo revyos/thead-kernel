@@ -473,7 +473,6 @@ static struct snd_soc_dai_driver es8156_dai = {
 		.formats = es8156_FORMATS,
 	},
 	.ops = &es8156_ops,
-	.symmetric_rates = 1,
 };
 
 
