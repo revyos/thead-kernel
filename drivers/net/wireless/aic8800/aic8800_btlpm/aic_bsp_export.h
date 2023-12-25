@@ -10,6 +10,7 @@ struct aicbsp_feature_t {
 	bool band_5g_support;
 	uint32_t sdio_clock;
 	uint8_t  sdio_phase;
+	uint8_t irqf;
 };
 
 int aicbsp_set_subsys(int, int);

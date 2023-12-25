@@ -23,6 +23,9 @@
 #ifdef CONFIG_PLATFORM_ROCKCHIP
 #include <linux/rfkill-wlan.h>
 #endif /* CONFIG_PLATFORM_ROCKCHIP */
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#include <linux/rfkill-wlan.h>
+#endif /* CONFIG_PLATFORM_ROCKCHIP */
 
 
 #ifdef CONFIG_PLATFORM_ALLWINNER
@@ -57,6 +60,10 @@ static const char* aic_default_fw_path = CONFIG_AIC_FW_PATH;
 //#endif
 char aic_fw_path[FW_PATH_MAX];
 module_param_string(aic_fw_path, aic_fw_path, FW_PATH_MAX, 0660);
+#ifdef CONFIG_M2D_OTA_AUTO_SUPPORT
+char saved_sdk_ver[64];
+module_param_string(saved_sdk_ver, saved_sdk_ver,64, 0660);
+#endif
 
 extern int testmode;
 
@@ -79,8 +86,8 @@ static int aicbsp_dummy_probe(struct sdio_func *func, const struct sdio_device_i
 	if (func && (func->num != 2))
 		return 0;
 
- 	if(func->vendor != SDIO_VENDOR_ID_AIC8801 && 
-		func->device != SDIO_DEVICE_ID_AIC8801 && 
+	if(func->vendor != SDIO_VENDOR_ID_AIC8801 &&
+		func->device != SDIO_DEVICE_ID_AIC8801 &&
 		func->device != SDIO_DEVICE_ID_AIC8801_FUNC2 &&
 		func->vendor != SDIO_VENDOR_ID_AIC8800DC &&
 		func->device != SDIO_DEVICE_ID_AIC8800DC &&
@@ -137,6 +144,12 @@ void rfkill_rk_sleep_bt(bool sleep);
 #endif
 #endif
 
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#if 1//FOR RK SUSPEND
+void rfkill_rk_sleep_bt(bool sleep);
+#endif
+#endif
+
 int aicbsp_set_subsys(int subsys, int state)
 {
 	static int pre_power_map;
@@ -177,7 +190,15 @@ int aicbsp_set_subsys(int subsys, int state)
 			printk("%s BT wake default to SLEEP\r\n", __func__);
 #endif
 #endif
-			
+
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#ifdef CONFIG_GPIO_WAKEUP
+			//BT_SLEEP:true,BT_WAKEUP:false
+			rfkill_rk_sleep_bt(true);
+			printk("%s BT wake default to SLEEP\r\n", __func__);
+#endif
+#endif
+
 //#ifndef CONFIG_PLATFORM_ROCKCHIP
 //			aicbsp_sdio_exit();
 //#endif
@@ -210,7 +231,7 @@ err0:
 EXPORT_SYMBOL_GPL(aicbsp_set_subsys);
 
 bool aicbsp_get_load_fw_in_fdrv(void){
-	return aicbsp_load_fw_in_fdrv; 
+	return aicbsp_load_fw_in_fdrv;
 }
 
 EXPORT_SYMBOL_GPL(aicbsp_get_load_fw_in_fdrv);
@@ -254,8 +275,8 @@ static int aicbsp_sdio_probe(struct sdio_func *func,
 	sdio_dbg("%s:%d vid:0x%04X  did:0x%04X\n", __func__, func->num,
 		func->vendor, func->device);
 
- 	if(func->vendor != SDIO_VENDOR_ID_AIC8801 && 
-		func->device != SDIO_DEVICE_ID_AIC8801 && 
+	if(func->vendor != SDIO_VENDOR_ID_AIC8801 &&
+		func->device != SDIO_DEVICE_ID_AIC8801 &&
 		func->device != SDIO_DEVICE_ID_AIC8801_FUNC2 &&
 		func->vendor != SDIO_VENDOR_ID_AIC8800DC &&
 		func->device != SDIO_DEVICE_ID_AIC8800DC &&
@@ -280,7 +301,7 @@ static int aicbsp_sdio_probe(struct sdio_func *func,
 		return -ENOMEM;
 	}
 
-    
+
 	sdiodev = kzalloc(sizeof(struct aic_sdio_dev), GFP_KERNEL);
 	if (!sdiodev) {
 		sdio_err("alloc sdiodev fail\n");
@@ -343,7 +364,7 @@ static void aicbsp_sdio_remove(struct sdio_func *func)
 	}
 
     bus_if = aicbsp_get_drvdata(&func->dev);
-	
+
 	if (!bus_if) {
         AICWFDBG(LOGERROR, "%s bus_if is NULL \r\n", __func__);
 		return;
@@ -374,11 +395,18 @@ static int aicbsp_sdio_suspend(struct device *dev)
 	struct sdio_func *func = dev_to_sdio_func(dev);
 	int err;
 	mmc_pm_flag_t sdio_flags;
-    
+
 #ifdef CONFIG_PLATFORM_ROCKCHIP
 #ifdef CONFIG_GPIO_WAKEUP
     //BT_SLEEP:true,BT_WAKEUP:false
     rfkill_rk_sleep_bt(false);
+#endif
+#endif
+
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#ifdef CONFIG_GPIO_WAKEUP
+        //BT_SLEEP:true,BT_WAKEUP:false
+        rfkill_rk_sleep_bt(false);
 #endif
 #endif
 
@@ -404,6 +432,14 @@ static int aicbsp_sdio_suspend(struct device *dev)
 		//BT_SLEEP:true,BT_WAKEUP:false
 		rfkill_rk_sleep_bt(true);
 		printk("%s BT wake to SLEEP\r\n", __func__);
+#endif
+#endif
+
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#ifdef CONFIG_GPIO_WAKEUP
+            //BT_SLEEP:true,BT_WAKEUP:false
+            rfkill_rk_sleep_bt(true);
+            printk("%s BT wake to SLEEP\r\n", __func__);
 #endif
 #endif
 
@@ -461,6 +497,13 @@ static int aicbsp_platform_power_on(void)
 		set_power_control_lock(1);
 #endif
 
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+            rockchip_wifi_power(0);
+            mdelay(50);
+            rockchip_wifi_power(1);
+            mdelay(50);
+            rockchip_wifi_set_carddetect(1);
+#endif /*CONFIG_PLATFORM_ROCKCHIP2*/
 
 	sema_init(&aic_chipup_sem, 0);
 	ret = aicbsp_reg_sdio_notify(&aic_chipup_sem);
@@ -468,7 +511,7 @@ static int aicbsp_platform_power_on(void)
 		sdio_dbg("%s aicbsp_reg_sdio_notify fail(%d)\n", __func__, ret);
 			return ret;
 	}
-	
+
 #ifdef CONFIG_PLATFORM_ALLWINNER
 	sunxi_wlan_set_power(0);
 	mdelay(50);
@@ -476,12 +519,6 @@ static int aicbsp_platform_power_on(void)
 	mdelay(50);
 	sunxi_mmc_rescan_card(aicbsp_bus_index);
 #endif //CONFIG_PLATFORM_ALLWINNER
-
-#ifdef CONFIG_PLATFORM_ROCKCHIP
-//		rockchip_wifi_power(1);
-//		mdelay(200);
-//		rockchip_wifi_set_carddetect(1);
-#endif /*CONFIG_PLATFORM_ROCKCHIP*/
 
 	if (down_timeout(&aic_chipup_sem, msecs_to_jiffies(2000)) == 0) {
 		aicbsp_unreg_sdio_notify();
@@ -491,7 +528,7 @@ static int aicbsp_platform_power_on(void)
 		}
 		return 0;
 	}
-	
+
 	aicbsp_unreg_sdio_notify();
 #ifdef CONFIG_PLATFORM_ALLWINNER
 	sunxi_wlan_set_power(0);
@@ -502,9 +539,9 @@ static int aicbsp_platform_power_on(void)
 #endif
 
 
-#ifdef CONFIG_PLATFORM_ROCKCHIP
-//	rockchip_wifi_power(0);
-#endif /*CONFIG_PLATFORM_ROCKCHIP*/
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+	rockchip_wifi_power(0);
+#endif /*CONFIG_PLATFORM_ROCKCHIP2*/
 
 	return -1;
 }
@@ -524,11 +561,11 @@ static void aicbsp_platform_power_off(void)
 	sunxi_mmc_rescan_card(aicbsp_bus_index);
 #endif //CONFIG_PLATFORM_ALLWINNER
 
-#ifdef CONFIG_PLATFORM_ROCKCHIP
-//	rockchip_wifi_set_carddetect(0);
-//	mdelay(200);
-//	rockchip_wifi_power(0);
-//	mdelay(200);		
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+	rockchip_wifi_set_carddetect(0);
+	mdelay(200);
+	rockchip_wifi_power(0);
+	mdelay(200);
 #endif /*CONFIG_PLATFORM_ROCKCHIP*/
 #ifdef CONFIG_PLATFORM_AMLOGIC
 	extern_wifi_set_enable(0);
@@ -698,7 +735,7 @@ int aicwf_sdio_wakeup(struct aic_sdio_dev *sdiodev)
 	int ret = 0;
 	int read_retry;
 	int write_retry = 20;
-    int wakeup_reg_val;
+    int wakeup_reg_val = 0;
 
     if (sdiodev->chipid == PRODUCT_ID_AIC8801 ||
         sdiodev->chipid == PRODUCT_ID_AIC8800DC ||
@@ -1608,7 +1645,7 @@ void aicwf_sdio_reg_init(struct aic_sdio_dev *sdiodev)
 {
     sdio_dbg("%s\n", __func__);
 
-    if(sdiodev->chipid == PRODUCT_ID_AIC8801 || sdiodev->chipid == PRODUCT_ID_AIC8800DC || 
+    if(sdiodev->chipid == PRODUCT_ID_AIC8801 || sdiodev->chipid == PRODUCT_ID_AIC8800DC ||
        sdiodev->chipid == PRODUCT_ID_AIC8800DW){
         sdiodev->sdio_reg.bytemode_len_reg =       SDIOWIFI_BYTEMODE_LEN_REG;
         sdiodev->sdio_reg.intr_config_reg =        SDIOWIFI_INTR_CONFIG_REG;
@@ -1900,7 +1937,7 @@ void get_fw_path(char* fw_path){
 	}else{
 		memcpy(fw_path, aic_default_fw_path, strlen(aic_default_fw_path));
 	}
-} 
+}
 
 int get_testmode(void){
 	return testmode;

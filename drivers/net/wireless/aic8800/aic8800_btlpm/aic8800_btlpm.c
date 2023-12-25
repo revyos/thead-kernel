@@ -44,6 +44,8 @@
 #include <linux/wakelock.h>
 #endif
 
+#include "aic_bsp_export.h"
+
 /*
  * #define BT_SLEEP_DBG
  */
@@ -407,6 +409,24 @@ static ssize_t bluesleep_write_proc_btwrite(struct file *file,
 	return count;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static const struct proc_ops lpm_fops = {
+	.proc_open    = bluesleep_lpm_proc_open,
+	.proc_read    = seq_read,
+	.proc_lseek   = seq_lseek,
+	.proc_release = single_release,
+	.proc_write   = bluesleep_write_proc_lpm,
+};
+static const struct proc_ops btwrite_fops = {
+	.proc_open    = bluesleep_btwrite_proc_open,
+	.proc_read    = seq_read,
+	.proc_lseek   = seq_lseek,
+	.proc_release = single_release,
+	.proc_write   = bluesleep_write_proc_btwrite,
+};
+
+#else
+
 static const struct file_operations lpm_fops = {
 	.owner		= THIS_MODULE,
 	.open		= bluesleep_lpm_proc_open,
@@ -423,6 +443,8 @@ static const struct file_operations btwrite_fops = {
 	.release	= single_release,
 	.write		= bluesleep_write_proc_btwrite,
 };
+#endif
+
 #else
 /**
  * Handles HCI device events.
@@ -773,6 +795,7 @@ static int __init bluesleep_probe(struct platform_device *pdev)
 	enum of_gpio_flags config;
 	int ret, uart_index;
 	u32 val;
+	struct aicbsp_feature_t bsp_feature_lpm;
 
 	bsi = devm_kzalloc(&pdev->dev, sizeof(struct bluesleep_info),
 			GFP_KERNEL);
@@ -787,7 +810,12 @@ static int __init bluesleep_probe(struct platform_device *pdev)
 	}
 
 	/* set host_wake_assert */
-	bsi->host_wake_assert = (config == OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+	aicbsp_get_feature(&bsp_feature_lpm);
+	if (bsp_feature_lpm.irqf == 0)
+		bsi->host_wake_assert = (config == OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+	else
+		bsi->host_wake_assert = (config == OF_GPIO_ACTIVE_LOW) ? 1 : 0;
+
 	BT_DBG("bt_hostwake gpio=%d assert=%d\n", bsi->host_wake, bsi->host_wake_assert);
 
 	if (assert_level != -1) {
@@ -816,6 +844,7 @@ static int __init bluesleep_probe(struct platform_device *pdev)
 #endif
 		BT_DBG("wakeup source is disabled!\n");
 	} else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0)
 		ret = device_init_wakeup(dev, true);
 		if (ret < 0) {
 			BT_ERR("device init wakeup failed!\n");
@@ -828,6 +857,9 @@ static int __init bluesleep_probe(struct platform_device *pdev)
 			goto err2;
 		}
 		bsi->wakeup_enable = 1;
+#else
+			BT_ERR("%s kernel unsupport this feature!\r\n", __func__);
+#endif
 	}
 
 	bsi->ext_wake = of_get_named_gpio_flags(np, "bt_wake", 0, &config);
@@ -929,14 +961,36 @@ static int bluesleep_remove(struct platform_device *pdev)
 #else
 	wake_lock_destroy(&bsi->wake_lock);
 #endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0)
 	if (bsi->wakeup_enable) {
 		BT_DBG("Deinit wakeup source");
 		device_init_wakeup(&pdev->dev, false);
 		dev_pm_clear_wake_irq(&pdev->dev);
 	}
-
+#else
+	BT_ERR("%s kernel unsupport this feature!\r\n", __func__);
+#endif
 	return 0;
 }
+
+#ifdef CONFIG_AUTO_PM
+static int bluesleep_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	printk("%s\n", __func__);
+
+	bluesleep_tx_allow_sleep();
+	return 0;
+}
+
+static int bluesleep_resume(struct platform_device *pdev)
+{
+	printk("%s\n", __func__);
+
+	bluesleep_outgoing_data();
+	return 0;
+}
+#endif
 
 static const struct of_device_id sunxi_btlpm_ids[] = {
 	{ .compatible = "allwinner,sunxi-btlpm" },
@@ -944,11 +998,15 @@ static const struct of_device_id sunxi_btlpm_ids[] = {
 };
 
 static struct platform_driver bluesleep_driver = {
-	.remove	= bluesleep_remove,
-	.driver	= {
-		.owner	= THIS_MODULE,
-		.name	= "sunxi-btlpm",
-		.of_match_table	= sunxi_btlpm_ids,
+	.remove             = bluesleep_remove,
+#ifdef CONFIG_AUTO_PM
+	.suspend            = bluesleep_suspend,
+	.resume             = bluesleep_resume,
+#endif
+	.driver             = {
+		.owner          = THIS_MODULE,
+		.name           = "sunxi-btlpm",
+		.of_match_table = sunxi_btlpm_ids,
 	},
 };
 

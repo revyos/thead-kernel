@@ -236,6 +236,12 @@ enum dbg_msg_tag {
 	DBG_MAX,
 };
 
+#if !defined(CONFIG_M2D_OTA_LZMA_SUPPORT)
+#define FW_M2D_OTA_NAME                 "m2d_ota.bin"
+#else
+#define FW_M2D_OTA_NAME                 "m2d_ota_lzma.bin"
+#endif
+
 enum {
 	HOST_START_APP_AUTO = 1,
 	HOST_START_APP_CUSTOM,
@@ -305,6 +311,7 @@ struct dbg_start_app_cfm {
 int aicwf_plat_patch_load_8800dc(struct aic_sdio_dev *sdiodev);
 int aicwf_plat_rftest_load_8800dc(struct aic_sdio_dev *sdiodev);
 #ifdef CONFIG_DPD
+int aicwf_misc_ram_valid_check_8800dc(struct aic_sdio_dev *sdiodev, int *valid_out);
 int aicwf_plat_calib_load_8800dc(struct aic_sdio_dev *sdiodev);
 #endif
 
@@ -326,7 +333,7 @@ void rwnx_rx_handle_msg(struct aic_sdio_dev *sdiodev, struct ipc_e2a_msg *msg);
 int aicbsp_platform_init(struct aic_sdio_dev *sdiodev);
 void aicbsp_platform_deinit(struct aic_sdio_dev *sdiodev);
 int aicbsp_driver_fw_init(struct aic_sdio_dev *sdiodev);
-#ifdef CONFIG_DPD
+#if (defined(CONFIG_DPD) && !defined(CONFIG_FORCE_DPD_CALIB))
 int is_file_exist(char* name);
 #endif
 int aicbsp_resv_mem_init(void);
@@ -364,10 +371,13 @@ int aicbsp_resv_mem_deinit(void);
 
 #define RWNX_MAC_CALIB_BASE_NAME_8800DC        "fmacfw_calib_8800dc"
 #define RWNX_MAC_CALIB_NAME_8800DC_U02          RWNX_MAC_CALIB_BASE_NAME_8800DC"_u02.bin"
+#define RWNX_MAC_CALIB_NAME_8800DC_H_U02        RWNX_MAC_CALIB_BASE_NAME_8800DC"_h_u02.bin"
 
 #ifdef CONFIG_DPD
 #define ROM_FMAC_CALIB_ADDR            0x00130000
-#define FW_DPDRESULT_NAME_8800DC        "aic_dpdresult_8800dc.bin"
+#ifndef CONFIG_FORCE_DPD_CALIB
+#define FW_DPDRESULT_NAME_8800DC        "aic_dpdresult_lite_8800dc.bin"
+#endif
 #endif
 
 #define RWNX_MAC_FW_RF_BASE_NAME_8800DC   "lmacfw_rf_8800dc.bin"
@@ -379,11 +389,13 @@ int aicbsp_resv_mem_deinit(void);
 #define RWNX_MAC_PATCH_BASE_NAME_8800DC        "fmacfw_patch_8800dc"
 #define RWNX_MAC_PATCH_NAME2_8800DC RWNX_MAC_PATCH_BASE_NAME_8800DC".bin"
 #define RWNX_MAC_PATCH_NAME2_8800DC_U02 RWNX_MAC_PATCH_BASE_NAME_8800DC"_u02.bin"
+#define RWNX_MAC_PATCH_NAME2_8800DC_H_U02 RWNX_MAC_PATCH_BASE_NAME_8800DC"_h_u02.bin"
 #endif
 
 #define RWNX_MAC_PATCH_TABLE_NAME_8800DC "fmacfw_patch_tbl_8800dc"
 #define RWNX_MAC_PATCH_TABLE_8800DC RWNX_MAC_PATCH_TABLE_NAME_8800DC ".bin"
 #define RWNX_MAC_PATCH_TABLE_8800DC_U02 RWNX_MAC_PATCH_TABLE_NAME_8800DC "_u02.bin"
+#define RWNX_MAC_PATCH_TABLE_8800DC_H_U02 RWNX_MAC_PATCH_TABLE_NAME_8800DC "_h_u02.bin"
 
 #define RWNX_MAC_RF_PATCH_BASE_NAME_8800DC     "fmacfw_rf_patch_8800dc"
 #define RWNX_MAC_RF_PATCH_NAME_8800DC RWNX_MAC_RF_PATCH_BASE_NAME_8800DC".bin"
@@ -456,6 +468,18 @@ enum chip_rev {
 	CHIP_REV_U03 = 7,
 	CHIP_REV_U04 = 7,
 };
+
+#define AIC_M2D_OTA_INFO_ADDR       0x88000020
+#define AIC_M2D_OTA_DATA_ADDR       0x88000040
+#if !defined(CONFIG_M2D_OTA_LZMA_SUPPORT)
+#define AIC_M2D_OTA_FLASH_ADDR      0x08004000
+#define AIC_M2D_OTA_CODE_START_ADDR (AIC_M2D_OTA_FLASH_ADDR + 0x0188)
+#define AIC_M2D_OTA_VER_ADDR        (AIC_M2D_OTA_FLASH_ADDR + 0x018C)
+#else
+#define AIC_M2D_OTA_FLASH_ADDR      0x08005000
+#define AIC_M2D_OTA_CODE_START_ADDR (AIC_M2D_OTA_FLASH_ADDR + 0x1188)
+#define AIC_M2D_OTA_VER_ADDR        (AIC_M2D_OTA_FLASH_ADDR + 0x0010)
+#endif
 ///aic bt tx pwr lvl :lsb->msb: first byte, min pwr lvl; second byte, max pwr lvl;
 ///pwr lvl:20(min), 30 , 40 , 50 , 60(max)
 #define AICBT_TXPWR_LVL            0x00006020
@@ -466,13 +490,18 @@ enum chip_rev {
 #define AICBSP_CPMODE_DEFAULT       AICBSP_CPMODE_WORK
 #define AICBSP_FWLOG_EN_DEFAULT     0
 
-#define AICBT_BTMODE_DEFAULT        AICBT_BTMODE_BT_ONLY_SW
-#define AICBT_BTPORT_DEFAULT        AICBT_BTPORT_UART
-#define AICBT_UART_BAUD_DEFAULT     AICBT_UART_BAUD_1_5M
-#define AICBT_UART_FC_DEFAULT       AICBT_UART_FLOWCTRL_ENABLE
-#define AICBT_LPM_ENABLE_DEFAULT 	0
-#define AICBT_TXPWR_LVL_DEFAULT    AICBT_TXPWR_LVL
+#define AICBT_BTMODE_DEFAULT_8800d80    AICBT_BTMODE_BT_ONLY_COANT
+#define AICBT_BTMODE_DEFAULT            AICBT_BTMODE_BT_ONLY_SW
+#define AICBT_BTPORT_DEFAULT            AICBT_BTPORT_UART
+#define AICBT_UART_BAUD_DEFAULT         AICBT_UART_BAUD_1_5M
+#define AICBT_UART_FC_DEFAULT           AICBT_UART_FLOWCTRL_ENABLE
+#define AICBT_LPM_ENABLE_DEFAULT 	    0
+#define AICBT_TXPWR_LVL_DEFAULT         AICBT_TXPWR_LVL
+#define AICBT_TXPWR_LVL_DEFAULT_8800dc  AICBT_TXPWR_LVL_8800dc
+#define AICBT_TXPWR_LVL_DEFAULT_8800d80 AICBT_TXPWR_LVL_8800d80
 
+
+#define AIC_IRQ_WAKE_FLAG           0          // 0: rising edge, 1: falling edge
 #define FEATURE_SDIO_CLOCK          50000000 // 0: default, other: target clock rate
 #define FEATURE_SDIO_CLOCK_V3       150000000 // 0: default, other: target clock rate
 #define FEATURE_SDIO_PHASE          2        // 0: default, 2: 180°
@@ -520,6 +549,7 @@ struct aicbsp_info_t {
 	uint32_t cpmode;
 	uint32_t chip_rev;
 	bool fwlog_en;
+	uint8_t irqf;
 };
 
 extern struct aicbsp_info_t aicbsp_info;
@@ -529,6 +559,7 @@ extern const struct aicbsp_firmware fw_u02[];
 extern const struct aicbsp_firmware fw_u03[];
 extern const struct aicbsp_firmware fw_8800dc_u01[];
 extern const struct aicbsp_firmware fw_8800dc_u02[];
+extern const struct aicbsp_firmware fw_8800dc_h_u02[];
 extern const struct aicbsp_firmware fw_8800d80_u01[];
 extern const struct aicbsp_firmware fw_8800d80_u02[];
 

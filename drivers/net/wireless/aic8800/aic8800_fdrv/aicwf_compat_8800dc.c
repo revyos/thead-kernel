@@ -1,14 +1,12 @@
 #include "rwnx_main.h"
 #include "rwnx_msg_tx.h"
 #include "reg_access.h"
+#include "aic_bsp_export.h"
 
 #define RWNX_MAC_RF_PATCH_BASE_NAME_8800DC     "fmacfw_rf_patch_8800dc"
 #define RWNX_MAC_RF_PATCH_NAME_8800DC RWNX_MAC_RF_PATCH_BASE_NAME_8800DC".bin"
 #define FW_USERCONFIG_NAME_8800DC         "aic_userconfig_8800dc.txt"
 #define FW_USERCONFIG_NAME_8800DW         "aic_userconfig_8800dw.txt"
-#ifdef CONFIG_DPD
-#define FW_DPDRESULT_NAME_8800DC        "aic_dpdresult_8800dc.bin"
-#endif
 
 int rwnx_plat_bin_fw_upload_2(struct rwnx_hw *rwnx_hw, u32 fw_addr,
                                char *filename);
@@ -296,18 +294,25 @@ u32 wifi_rxgain_table_24g_40m_8800dcdw[64] = {
     0x000000f0
 };
 
-#ifdef CONFIG_DPD
 #define RAM_LMAC_FW_ADDR               0x00150000
+#ifdef CONFIG_DPD
+#if (defined(CONFIG_DPD) && !defined(CONFIG_FORCE_DPD_CALIB))
 extern int is_file_exist(char* name);
+#endif
+extern rf_misc_ram_lite_t dpd_res;
 
-int aicwf_fdrv_dpd_result_load_8800dc(struct rwnx_hw *rwnx_hw)
+int aicwf_fdrv_dpd_result_apply_8800dc(struct rwnx_hw *rwnx_hw, rf_misc_ram_lite_t *dpd_res)
 {
     int ret = 0;
     uint32_t cfg_base = 0x10164;
     struct dbg_mem_read_cfm cfm;
     uint32_t misc_ram_addr;
-
-	printk("%s\n", __func__);
+    uint32_t ram_base_addr, ram_byte_cnt;
+    AICWFDBG(LOGINFO, "bit_mask[1]=%x\n", dpd_res->bit_mask[1]);
+    if (dpd_res->bit_mask[1] == 0) {
+        AICWFDBG(LOGERROR, "void dpd_res, bypass it.\n");
+        return 0;
+    }
     if (testmode == 1) {
         cfg_base = RAM_LMAC_FW_ADDR + 0x0164;
     }
@@ -316,23 +321,75 @@ int aicwf_fdrv_dpd_result_load_8800dc(struct rwnx_hw *rwnx_hw)
         return ret;
     }
     misc_ram_addr = cfm.memdata;
-    ret = rwnx_plat_bin_fw_upload_2(rwnx_hw, misc_ram_addr, FW_DPDRESULT_NAME_8800DC);
+    AICWFDBG(LOGINFO, "misc_ram_addr: %x\n", misc_ram_addr);
+    /* Copy dpd_res on the Embedded side */
+    // bit_mask
+    AICWFDBG(LOGINFO, "bit_mask[0]=%x\n", dpd_res->bit_mask[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, bit_mask);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, bit_mask) + MEMBER_SIZE(rf_misc_ram_t, reserved);
+    ret = rwnx_send_dbg_mem_block_write_req(rwnx_hw, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->bit_mask[0]);
     if (ret) {
-        AICWFDBG(LOGINFO, "load calib bin fail: %d\n", ret);
+        AICWFDBG(LOGERROR, "bit_mask wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
+        return ret;
+    }
+    // dpd_high
+    AICWFDBG(LOGINFO, "dpd_high[0]=%x\n", dpd_res->dpd_high[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, dpd_high);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, dpd_high);
+    ret = rwnx_send_dbg_mem_block_write_req(rwnx_hw, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->dpd_high[0]);
+    if (ret) {
+        AICWFDBG(LOGERROR, "dpd_high wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
+        return ret;
+    }
+    // loft_res
+    AICWFDBG(LOGINFO, "loft_res[0]=%x\n", dpd_res->loft_res[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, loft_res);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, loft_res);
+    ret = rwnx_send_dbg_mem_block_write_req(rwnx_hw, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->loft_res[0]);
+    if (ret) {
+        AICWFDBG(LOGERROR, "loft_res wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
         return ret;
     }
     return ret;
 }
+
+#ifndef CONFIG_FORCE_DPD_CALIB
+int aicwf_fdrv_dpd_result_load_8800dc(struct rwnx_hw *rwnx_hw, rf_misc_ram_lite_t *dpd_res)
+{
+    int ret = 0;
+    int size;
+    u32 *dst=NULL;
+    char *filename = FW_DPDRESULT_NAME_8800DC;
+    AICWFDBG(LOGINFO, "dpd_res file path:%s \r\n", filename);
+    /* load file */
+    size = rwnx_request_firmware_common(rwnx_hw, &dst, filename);
+    if (size <= 0) {
+        AICWFDBG(LOGERROR, "wrong size of dpd_res file\n");
+        dst = NULL;
+        return -1;
+    }
+    AICWFDBG(LOGINFO, "### Load file done: %s, size=%d, dst[0]=%x\n", filename, size, dst[0]);
+    memcpy((u8 *)dpd_res, (u8 *)dst, sizeof(rf_misc_ram_lite_t));
+    if (dst) {
+        rwnx_release_firmware_common(&dst);
+    }
+    return ret;
+}
+#endif
 #endif
 
 int aicwf_fdrv_misc_ram_init_8800dc(struct rwnx_hw *rwnx_hw)
 {
     int ret = 0;
-    const uint32_t cfg_base = 0x10164;
+    uint32_t cfg_base = 0x10164;
     struct dbg_mem_read_cfm cfm;
     uint32_t misc_ram_addr;
     uint32_t misc_ram_size = 12;
     int i;
+
+    if (testmode == 1) {
+        cfg_base = RAM_LMAC_FW_ADDR + 0x0164;
+    }
     // init misc ram
     printk("%s\n", __func__);
     ret = rwnx_send_dbg_mem_read_req(rwnx_hw, cfg_base + 0x14, &cfm);
@@ -390,13 +447,30 @@ int aicwf_set_rf_config_8800dc(struct rwnx_hw *rwnx_hw, struct mm_set_rf_calib_c
 			return -1;
 		}
 	} else if (testmode == 1) {
-		if (chip_sub_id == 1) {
+        if (chip_sub_id >= 1) {
             #ifdef CONFIG_DPD
+			#ifndef CONFIG_FORCE_DPD_CALIB
             if (is_file_exist(FW_DPDRESULT_NAME_8800DC) == 1) {
                 AICWFDBG(LOGINFO, "%s load dpd bin\n", __func__);
-                ret = aicwf_fdrv_dpd_result_load_8800dc(rwnx_hw);
+                ret = aicwf_fdrv_dpd_result_load_8800dc(rwnx_hw, &dpd_res);
                 if (ret) {
                     AICWFDBG(LOGINFO, "load dpd bin fail: %d\n", ret);
+                    return ret;
+                }
+            }
+            #endif
+            if (dpd_res.bit_mask[1]) {
+                ret = aicwf_fdrv_dpd_result_apply_8800dc(rwnx_hw, &dpd_res);
+                if (ret) {
+                    AICWFDBG(LOGINFO, "apply dpd bin fail: %d\n", ret);
+                    return ret;
+                }
+            }
+            #else
+            {
+                ret = aicwf_fdrv_misc_ram_init_8800dc(rwnx_hw);
+                if (ret) {
+                    AICWFDBG(LOGINFO, "misc ram init fail: %d\n", ret);
                     return ret;
                 }
             }
@@ -407,9 +481,9 @@ int aicwf_set_rf_config_8800dc(struct rwnx_hw *rwnx_hw, struct mm_set_rf_calib_c
                 return ret;
             }
         }
-	}
+    }
 
-	return 0 ;
+    return 0 ;
 }
 
 int	rwnx_plat_userconfig_load_8800dc(struct rwnx_hw *rwnx_hw){

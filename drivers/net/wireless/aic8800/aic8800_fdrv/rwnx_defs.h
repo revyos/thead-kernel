@@ -29,8 +29,13 @@
 #include "rwnx_mu_group.h"
 #include "rwnx_platform.h"
 #include "rwnx_cmds.h"
+#ifdef CONFIG_GKI
 #include "rwnx_gki.h"
+#endif
 #include "rwnx_compat.h"
+#ifdef CONFIG_FILTER_TCP_ACK
+#include "aicwf_tcp_ack.h"
+#endif
 
 #ifdef AICWF_SDIO_SUPPORT
 #include "aicwf_sdio.h"
@@ -295,6 +300,7 @@ struct rwnx_vif {
 	struct net_device *ndev;
 	struct net_device_stats net_stats;
 	struct rwnx_key key[6];
+    unsigned long drv_flags;
 	atomic_t drv_conn_state;
 	u8 drv_vif_index;           /* Identifier of the VIF in driver */
 	u8 vif_index;               /* Identifier of the station in FW */
@@ -320,6 +326,13 @@ struct rwnx_vif {
 			bool external_auth;  /* Indicate if external authentication is in progress */
 			u32 group_cipher_type;
 			u32 paired_cipher_type;
+			//connected network info start
+			char ssid[33];//ssid max is 32, but this has one spare for '\0'
+			int ssid_len;
+			u8 bssid[ETH_ALEN];
+			u32 conn_owner_nlportid;
+			bool is_roam;
+			//connected network info end
 		} sta;
 		struct {
 			u16 flags;                 /* see rwnx_ap_flags */
@@ -602,13 +615,17 @@ struct rwnx_hw {
 
 	u8 monitor_vif; /* FW id of the monitor interface, RWNX_INVALID_VIF if no monitor vif at fw level */
 
+#ifdef CONFIG_FILTER_TCP_ACK
+	/* tcp ack management */
+	struct tcp_ack_manage ack_m;
+#endif
+
 	/* RoC Management */
 	struct rwnx_roc_elem *roc_elem;             /* Information provided by cfg80211 in its remain on channel request */
 	u32 roc_cookie_cnt;                         /* Counter used to identify RoC request sent by cfg80211 */
 
 	struct rwnx_cmd_mgr *cmd_mgr;
 
-	unsigned long drv_flags;
 	struct rwnx_plat *plat;
 
 	spinlock_t tx_lock;
@@ -652,7 +669,7 @@ struct rwnx_hw {
 
 	struct rwnx_hwq hwq[NX_TXQ_CNT];
 
-	u8 avail_idx_map;
+	u64 avail_idx_map;
 	u8 vif_started;
 	bool adding_sta;
 	struct rwnx_phy_info phy;

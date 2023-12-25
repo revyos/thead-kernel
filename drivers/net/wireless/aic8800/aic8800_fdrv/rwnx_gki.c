@@ -2,12 +2,12 @@
 #ifdef ANDROID_PLATFORM
 #include "net/wireless/core.h"
 #endif
-
+#include <include/linux/types.h>
 
 #undef NL80211_MCGRP_MLME
 #define NL80211_MCGRP_MLME 3
-#if IS_ENABLED(CONFIG_GKI_OPT_FEATURES) && IS_ENABLED(CONFIG_ANDROID) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
-
+//#if IS_ENABLED(CONFIG_GKI_OPT_FEATURES) && IS_ENABLED(CONFIG_ANDROID) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
 
 static struct genl_family rwnx_nl80211_fam;
 
