@@ -161,7 +161,8 @@ struct recv_msdu {
 	 u8  tid;
 	 u16 seq_num;
 	 u8 forward;
-	 uint len;
+	 //uint len;
+	 u32 is_amsdu;
 	 u8 *rx_data;
 	 //for pending rx reorder list
 	struct list_head reord_pending_list;

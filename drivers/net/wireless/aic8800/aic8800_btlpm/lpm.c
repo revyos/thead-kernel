@@ -146,7 +146,7 @@ static unsigned long flags;
 static struct tasklet_struct hostwake_task;
 
 /** Reception timer */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
 static void bluesleep_rx_timer_expire(struct timer_list *t);
 #else
 static void bluesleep_rx_timer_expire(unsigned long data);
@@ -485,7 +485,7 @@ static void bluesleep_tx_allow_sleep(void)
  * Clear BT_RXTIMER.
  * @param data Not used.
  */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
 static void bluesleep_rx_timer_expire(struct timer_list *t)
 #else
 static void bluesleep_rx_timer_expire(unsigned long data)
@@ -896,7 +896,13 @@ static int bluesleep_probe(struct platform_device *pdev)
 	bluesleep_uart_dev = sw_uart_get_pdev(uart_index);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
-	bsi->ws = wakeup_source_register(dev, "bluesleep");
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+    bsi->ws = wakeup_source_register(dev, "bluesleep");
+#else
+	bsi->ws = wakeup_source_register("bluesleep");
+#endif
+
 #else
 	wake_lock_init(&bsi->wake_lock, WAKE_LOCK_SUSPEND, "bluesleep");
 #endif
@@ -1045,7 +1051,7 @@ int bluesleep_init(struct platform_device *pdev)
 	spin_lock_init(&rw_lock);
 
 	/* Initialize timer */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
 	timer_setup(&rx_timer, bluesleep_rx_timer_expire, 0);
 #else
 	init_timer(&rx_timer);

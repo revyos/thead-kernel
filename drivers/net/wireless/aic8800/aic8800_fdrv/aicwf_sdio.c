@@ -34,6 +34,10 @@
 #ifdef CONFIG_PLATFORM_ROCKCHIP
 #include <linux/rfkill-wlan.h>
 #endif
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+#include <linux/rfkill-wlan.h>
+#endif
+
 #include "aic_bsp_export.h"
 extern uint8_t scanning;
 
@@ -327,7 +331,9 @@ static irqreturn_t rwnx_hostwake_irq_handler(int irq, void *para)
 #if 0//old oob feature
     complete(&g_rwnx_plat->sdiodev->bus_if->busrx_trgg);
 #else//new oob feature
-    complete(&g_rwnx_plat->sdiodev->bus_if->busirq_trgg);
+    if(g_rwnx_plat->sdiodev->oob_enable){
+        complete(&g_rwnx_plat->sdiodev->bus_if->busirq_trgg);
+    }
 #endif//old oob feature
 #endif
 
@@ -344,8 +350,17 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 {
 	int ret = 0;//-1;
 #ifdef CONFIG_GPIO_WAKEUP
+	unsigned long flag_edge;
+	struct aicbsp_feature_t aicwf_feature;
 	int irq_flags;
 //TODO hostwake_irq_num hostwake_irq_num and wakeup_enable
+
+	aicbsp_get_feature(&aicwf_feature, NULL);
+	if (aicwf_feature.irqf == 0)
+		flag_edge = IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND;
+	else
+		flag_edge = IRQF_TRIGGER_FALLING | IRQF_NO_SUSPEND;
+
 
 #ifdef CONFIG_PLATFORM_ALLWINNER
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
@@ -364,6 +379,14 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 		irq_flags = (IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE) & IRQF_TRIGGER_MASK;
 		printk("%s irq_flags:%d \r\n", __func__, irq_flags);
 		wakeup_enable = 1;
+#endif //CONFIG_PLATFORM_ROCKCHIP
+    //For Rockchip
+#ifdef CONFIG_PLATFORM_ROCKCHIP2
+            hostwake_irq_num = rockchip_wifi_get_oob_irq();
+            printk("%s hostwake_irq_num:%d \r\n", __func__, hostwake_irq_num);
+            irq_flags = (IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE) & IRQF_TRIGGER_MASK;
+            printk("%s irq_flags:%d \r\n", __func__, irq_flags);
+            wakeup_enable = 1;
 #endif //CONFIG_PLATFORM_ROCKCHIP
 
 
@@ -391,9 +414,7 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 			goto fail1;
 		}
 
-		ret = request_irq(hostwake_irq_num,
-				rwnx_hostwake_irq_handler, IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
-				"rwnx_hostwake_irq", NULL);
+		ret = request_irq(hostwake_irq_num, rwnx_hostwake_irq_handler, flag_edge, "rwnx_hostwake_irq", NULL);
 
 		if (ret < 0) {
 			pr_err("%s(%d): request_irq fail! ret = %d\n", __func__, __LINE__, ret);
@@ -535,16 +556,20 @@ static int aicwf_sdio_probe(struct sdio_func *func,
 
 	err = aicwf_sdio_chipmatch(sdiodev, func->vendor, func->device);
 
+	sdiodev->func = func;
+	sdiodev->bus_if = bus_if;
+    
 #ifdef CONFIG_OOB
     if(sdiodev->chipid == PRODUCT_ID_AIC8801){
         AICWFDBG(LOGERROR, "%s ERROR!!! 8801 not support OOB \r\n", __func__);
-        goto fail;
+        sdiodev->oob_enable = false;
+    }else{    
+	    sdiodev->oob_enable = true;
     }
-#endif //CONFIG_OOB
+#else
+    sdiodev->oob_enable = false;
+#endif
 
-	sdiodev->func = func;
-	sdiodev->bus_if = bus_if;
-	sdiodev->oob_enable = false;
     atomic_set(&sdiodev->is_bus_suspend, 0);
 	bus_if->bus_priv.sdio = sdiodev;
 
@@ -578,20 +603,24 @@ static int aicwf_sdio_probe(struct sdio_func *func,
 
 #ifdef CONFIG_GPIO_WAKEUP
 #ifdef CONFIG_OOB
-    AICWFDBG(LOGINFO, "%s SDIOWIFI_INTR_CONFIG_REG Disable\n", __func__);
-    sdio_claim_host(sdiodev->func);
-    //disable sdio interrupt    
-    err = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x0);
-    if (err < 0) {
-        sdio_err("reg:%d write failed!\n", SDIOWIFI_INTR_CONFIG_REG);
-    }    
-    sdio_release_irq(sdiodev->func);
-    sdio_release_host(sdiodev->func);
+    if(sdiodev->oob_enable){
+        AICWFDBG(LOGINFO, "%s SDIOWIFI_INTR_CONFIG_REG Disable\n", __func__);
+        sdio_claim_host(sdiodev->func);
+        //disable sdio interrupt    
+        err = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x0);
+        if (err < 0) {
+            sdio_err("reg:%d write failed!\n", SDIOWIFI_INTR_CONFIG_REG);
+        }    
+        sdio_release_irq(sdiodev->func);
+        sdio_release_host(sdiodev->func);
+#if 0      
 #if 0//old oob feature
-    sdiodev->oob_enable = true;
+        sdiodev->oob_enable = true;
 #else//new oob feature
-    sdiodev->oob_enable = false;
+        sdiodev->oob_enable = true;
 #endif//old oob feature
+#endif
+    }
 #endif
 
 #ifdef CONFIG_WIFI_SUSPEND_FOR_LINUX
@@ -689,16 +718,20 @@ static int aicwf_sdio_suspend(struct device *dev)
 #ifdef CONFIG_GPIO_WAKEUP
 //	rwnx_enable_hostwake_irq();
 #endif
-#if 0
-	sdio_dbg("%s SDIOWIFI_INTR_CONFIG_REG Disable\n", __func__);
-	sdio_claim_host(sdiodev->func);
-	//disable sdio interrupt
-	ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x0);
-	if (ret < 0) {
-		sdio_err("reg:%d write failed!\n", SDIOWIFI_INTR_CONFIG_REG);
+
+
+#if defined(CONFIG_PLATFORM_ROCKCHIP) || defined(CONFIG_PLATFORM_ROCKCHIP2)
+	if(sdiodev->chipid == PRODUCT_ID_AIC8801){
+		sdio_dbg("%s SDIOWIFI_INTR_CONFIG_REG Disable\n", __func__);
+		sdio_claim_host(sdiodev->func);
+		//disable sdio interrupt
+		ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x0);
+		if (ret < 0) {
+			sdio_err("reg:%d write failed!\n", SDIOWIFI_INTR_CONFIG_REG);
+		}
+		sdio_release_irq(sdiodev->func);
+		sdio_release_host(sdiodev->func);
 	}
-	sdio_release_irq(sdiodev->func);
-	sdio_release_host(sdiodev->func);
 #endif
     atomic_set(&sdiodev->is_bus_suspend, 1);
 //    smp_mb();
@@ -713,7 +746,9 @@ static int aicwf_sdio_resume(struct device *dev)
 	struct aicwf_bus *bus_if = dev_get_drvdata(dev);
 	struct aic_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
 	struct rwnx_vif *rwnx_vif, *tmp;
-	//int ret;
+#if defined(CONFIG_PLATFORM_ROCKCHIP) || defined(CONFIG_PLATFORM_ROCKCHIP2)
+	int ret;
+#endif
 
 	sdio_dbg("%s enter \n", __func__);
 //#ifdef CONFIG_GPIO_WAKEUP
@@ -736,16 +771,18 @@ static int aicwf_sdio_resume(struct device *dev)
 
 //	aicwf_sdio_hal_irqhandler(sdiodev->func);
 
-#if 0
-	sdio_dbg("%s SDIOWIFI_INTR_CONFIG_REG Enable\n", __func__);
-	sdio_claim_host(sdiodev->func);
-	sdio_claim_irq(sdiodev->func, aicwf_sdio_hal_irqhandler);
+#if defined(CONFIG_PLATFORM_ROCKCHIP) || defined(CONFIG_PLATFORM_ROCKCHIP2)
+	if(sdiodev->chipid == PRODUCT_ID_AIC8801){
+		sdio_dbg("%s SDIOWIFI_INTR_CONFIG_REG Enable\n", __func__);
+		sdio_claim_host(sdiodev->func);
+		sdio_claim_irq(sdiodev->func, aicwf_sdio_hal_irqhandler);
 
-	//enable sdio interrupt
-	ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x07);
-	if (ret != 0)
-		sdio_err("intr register failed:%d\n", ret);
-	sdio_release_host(sdiodev->func);
+		//enable sdio interrupt
+		ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_INTR_CONFIG_REG, 0x07);
+		if (ret != 0)
+			sdio_err("intr register failed:%d\n", ret);
+		sdio_release_host(sdiodev->func);
+	}
 #endif
     atomic_set(&sdiodev->is_bus_suspend, 0);
 //    smp_mb();
@@ -883,7 +920,7 @@ int aicwf_sdio_wakeup(struct aic_sdio_dev *sdiodev)
 	int ret = 0;
 	int read_retry;
 	int write_retry = 20;
-    int wakeup_reg_val;
+    int wakeup_reg_val = 0;
 
     if (sdiodev->chipid == PRODUCT_ID_AIC8801 ||
         sdiodev->chipid == PRODUCT_ID_AIC8800DC ||
@@ -1538,7 +1575,7 @@ static int aicwf_sdio_bus_start(struct device *dev)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 #include "uapi/linux/sched/types.h"
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
 #include "linux/sched/types.h"
 #else
 #include "linux/sched/rt.h"
@@ -1755,7 +1792,7 @@ int sdio_busrx_thread(void *data)
 	cpumask_set_cpu(3, &cpumask);
 	sched_setaffinity(0, &cpumask);
 #endif
-
+#if 0
 #ifdef CONFIG_THREAD_INFO_IN_TASK
     int set_cpu_ret = 0;
 
@@ -1764,7 +1801,7 @@ int sdio_busrx_thread(void *data)
     AICWFDBG(LOGINFO, "%s set_cpu_ret is:%d\n", __func__, set_cpu_ret);
     AICWFDBG(LOGINFO, "%s change cpu to:%d\n", __func__, current->cpu);
 #endif
-
+#endif
 #ifdef CONFIG_TXRX_THREAD_PRIO
     if (busrx_thread_prio > 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
@@ -1943,8 +1980,7 @@ void aicwf_sdio_hal_irqhandler(struct sdio_func *func)
     	if (pkt)
     		aicwf_sdio_enq_rxpkt(sdiodev, pkt);
 
-        if(atomic_read(&sdiodev->rx_priv->rx_cnt) == 1 && 
-            sdiodev->oob_enable == false){
+        if(atomic_read(&sdiodev->rx_priv->rx_cnt) == 1){
             complete(&bus_if->busrx_trgg);
         }
 
@@ -2005,8 +2041,7 @@ void aicwf_sdio_hal_irqhandler(struct sdio_func *func)
         if (pkt)
             aicwf_sdio_enq_rxpkt(sdiodev, pkt);
 
-        if(atomic_read(&sdiodev->rx_priv->rx_cnt) == 1 && 
-            sdiodev->oob_enable == false){
+        if(atomic_read(&sdiodev->rx_priv->rx_cnt) == 1){
             complete(&bus_if->busrx_trgg);
         }
     }
@@ -2046,22 +2081,24 @@ static struct aicwf_bus_ops aicwf_sdio_bus_ops = {
 void aicwf_sdio_release(struct aic_sdio_dev *sdiodev)
 {
 	struct aicwf_bus *bus_if;
-#ifndef CONFIG_OOB
+#ifdef CONFIG_OOB
     int ret;
 #endif
 	AICWFDBG(LOGINFO, "%s Enter\n", __func__);
 
 	bus_if = dev_get_drvdata(sdiodev->dev);
 	bus_if->state = BUS_DOWN_ST;
-#ifndef CONFIG_OOB
-	sdio_claim_host(sdiodev->func);
-	//disable sdio interrupt
-    ret = aicwf_sdio_writeb(sdiodev, sdiodev->sdio_reg.intr_config_reg, 0x0);
-	if (ret < 0) {
-		AICWFDBG(LOGERROR, "reg:%d write failed!\n", sdiodev->sdio_reg.intr_config_reg);
-	}
-	sdio_release_irq(sdiodev->func);
-	sdio_release_host(sdiodev->func);
+#ifdef CONFIG_OOB
+    if(sdiodev->oob_enable){
+    	sdio_claim_host(sdiodev->func);
+    	//disable sdio interrupt
+        ret = aicwf_sdio_writeb(sdiodev, sdiodev->sdio_reg.intr_config_reg, 0x0);
+    	if (ret < 0) {
+    		AICWFDBG(LOGERROR, "reg:%d write failed!\n", sdiodev->sdio_reg.intr_config_reg);
+    	}
+    	sdio_release_irq(sdiodev->func);
+    	sdio_release_host(sdiodev->func);
+    }
 #endif
 	if (sdiodev->dev)
 		aicwf_bus_deinit(sdiodev->dev);

@@ -100,7 +100,9 @@ int aicwf_bus_init(uint bus_hdrlen, struct device *dev)
 	bus_if->busrx_thread = kthread_run(sdio_busrx_thread, (void *)bus_if->bus_priv.sdio->rx_priv, "aicwf_busrx_thread");
     //new oob feature
 #ifdef CONFIG_OOB
-    bus_if->busirq_thread = kthread_run(sdio_busirq_thread, (void *)bus_if->bus_priv.sdio->rx_priv, "aicwf_busirq_thread");
+    if(bus_if->bus_priv.sdio->oob_enable){
+        bus_if->busirq_thread = kthread_run(sdio_busirq_thread, (void *)bus_if->bus_priv.sdio->rx_priv, "aicwf_busirq_thread");
+    }
 #endif //CONFIG_OOB
 #endif
 #ifdef AICWF_USB_SUPPORT
@@ -203,7 +205,7 @@ struct aicwf_tx_priv *aicwf_tx_init(void *arg)
 #endif
 
 	atomic_set(&tx_priv->aggr_count, 0);
-#if AICBSP_RESV_MEM_SUPPORT
+#ifdef  CONFIG_RESV_MEM_SUPPORT
 	tx_priv->aggr_buf = aicbsp_resv_mem_alloc_skb(MAX_AGGR_TXPKT_LEN, AIC_RESV_MEM_TXDATA);
 #else
 	tx_priv->aggr_buf = dev_alloc_skb(MAX_AGGR_TXPKT_LEN);
@@ -222,7 +224,7 @@ struct aicwf_tx_priv *aicwf_tx_init(void *arg)
 void aicwf_tx_deinit(struct aicwf_tx_priv *tx_priv)
 {
 	if (tx_priv && tx_priv->aggr_buf) {
-#if AICBSP_RESV_MEM_SUPPORT
+#ifdef  CONFIG_RESV_MEM_SUPPORT
 		aicbsp_resv_mem_kfree_skb(tx_priv->aggr_buf, AIC_RESV_MEM_TXDATA);
 #else
 		dev_kfree_skb(tx_priv->aggr_buf);
@@ -532,7 +534,6 @@ static struct recv_msdu *aicwf_rxframe_queue_init(struct list_head *q, int qsize
 	for (i = 0; i < qsize; i++) {
 		INIT_LIST_HEAD(&req->rxframe_list);
 		list_add(&req->rxframe_list, q);
-		req->len = 0;
 		req++;
 	}
 
@@ -613,11 +614,13 @@ void aicwf_rx_deinit(struct aicwf_rx_priv *rx_priv)
 		rx_priv->sdiodev->bus_if->busrx_thread = NULL;
 	}
 #ifdef CONFIG_OOB
-    //new oob feature
-    if (rx_priv->sdiodev->bus_if->busirq_thread) {
-        complete_all(&rx_priv->sdiodev->bus_if->busirq_trgg);
-        kthread_stop(rx_priv->sdiodev->bus_if->busirq_thread);
-        rx_priv->sdiodev->bus_if->busirq_thread = NULL;
+    if(rx_priv->sdiodev->oob_enable){
+        //new oob feature
+        if (rx_priv->sdiodev->bus_if->busirq_thread) {
+            complete_all(&rx_priv->sdiodev->bus_if->busirq_trgg);
+            kthread_stop(rx_priv->sdiodev->bus_if->busirq_thread);
+            rx_priv->sdiodev->bus_if->busirq_thread = NULL;
+        }
     }
 #endif //CONFIG_OOB
 #endif

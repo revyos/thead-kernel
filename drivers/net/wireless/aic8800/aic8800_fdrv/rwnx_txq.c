@@ -836,7 +836,11 @@ int rwnx_txq_queue_skb(struct sk_buff *skb, struct rwnx_txq *txq,
 		skb_queue_tail(&txq->sk_list, skb);
 	} else {
 		if (txq->last_retry_skb)
+#ifdef CONFIG_GKI
 			rwnx_skb_append(txq->last_retry_skb, skb, &txq->sk_list);
+#else
+            skb_append(txq->last_retry_skb, skb, &txq->sk_list);
+#endif
 		else
 			skb_queue_head(&txq->sk_list, skb);
 
@@ -1240,6 +1244,8 @@ void rwnx_hwq_process(struct rwnx_hw *rwnx_hw, struct rwnx_hwq *hwq)
 		BUG_ON(!(txq->status & RWNX_TXQ_IN_HWQ_LIST));
 		if(txq->idx == TXQ_INACTIVE){
 			printk("%s txq->idx == TXQ_INACTIVE \r\n", __func__);
+            rwnx_txq_del_from_hw_list(txq);
+            rwnx_txq_flush(rwnx_hw, txq);  
 			continue;
 		}
 		BUG_ON(txq->idx == TXQ_INACTIVE);

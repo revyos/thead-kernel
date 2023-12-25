@@ -5,7 +5,7 @@
 #include <linux/kernel.h>
 #include <linux/version.h>
 #include <linux/platform_device.h>
-//#include "lpm.h"
+#include "lpm.h"
 #include "rfkill.h"
 
 #define DRV_CONFIG_FW_NAME    "fw.bin"
@@ -47,7 +47,7 @@ static int __init aic_bluetooth_mod_init(void)
 		pr_err("rfkill init fail\n");
 		goto err1;
 	}
-#if 0
+#if defined(ANDROID_PLATFORM) && !defined(CONFIG_PLATFORM_ROCKCHIP) && !defined(CONFIG_PLATFORM_ROCKCHIP2)
 	ret = bluesleep_init(aicbt_pdev);
 	if (ret) {
 		pr_err("bluesleep init fail\n");
@@ -57,7 +57,9 @@ static int __init aic_bluetooth_mod_init(void)
 
 	return 0;
 
-//err2:
+#if defined(ANDROID_PLATFORM) && !defined(CONFIG_PLATFORM_ROCKCHIP) && !defined(CONFIG_PLATFORM_ROCKCHIP2)
+err2:
+#endif
 	rfkill_bluetooth_remove(aicbt_pdev);
 err1:
 	platform_device_del(aicbt_pdev);
@@ -69,7 +71,9 @@ err0:
 static void __exit aic_bluetooth_mod_exit(void)
 {
 	printk("%s\n", __func__);
-	//bluesleep_exit(aicbt_pdev);
+#if defined(ANDROID_PLATFORM) && !defined(CONFIG_PLATFORM_ROCKCHIP) && !defined(CONFIG_PLATFORM_ROCKCHIP2)
+	bluesleep_exit(aicbt_pdev);
+#endif
 	rfkill_bluetooth_remove(aicbt_pdev);
 	platform_device_del(aicbt_pdev);
 	platform_driver_unregister(&aicbt_driver);

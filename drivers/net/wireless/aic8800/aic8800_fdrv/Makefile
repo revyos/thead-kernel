@@ -1,8 +1,15 @@
+EXTRA_CFLAGS += $(USER_EXTRA_CFLAGS)
+EXTRA_CFLAGS += -Wno-implicit-fallthrough
+#EXTRA_CFLAGS += -Wno-unused-function
+#EXTRA_CFLAGS += -Wno-maybe-uninitialized
+#EXTRA_CFLAGS += -Wno-unused-variable
+
 RWNX_VERS_NUM := 6.4.3.0
 
 CONFIG_COUNTRY_CODE = "00"
 
 MODULE_NAME = aic8800_fdrv
+CONFIG_AIC8800_WLAN_SUPPORT = m
 
 # Support of bootrom start
 CONFIG_START_FROM_BOOTROM = y
@@ -69,7 +76,7 @@ CONFIG_USB_BT =y
 CONFIG_USE_5G ?= y
 CONFIG_SDIO_PWRCTRL ?= y
 CONFIG_CREATE_TRACE_POINTS = n
-CONFIG_TXRX_THREAD_PRIO = n
+CONFIG_TXRX_THREAD_PRIO = y
 # CONFIG_COEX = n for BT_ONLY, CONFIG_COEX =y for combo and sw
 CONFIG_COEX = y
 CONFIG_RX_NETIF_RECV_SKB = y
@@ -87,12 +94,16 @@ CONFIG_USE_P2P0=n
 CONFIG_BR_SUPPORT =n
 BR_NAME = br0
 CONFIG_FDRV_NO_REG_SDIO=n
-CONFIG_SCHED_SCAN = y
+CONFIG_SCHED_SCAN = n
 CONFIG_OOB = n
 CONFIG_USE_CUSTOMER_MAC = n
 CONFIG_PREALLOC_TXQ = y
-CONFIG_DPD = n
-CONFIG_FORCE_DPD_CALIB = n
+CONFIG_DPD = y
+CONFIG_FORCE_DPD_CALIB = y
+CONFIG_FILTER_TCP_ACK =n
+CONFIG_RESV_MEM_SUPPORT = y
+CONFIG_GKI = n
+CONFIG_TEMP_COMP = n
 
 # Support of MU-MIMO transmission (need FW support)
 ifeq ($(CONFIG_RWNX_BFMER), y)
@@ -117,7 +128,6 @@ CONFIG_DEBUG_FS ?= n
 
 obj-$(CONFIG_AIC8800_WLAN_SUPPORT) := $(MODULE_NAME).o
 $(MODULE_NAME)-y := \
-	rwnx_gki.o             \
 	rwnx_msg_tx.o          \
 	rwnx_msg_rx.o          \
 	rwnx_utils.o           \
@@ -155,10 +165,14 @@ $(MODULE_NAME)-$(CONFIG_RWNX_MUMIMO_TX)   += rwnx_mu_group.o
 $(MODULE_NAME)-$(CONFIG_SDIO_SUPPORT)     += sdio_host.o
 $(MODULE_NAME)-$(CONFIG_SDIO_SUPPORT)     += aicwf_txrxif.o
 $(MODULE_NAME)-$(CONFIG_SDIO_SUPPORT)     += aicwf_sdio.o
+$(MODULE_NAME)-$(CONFIG_FILTER_TCP_ACK)   += aicwf_tcp_ack.o
 
 $(MODULE_NAME)-$(CONFIG_USB_SUPPORT)     += usb_host.o
 $(MODULE_NAME)-$(CONFIG_USB_SUPPORT)     += aicwf_txrxif.o
 $(MODULE_NAME)-$(CONFIG_USB_SUPPORT)     += aicwf_usb.o
+$(MODULE_NAME)-$(CONFIG_GKI)     += rwnx_gki.o
+
+
 
 ccflags-$(CONFIG_DEBUG_FS) += -DCONFIG_RWNX_DEBUGFS
 ccflags-$(CONFIG_DEBUG_FS) += -DCONFIG_RWNX_UM_HELPER_DFLT=\"$(CONFIG_RWNX_UM_HELPER_DFLT)\"
@@ -231,6 +245,10 @@ ccflags-$(CONFIG_USE_CUSTOMER_MAC) += -DCONFIG_USE_CUSTOMER_MAC
 ccflags-$(CONFIG_PREALLOC_TXQ) += -DCONFIG_PREALLOC_TXQ
 ccflags-$(CONFIG_DPD) += -DCONFIG_DPD
 ccflags-$(CONFIG_FORCE_DPD_CALIB) += -DCONFIG_FORCE_DPD_CALIB -DCONFIG_DPD
+ccflags-$(CONFIG_FILTER_TCP_ACK) += -DCONFIG_FILTER_TCP_ACK
+ccflags-$(CONFIG_RESV_MEM_SUPPORT) += -DCONFIG_RESV_MEM_SUPPORT
+ccflags-$(CONFIG_GKI) += -DCONFIG_GKI
+ccflags-$(CONFIG_TEMP_COMP) += -DCONFIG_TEMP_COMP
 
 
 ifeq ($(CONFIG_SDIO_SUPPORT), y)
@@ -272,6 +290,7 @@ ccflags-$(CONFIG_RX_NETIF_RECV_SKB) += -DCONFIG_RX_NETIF_RECV_SKB
 
 # Platform support list
 CONFIG_PLATFORM_ROCKCHIP ?= n
+CONFIG_PLATFORM_ROCKCHIP2 ?= n
 CONFIG_PLATFORM_ALLWINNER ?= n
 CONFIG_PLATFORM_INGENIC_T20 ?= n
 CONFIG_PLATFORM_AMLOGIC ?= n
@@ -306,6 +325,16 @@ CROSS_COMPILE ?= ~/E/Rockchip/3566/Android11/rk3566_rk3568_android11_oranth/preb
 ccflags-$(CONFIG_PLATFORM_ROCKCHIP) += -DCONFIG_PLATFORM_ROCKCHIP
 ccflags-y += -DANDROID_PLATFORM
 endif
+
+ifeq ($(CONFIG_PLATFORM_ROCKCHIP2), y)
+ARCH := arm64
+KDIR ?= /home/yaya/E/Rockchip/3566/firefly/Android11.0/Firefly-RK356X_Android11.0_git_20210824/RK356X_Android11.0/kernel
+CROSS_COMPILE := /home/yaya/E/Rockchip/3566/firefly/Android11.0/Firefly-RK356X_Android11.0_git_20210824/RK356X_Android11.0/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+
+ccflags-$(CONFIG_PLATFORM_ROCKCHIP2) += -DCONFIG_PLATFORM_ROCKCHIP2
+ccflags-y += -DANDROID_PLATFORM
+endif
+
 
 ifeq ($(CONFIG_PLATFORM_ALLWINNER), y)
 ccflags-$(CONFIG_PLATFORM_ALLWINNER) += -DCONFIG_PLATFORM_ALLWINNER

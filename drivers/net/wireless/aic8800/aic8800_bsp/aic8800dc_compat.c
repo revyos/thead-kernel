@@ -1500,7 +1500,7 @@ uint32_t txgain_map[96] =  {
     0x00ffcc85,
     0x00ffcd70,
     0x00ffcd80,
-    0x00ffce70,
+    0x00ffcd90,
     0x00ffce80,
     0x00ffce93,
     0x00ffcf90,
@@ -1523,6 +1523,108 @@ uint32_t txgain_map[96] =  {
 #endif
 };
 
+const uint32_t txgain_map_h[96] =
+{
+    //11b
+    0xffd888, //11
+    0xffd979, //12
+    0xffd988, //13
+    0xffda79, //14
+    0xffda88, //15
+    0xffdb79, //16
+    0xffdb88, //17
+    0xffdc72, //18
+    0xffdc80, //19
+    0xffdd80, //20
+    0xffde66, //21
+    0xffde72, //22
+    0xffde80, //23
+    0xffdf79, //24
+    0xffdf88, //25
+    0xffdf98, //26
+    0xffd079, //-5
+    0xffd088, //-4
+    0xffd179, //-3
+    0xffd188, //-2
+    0xffd288, //-1
+    0xffd36c, //0
+    0xffd379, //1
+    0xffd388, //2
+    0xffd479, //3
+    0xffd488, //4
+    0xffd579, //5
+    0xffd588, //6
+    0xffd679, //7
+    0xffd688, //8
+    0xffd779, //9
+    0xffd879, //10
+    //high
+    0xffc879, //8
+    0xffc96b, //9
+    0xffc979, //10
+    0xffca6b, //11
+    0xffca79, //12
+    0xffcc56, //13
+    0xffcc60, //14
+    0xffcc6b, //15
+    0xffcc79, //16
+    0xffcd72, //17
+    0xffce60, //18
+    0xffce72, //19
+    0xffcf72, //20
+    0xffcf80, //21
+    0xffcf90, //22
+    0xffcf90, //23
+    0xffc079, //-8
+    0xffc16b, //-7
+    0xffc179, //-6
+    0xffc26b, //-5
+    0xffc279, //-4
+    0xffc36b, //-3
+    0xffc379, //-2
+    0xffc46b, //-1
+    0xffc479, //0
+    0xffc56b, //1
+    0xffc579, //2
+    0xffc66b, //3
+    0xffc679, //4
+    0xffc76b, //5
+    0xffc779, //6
+    0xffc86b, //7
+    //low
+    0xffc879, //8
+    0xffc96b, //9
+    0xffc979, //10
+    0xffca6b, //11
+    0xffca79, //12
+    0xffcc56, //13
+    0xffcc60, //14
+    0xffcc6b, //15
+    0xffcc79, //16
+    0xffcd72, //17
+    0xffce60, //18
+    0xffce72, //19
+    0xffcf72, //20
+    0xffcf80, //21
+    0xffcf90, //22
+    0xffcf90, //23
+    0xffc079, //-8
+    0xffc16b, //-7
+    0xffc179, //-6
+    0xffc26b, //-5
+    0xffc279, //-4
+    0xffc36b, //-3
+    0xffc379, //-2
+    0xffc46b, //-1
+    0xffc479, //0
+    0xffc56b, //1
+    0xffc579, //2
+    0xffc66b, //3
+    0xffc679, //4
+    0xffc76b, //5
+    0xffc779, //6
+    0xffc86b, //7
+};
 
 
 u32 jump_tbl[][2] =
@@ -1585,6 +1687,7 @@ u32 patch_tbl_rf_func[][2] =
     {0x00110bf0, 0x00180001},
 };
 
+static u8 chip_id = 0;
 #define CHIP_ID_H_MASK  0xC0
 #define IS_CHIP_ID_H()  ((chip_id & CHIP_ID_H_MASK) == CHIP_ID_H_MASK)
 
@@ -1594,7 +1697,6 @@ void system_config_8800dc(struct aic_sdio_dev *rwnx_hw)
     array3_tbl_t p_syscfg_msk_tbl;
     int ret, cnt;
     const u32 mem_addr = 0x40500000;
-	u8 chip_id = 0;
     struct dbg_mem_read_cfm rd_mem_addr_cfm;
 
     ret = rwnx_send_dbg_mem_read_req(rwnx_hw, mem_addr, &rd_mem_addr_cfm);
@@ -1716,7 +1818,7 @@ void aicwf_patch_config_8800dc(struct aic_sdio_dev *rwnx_hw)
         u32 patch_tbl_wifisetting_num;// = sizeof(patch_tbl_wifisetting_8800dc_u02)/sizeof(u32)/2;
         u32 ldpc_cfg_size = sizeof(ldpc_cfg_ram);
         u32 agc_cfg_size = sizeof(agc_cfg_ram);
-        u32 txgain_cfg_size = sizeof(txgain_map);
+        u32 txgain_cfg_size, *txgain_cfg_array;
         u32 jump_tbl_size = 0;
         u32 patch_tbl_func_num = 0;
 
@@ -1731,7 +1833,7 @@ void aicwf_patch_config_8800dc(struct aic_sdio_dev *rwnx_hw)
             patch_tbl_func_num = sizeof(patch_tbl_func)/sizeof(u32)/2;
 			patch_tbl_wifisetting_num = sizeof(patch_tbl_wifisetting_8800dc_u01)/sizeof(u32)/2;
 			patch_tbl_wifisetting_8800dc_base = patch_tbl_wifisetting_8800dc_u01;
-        } else if (chip_sub_id == 1) {
+        } else if ((chip_sub_id == 1) || (chip_sub_id == 2)) {
 			patch_tbl_wifisetting_num = sizeof(patch_tbl_wifisetting_8800dc_u02)/sizeof(u32)/2;
 			patch_tbl_wifisetting_8800dc_base = patch_tbl_wifisetting_8800dc_u02;
         } else {
@@ -1812,29 +1914,42 @@ void aicwf_patch_config_8800dc(struct aic_sdio_dev *rwnx_hw)
         }
 
         #if !defined(CONFIG_FPGA_VERIFICATION)
-        ret = rwnx_send_dbg_mem_block_write_req(rwnx_hw, txgain_cfg_addr, txgain_cfg_size, txgain_map);
+        if ((IS_CHIP_ID_H())) {
+            txgain_cfg_size = sizeof(txgain_map_h);
+            txgain_cfg_array = (u32 *)txgain_map_h;
+        } else {
+            txgain_cfg_size = sizeof(txgain_map);
+            txgain_cfg_array = (u32 *)txgain_map;
+        }
+        ret = rwnx_send_dbg_mem_block_write_req(rwnx_hw, txgain_cfg_addr, txgain_cfg_size, txgain_cfg_array);
         if (ret) {
             AICWFDBG(LOGERROR, "txgain upload fail: %x, err:%d\r\n", txgain_cfg_addr, ret);
         }
 
-		if(chip_sub_id == 0){
-	        for (cnt = 0; cnt < jump_tbl_size/4; cnt+=1) {
-	            AICWFDBG(LOGDEBUG, "%x = %x\n", jump_tbl_base[cnt][0]*4+jump_tbl_addr, jump_tbl_base[cnt][1]);
-	            if ((ret = rwnx_send_dbg_mem_write_req(rwnx_hw, jump_tbl_base[cnt][0]*4+jump_tbl_addr, jump_tbl_base[cnt][1]))) {
-	                AICWFDBG(LOGERROR, "%x write fail\n", jump_tbl_addr+8*cnt);
-	            }
-	        }
-	        for (cnt = 0; cnt < patch_tbl_func_num; cnt++) {
-	            if ((ret = rwnx_send_dbg_mem_write_req(rwnx_hw, patch_tbl_func_base[cnt][0], patch_tbl_func_base[cnt][1]))) {
-	                AICWFDBG(LOGERROR, "patch_tbl_func %x write fail\n", patch_tbl_func_base[cnt][0]);
-	            }
-	        }
-		}
-		else{
+		if (chip_sub_id == 0) {
+			for (cnt = 0; cnt < jump_tbl_size/4; cnt+=1) {
+				AICWFDBG(LOGDEBUG, "%x = %x\n", jump_tbl_base[cnt][0]*4+jump_tbl_addr, jump_tbl_base[cnt][1]);
+				if ((ret = rwnx_send_dbg_mem_write_req(rwnx_hw, jump_tbl_base[cnt][0]*4+jump_tbl_addr, jump_tbl_base[cnt][1]))) {
+					AICWFDBG(LOGERROR, "%x write fail\n", jump_tbl_addr+8*cnt);
+				}
+			}
+			for (cnt = 0; cnt < patch_tbl_func_num; cnt++) {
+				if ((ret = rwnx_send_dbg_mem_write_req(rwnx_hw, patch_tbl_func_base[cnt][0], patch_tbl_func_base[cnt][1]))) {
+					AICWFDBG(LOGERROR, "patch_tbl_func %x write fail\n", patch_tbl_func_base[cnt][0]);
+				}
+			}
+		} else if (chip_sub_id == 1) {
 			ret = aicwf_patch_table_load(rwnx_hw, RWNX_MAC_PATCH_TABLE_8800DC_U02);
 			if(ret){
-			       printk("patch_tbl upload fail: err:%d\r\n", ret);
+				printk("patch_tbl upload fail: err:%d\r\n", ret);
 			}
+		} else if (chip_sub_id == 2) {
+			ret = aicwf_patch_table_load(rwnx_hw, RWNX_MAC_PATCH_TABLE_8800DC_H_U02);
+			if(ret){
+				printk("patch_tbl upload fail: err:%d\r\n", ret);
+			}
+		} else {
+			printk("unsupported id: %d\n", chip_sub_id);
 		}
 
         #endif
@@ -1853,11 +1968,15 @@ void aicwf_patch_config_8800dc(struct aic_sdio_dev *rwnx_hw)
 int aicwf_misc_ram_init_8800dc(struct aic_sdio_dev *sdiodev)
 {
     int ret = 0;
-    const uint32_t cfg_base = 0x10164;
+    uint32_t cfg_base = 0x10164;
     struct dbg_mem_read_cfm cfm;
     uint32_t misc_ram_addr;
     uint32_t misc_ram_size = 12;
     int i;
+
+    if (testmode == FW_RFTEST_MODE) {
+        cfg_base = RAM_LMAC_FW_ADDR + 0x0164;
+    }
     // init misc ram
     ret = rwnx_send_dbg_mem_read_req(sdiodev, cfg_base + 0x14, &cfm);
     if (ret) {
@@ -1877,13 +1996,23 @@ int aicwf_misc_ram_init_8800dc(struct aic_sdio_dev *sdiodev)
 }
 
 #ifdef CONFIG_DPD
-int aicwf_dpd_calib_8800dc(struct aic_sdio_dev *sdiodev, uint32_t *dpd_res)
+int aicwf_dpd_calib_8800dc(struct aic_sdio_dev *sdiodev, rf_misc_ram_lite_t *dpd_res)
 {
     int ret = 0;
     uint32_t fw_addr, boot_type;
+    int valid_flag;
 
 	printk("%s\n", __func__);
 
+    ret = aicwf_misc_ram_valid_check_8800dc(sdiodev, &valid_flag);
+    if (ret) {
+        AICWFDBG(LOGINFO, "misc ram check fail: %d\n", ret);
+        return ret;
+    }
+    if (valid_flag) {
+        AICWFDBG(LOGINFO, "misc ram valid, skip calib process\n");
+        return ret;
+    }
     ret = aicwf_plat_calib_load_8800dc(sdiodev);
     if (ret) {
         AICWFDBG(LOGINFO, "load calib bin fail: %d\n", ret);
@@ -1902,7 +2031,7 @@ int aicwf_dpd_calib_8800dc(struct aic_sdio_dev *sdiodev, uint32_t *dpd_res)
         const uint32_t cfg_base = 0x10164;
         struct dbg_mem_read_cfm cfm;
         uint32_t misc_ram_addr;
-        uint32_t misc_ram_size = DPD_RESULT_SIZE_8800DC;
+        uint32_t ram_base_addr, ram_word_cnt;
         int i;
         ret = rwnx_send_dbg_mem_read_req(sdiodev, cfg_base + 0x14, &cfm);
         if (ret) {
@@ -1910,49 +2039,136 @@ int aicwf_dpd_calib_8800dc(struct aic_sdio_dev *sdiodev, uint32_t *dpd_res)
             return ret;
         }
         misc_ram_addr = cfm.memdata;
-        for (i = 0; i < (misc_ram_size / 4); i++) {
-            ret = rwnx_send_dbg_mem_read_req(sdiodev, misc_ram_addr + i * 4, &cfm);
+        // bit_mask
+        ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, bit_mask);
+        ram_word_cnt = (MEMBER_SIZE(rf_misc_ram_t, bit_mask) + MEMBER_SIZE(rf_misc_ram_t, reserved)) / 4;
+        for (i = 0; i < ram_word_cnt; i++) {
+            ret = rwnx_send_dbg_mem_read_req(sdiodev, ram_base_addr + i * 4, &cfm);
             if (ret) {
-                AICWFDBG(LOGERROR, "rf misc ram[0x%x] rd fail: %d\n",  misc_ram_addr + i * 4, ret);
+                AICWFDBG(LOGERROR, "bit_mask[0x%x] rd fail: %d\n",  ram_base_addr + i * 4, ret);
                 return ret;
             }
-            dpd_res[i] = cfm.memdata;
+            dpd_res->bit_mask[i] = cfm.memdata;
+        }
+        // dpd_high
+        ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, dpd_high);
+        ram_word_cnt = MEMBER_SIZE(rf_misc_ram_t, dpd_high) / 4;
+        for (i = 0; i < ram_word_cnt; i++) {
+            ret = rwnx_send_dbg_mem_read_req(sdiodev, ram_base_addr + i * 4, &cfm);
+            if (ret) {
+                AICWFDBG(LOGERROR, "bit_mask[0x%x] rd fail: %d\n",  ram_base_addr + i * 4, ret);
+                return ret;
+            }
+            dpd_res->dpd_high[i] = cfm.memdata;
+        }
+        // loft_res
+        ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, loft_res);
+        ram_word_cnt = MEMBER_SIZE(rf_misc_ram_t, loft_res) / 4;
+        for (i = 0; i < ram_word_cnt; i++) {
+            ret = rwnx_send_dbg_mem_read_req(sdiodev, ram_base_addr + i * 4, &cfm);
+            if (ret) {
+                AICWFDBG(LOGERROR, "bit_mask[0x%x] rd fail: %d\n",  ram_base_addr + i * 4, ret);
+                return ret;
+            }
+            dpd_res->loft_res[i] = cfm.memdata;
         }
     }
     return ret;
 }
 
-int aicwf_dpd_result_load_8800dc(struct aic_sdio_dev *sdiodev)
+int aicwf_dpd_result_apply_8800dc(struct aic_sdio_dev *sdiodev, rf_misc_ram_lite_t *dpd_res)
 {
-	printk("%s\n", __func__);
     int ret = 0;
     uint32_t cfg_base = 0x10164;
     struct dbg_mem_read_cfm cfm;
     uint32_t misc_ram_addr;
-	if (testmode == 1) {
-		cfg_base = RAM_LMAC_FW_ADDR + 0x0164;
-	}
+    uint32_t ram_base_addr, ram_byte_cnt;
+    AICWFDBG(LOGINFO, "bit_mask[1]=%x\n", dpd_res->bit_mask[1]);
+    if (dpd_res->bit_mask[1] == 0) {
+        AICWFDBG(LOGERROR, "void dpd_res, bypass it.\n");
+        return 0;
+    }
+    if (testmode == FW_RFTEST_MODE) {
+        cfg_base = RAM_LMAC_FW_ADDR + 0x0164;
+    }
     if ((ret = rwnx_send_dbg_mem_read_req(sdiodev, cfg_base + 0x14, &cfm))) {
         AICWFDBG(LOGERROR, "rf misc ram[0x%x] rd fail: %d\n", cfg_base + 0x14, ret);
         return ret;
     }
     misc_ram_addr = cfm.memdata;
-    ret = rwnx_plat_bin_fw_upload_android(sdiodev, misc_ram_addr, FW_DPDRESULT_NAME_8800DC);
+    AICWFDBG(LOGINFO, "misc_ram_addr: %x\n", misc_ram_addr);
+    /* Copy dpd_res on the Embedded side */
+    // bit_mask
+    AICWFDBG(LOGINFO, "bit_mask[0]=%x\n", dpd_res->bit_mask[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, bit_mask);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, bit_mask) + MEMBER_SIZE(rf_misc_ram_t, reserved);
+    ret = rwnx_send_dbg_mem_block_write_req(sdiodev, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->bit_mask[0]);
     if (ret) {
-        AICWFDBG(LOGINFO, "load calib bin fail: %d\n", ret);
+        AICWFDBG(LOGERROR, "bit_mask wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
         return ret;
+    }
+    // dpd_high
+    AICWFDBG(LOGINFO, "dpd_high[0]=%x\n", dpd_res->dpd_high[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, dpd_high);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, dpd_high);
+    ret = rwnx_send_dbg_mem_block_write_req(sdiodev, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->dpd_high[0]);
+    if (ret) {
+        AICWFDBG(LOGERROR, "dpd_high wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
+        return ret;
+    }
+    // loft_res
+    AICWFDBG(LOGINFO, "loft_res[0]=%x\n", dpd_res->loft_res[0]);
+    ram_base_addr = misc_ram_addr + offsetof(rf_misc_ram_t, loft_res);
+    ram_byte_cnt = MEMBER_SIZE(rf_misc_ram_t, loft_res);
+    ret = rwnx_send_dbg_mem_block_write_req(sdiodev, ram_base_addr, ram_byte_cnt, (u32 *)&dpd_res->loft_res[0]);
+    if (ret) {
+        AICWFDBG(LOGERROR, "loft_res wr fail: %x, ret:%d\r\n", ram_base_addr, ret);
+        return ret;
+    }
+    return ret;
+}
+
+#ifndef CONFIG_FORCE_DPD_CALIB
+int aicwf_dpd_result_load_8800dc(struct aic_sdio_dev *sdiodev, rf_misc_ram_lite_t *dpd_res)
+{
+    int ret = 0;
+    int size;
+    u32 *dst=NULL;
+    char *filename = FW_DPDRESULT_NAME_8800DC;
+    struct device *dev = sdiodev->dev;
+    AICWFDBG(LOGINFO, "%s: dpd_res file path:%s \r\n", __func__, filename);
+    /* load file */
+    size = rwnx_load_firmware(&dst, filename, dev);
+    if (size <= 0) {
+        AICWFDBG(LOGERROR, "wrong size of dpd_res file\n");
+        if (dst) {
+            #ifndef CONFIG_FIRMWARE_ARRAY
+            vfree(dst);
+            #endif
+            dst = NULL;
+        }
+        return -1;
+    }
+    AICWFDBG(LOGINFO, "### Load file done: %s, size=%d, dst[0]=%x\n", filename, size, dst[0]);
+    memcpy((u8 *)dpd_res, (u8 *)dst, sizeof(rf_misc_ram_lite_t));
+    if (dst) {
+        #ifndef CONFIG_FIRMWARE_ARRAY
+        vfree(dst);
+        #endif
+        dst = NULL;
     }
     return ret;
 }
 
 int aicwf_dpd_result_write_8800dc(void *buf, int buf_len)
 {
-	printk("%s\n", __func__);
     int sum = 0, len = 0;
     char *path = NULL;
     struct file *fp = NULL;
     loff_t pos = 0;
     mm_segment_t fs;
+
+    AICWFDBG(LOGINFO, "%s\n", __func__);
 
     path = __getname();
     if (!path) {
@@ -1988,6 +2204,7 @@ int aicwf_dpd_result_write_8800dc(void *buf, int buf_len)
 
     return 0;
 }
+#endif /* !CONFIG_FORCE_DPD_CALIB */
 #endif
 
 
