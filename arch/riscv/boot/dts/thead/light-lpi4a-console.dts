@@ -3,6 +3,7 @@
  * Copyright (C) 2023 Sipeed.
  */
 
+#include <dt-bindings/interrupt-controller/irq.h>
 #include "light-lpi4a-laptop.dts"
 
 / {
@@ -14,12 +15,14 @@
 };
 
 &i2c2 {
-	/*
-	ydx@15 {
-		compatible = "ydx";
+	/* thank ice */
+	trackpoint: trackpad@15 {
+		compatible = "hid-over-i2c";
 		reg = <0x15>;
+		hid-descr-addr = <0x0020>;
+		interrupt-parent = <&gpio1_porta>;
+		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
 	};
-	*/
 };
 
 &cw2015 {
