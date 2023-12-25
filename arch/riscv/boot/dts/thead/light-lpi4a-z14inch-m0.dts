@@ -9,6 +9,24 @@
         model = "T-HEAD Light Lichee Pi 4A configuration for Z14INCH-M0";
 };
 
+&dsi0_panel0 {
+	compatible = "custom,z14inch_2160x1440_40Hz";
+	/* display-timings in devicetree is it not working, but I haven't time to fix it, so move it into simple-panel.c */
+	/*
+	display-timings {
+		clock-frequency = <136000000>;
+		hactive = <2160>;
+		vactive = <1440>;
+		hfront-porch = <48>;
+		hback-porch = <80>;
+		hsync-len = <32>;
+		vback-porch = <14>;
+		vfront-porch = <3>;
+		vsync-len = <10>;
+	};
+	*/
+};
+
 &cw2015 {
 	cellwise,battery-profile = /bits/ 8 <
 		0x17 0x67 0x72 0x68 0x66 0x63 0x62 0x5A
