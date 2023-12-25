@@ -477,3 +477,5 @@ CONFIG_DEBUG_FS=y
 CONFIG_SOFTLOCKUP_DETECTOR=y
 CONFIG_DEBUG_ATOMIC_SLEEP=y
 # CONFIG_RCU_TRACE is not set
+# noise from uart will trig SYSRQ, so disable it.
+# CONFIG_MAGIC_SYSRQ_SERIAL is not set
