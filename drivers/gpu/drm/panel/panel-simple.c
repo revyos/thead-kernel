@@ -4539,6 +4539,37 @@ static const struct panel_desc_dsi boe_tv080wum_nl0 = {
 	.lanes = 4,
 };
 
+/* TODO: move timing into device tree */
+static const struct drm_display_mode z14inch_2160x1440_40Hz_mode = {
+	.clock          = 136000,
+	.hdisplay       = 2160,
+	.hsync_start    = 2160 + 48,
+	.hsync_end      = 2160 + 48 + 32,
+	.htotal         = 2160 + 48 + 32 + 80,
+	.vdisplay       = 1440,
+	.vsync_start    = 1440 + 3,
+	.vsync_end      = 1440 + 3 + 10,
+	.vtotal         = 1440 + 3 + 10 + 14,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+};
+
+static const struct panel_desc_dsi z14inch_2160x1440_40Hz = {
+	.desc = {
+		.modes = &z14inch_2160x1440_40Hz_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 62,
+			.height = 110,
+		},
+		.connector_type = DRM_MODE_CONNECTOR_DSI,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_VIDEO_BURST,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
+
 static const struct drm_display_mode lg_ld070wx3_sl01_mode = {
 	.clock = 71000,
 	.hdisplay = 800,
@@ -4737,6 +4768,9 @@ static const struct of_device_id dsi_of_match[] = {
 	}, {
 		.compatible = "hlt,hpk070h275",
 		.data = &hlt_hpk070h275
+	}, {
+		.compatible = "custom,z14inch_2160x1440_40Hz",
+		.data = &z14inch_2160x1440_40Hz
 	}, {
 		/* sentinel */
 	}
