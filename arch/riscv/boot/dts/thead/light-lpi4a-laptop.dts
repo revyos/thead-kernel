@@ -3,18 +3,290 @@
  * Copyright (C) 2023 Sipeed.
  */
 
-#include "light-lpi4a.dts"
+#include "light-lpi4a-dsi0-hdmi.dts"
 
 / {
 	model = "T-HEAD Light Lichee Pi 4A configuration for 8GB DDR board use on laptop";
 
-	power-keys {
-                compatible = "gpio-keys";
-		key-lid {
-			label = "lid status";
-			linux,code = <KEY_DISPLAY_OFF>;
-			debounce-interval = <1>;
-			gpios = <&gpio1_porta 5 0x1>;
+	reg_sys_vcc_5v: regulator-sys-vcc-5v-en {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-sys-vcc-5v-en";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&pcal6408ahk_c 0 1>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+
+		regulator-state-mem {
+			regulator-off-in-suspend;
+		};
+		regulator-state-standby {
+			regulator-off-in-suspend;
 		};
 	};
+
+	reg_sys_vcc_3v3: regulator-sys-vcc-3v3-en {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-sys-vcc-3v3-en";
+		vin-supply = <&reg_sys_vcc_5v>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	reg_sys_vcc_1v8: regulator-sys-vcc-1v8-en {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-sys-vcc-1v8-en";
+		vin-supply = <&reg_sys_vcc_5v>;
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	reg_usb_vcc_5v: regulator-usb-vcc-5v-en {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-usb-vcc-5v-en";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_sys_vcc_5v>;
+		gpio = <&pcal6408ahk_d 3 1>;
+		enable-active-high;
+		regulator-always-on;
+        };
+
+	reg_sata_vcc_5v: regulator-sata-vcc-5v-en {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-sata-vcc-5v-en";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_sys_vcc_5v>;
+		gpio = <&pcal6408ahk_c 1 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
+	audio_amp: regulator-audio-amp-en {
+                status = "okay";
+                compatible = "regulator-fixed";
+                regulator-name = "regulator-audio-amp-en";
+                vin-supply = <&reg_sys_vcc_5v>;
+		gpio = <&pcal6408ahk_c 3 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
+	charger: dc-charger {
+		compatible = "gpio-charger";
+		charger-type = "mains";
+		gpios = <&ao_gpio_porta 2 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&es8156_audio_codec {
+	AVDD-supply = <&reg_sys_vcc_3v3>;
+	DVDD-supply = <&reg_sys_vcc_1v8>;
+	PVDD-supply = <&reg_sys_vcc_1v8>;
+};
+
+&es7210_audio_codec {
+	MVDD-supply = <&reg_sys_vcc_3v3>;
+	AVDD-supply = <&reg_sys_vcc_3v3>;
+	DVDD-supply = <&reg_sys_vcc_1v8>;
+	PVDD-supply = <&reg_sys_vcc_1v8>;
+};
+
+&wcn_wifi {
+	WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
+};
+
+
+&wcn_bt {
+	BT,power_gpio = <&pcal6408ahk_c 5 0>;
+};
+
+&usb_1 {
+        /delete-property/ vbus-supply;
+        /delete-property/ hub1v2-supply;
+        hub5v-supply = <&reg_usb_vcc_5v>;
+};
+
+&reg_usb_hub_vcc5v {
+	/delete-property/ gpio;
+};
+
+&soc_cam2_dvdd12_ir_reg {
+	/delete-property/ gpio;
+};
+
+&vvcam_sensor0 {
+	/delete-property/ sensor_rst;
+};
+
+&vvcam_sensor1 {
+	/delete-property/ sensor_rst;
+};
+
+&vvcam_sensor2 {
+	/delete-property/ sensor_rst;
+};
+
+&vvcam_sensor3 {
+	/delete-property/ sensor_rst;
+};
+
+&reg_tp_pwr_en {
+	/delete-property/ gpio;
+};
+
+&i2c0 {
+	/delete-node/ pcal6408ahk_b;
+
+	cw2015: cw2015@62 {
+		compatible = "cellwise,cw2015";
+		reg = <0x62>;
+		cellwise,monitor-interval-ms = <5000>;
+		power-supplies = <&charger>;
+	};
+};
+
+&i2c3 {
+	touch@14 {
+		#gpio-cells = <2>;
+		compatible = "goodix,gt9271";
+		reg = <0x14>;
+		interrupt-parent = <&ao_gpio_porta>;
+		interrupts = <3 0>;
+		irq-gpios = <&ao_gpio_porta 3 0>;
+		reset-gpios = <&pcal6408ahk_d 0 0>;
+		touchscreen-size-x = <1024>;
+		touchscreen-size-y = <600>;
+		tp-size = <9271>;
+		status = "okay";
+	};
+
+	lt8911: lt8911@29 {
+		compatible = "lontium,lt8911exb";
+		reg = <0x29>;
+		lontium,pclk = <136000000>;
+		lontium,hact = <2160>;
+		lontium,vact = <1440>;
+		lontium,hbp = <80>;
+		lontium,hfp = <48>;
+		lontium,vbp = <14>;
+		lontium,vfp = <3>;
+		lontium,hs = <32>;
+		lontium,vs = <10>;
+		lontium,mipi_lane = <2>;
+		lontium,lane_cnt = <2>;
+		lontium,color = <1>; //Color Depth 0:6bit 1:8bit
+		lontium,test = <0>;
+	};
+};
+
+&uart3 {
+	clock-frequency = <100000000>;
+	status = "okay";
+};
+
+&spi0 {
+	status = "disabled";
+};
+
+&qspi0 {
+	status = "disabled";
+};
+
+&qspi1 {
+	status = "disabled";
+};
+
+&dsi0_panel0 {
+	backlight = <&lcd0_backlight>;
+	reset-gpio = <&pcal6408ahk_d 7 0>; /* active low */
+	hsvcc-supply = <&reg_sys_vcc_1v8>;
+	vspn3v3-supply = <&reg_sys_vcc_3v3>;
+};
+
+&lcd0_backlight {
+	pwms = <&pwm 0 50000>;
+	brightness-levels = <0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35
+        36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75
+        76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100>;
+	default-brightness-level = <100>;
+};
+
+&fan {
+	pwms = <&pwm 1 10000000 0>;
+	cooling-levels = <0 64 192 255>;
+};
+
+&cpus {
+        c910_0: cpu@0 {
+                operating-points = <
+                        /* kHz    uV */
+                        300000  500000
+                        800000  700000
+                        1500000 800000
+                >;
+                light,dvddm-operating-points = <
+                        /* kHz   uV */
+                        300000  800000
+                        800000  800000
+                        1500000 800000
+                >;
+        };
+        c910_1: cpu@1 {
+                operating-points = <
+                        /* kHz    uV */
+                        300000  500000
+                        800000  700000
+                        1500000 800000
+                >;
+                light,dvddm-operating-points = <
+                        /* kHz   uV */
+                        300000  800000
+                        800000  800000
+                        1500000 800000
+                >;
+        };
+        c910_2: cpu@2 {
+
+                operating-points = <
+                        /* kHz    uV */
+                        300000  500000
+                        800000  700000
+                        1500000 800000
+                >;
+                light,dvddm-operating-points = <
+                        /* kHz   uV */
+                        300000  800000
+                        800000  800000
+                        1500000 800000
+                >;
+        };
+        c910_3: cpu@3 {
+
+                operating-points = <
+                        /* kHz    uV */
+                        300000  500000
+                        800000  700000
+                        1500000 800000
+                >;
+                light,dvddm-operating-points = <
+                        /* kHz   uV */
+                        300000  800000
+                        800000  800000
+                        1500000 800000
+                >;
+        };
 };
