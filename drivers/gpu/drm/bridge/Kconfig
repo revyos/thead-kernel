@@ -62,6 +62,12 @@ config DRM_LONTIUM_LT9611
 	  HDMI signals
 	  Please say Y if you have such hardware.
 
+config DRM_LONTIUM_LT8911EXB
+	tristate "Lontium LT8911EXB mipi2edp chip"
+	depends on OF
+	help
+	  Driver for Lontium LT8911EXB DSI to eDP bridge
+
 config DRM_LVDS_CODEC
 	tristate "Transparent LVDS encoders and decoders support"
 	depends on OF
