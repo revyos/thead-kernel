@@ -99,7 +99,7 @@
                };
        };
 
-       panel0@0 {
+       dsi0_panel0: panel0@0 {
 		compatible = "chongzhou,cz101b4001", "jadard,jd9365da-h3";
 		reg = <0>;
 		backlight = <&lcd0_backlight>;
