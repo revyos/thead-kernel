@@ -39,7 +39,7 @@ jobs:
               sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
                                   libncurses-dev gawk flex bison openssl libssl-dev tree \
                                   dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler \
-                                  devscripts
+                                  devscripts pahole
 
       - name: Checkout kernel
         uses: actions/checkout@v4
