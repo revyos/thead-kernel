@@ -55,10 +55,13 @@ dtb-$(CONFIG_SOC_THEAD_FIRE) += fire-emu.dtb fire-emu-crash.dtb
 dtb-$(CONFIG_SOC_THEAD_FIRE) += fire-emu-soc-base.dtb fire-emu-soc-c910x4.dtb fire-emu-gpu-dpu-dsi0.dtb fire-emu-vi-dsp-vo.dtb fire-emu-vi-vp-vo.dtb
 dtb-$(CONFIG_SOC_THEAD_FIRE) += fire-emu-soc-base-sec.dtb
 
-dtb-$(CONFIG_SOC_THEAD) += light-lpi4a-laptop.dtb
-dtb-$(CONFIG_SOC_THEAD) += light-lpi4a-console.dtb light-lpi4a-console-16g.dtb
-dtb-$(CONFIG_SOC_THEAD) += light-lpi4a-z14inch-m0.dtb light-lpi4a-z14inch-m0-16g.dtb
-dtb-$(CONFIG_SOC_THEAD) += light-milkv-meles.dtb light-milkv-meles-4g.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-beagle.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-16gb.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-laptop.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-console.dtb th1520-lpi4a-console-16g.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-cluster.dtb th1520-lpi4a-cluster-16gb.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-z14inch-m0.dtb th1520-lpi4a-z14inch-m0-16g.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-milkv-meles.dtb th1520-milkv-meles-4g.dtb
 
 targets += dtbs dtbs_install
 targets += $(dtb-y)

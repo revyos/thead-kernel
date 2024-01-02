@@ -3,7 +3,7 @@
  * Copyright (C) 2023 Sipeed.
  */
 
-#include "light-lpi4a-laptop.dts"
+#include "th1520-lpi4a-laptop.dts"
 
 / {
         model = "T-HEAD Light Lichee Pi 4A configuration for Z14INCH-M0";
