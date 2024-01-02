@@ -3,7 +3,7 @@
  * Copyright (C) 2023 Sipeed.
  */
 
-#include "light-lpi4a-16gb.dts"
+#include "th1520-lpi4a-16gb.dts"
 
 / {
 	model = "T-HEAD Light Lichee Pi 4A configuration for 16GB DDR board on Cluster";

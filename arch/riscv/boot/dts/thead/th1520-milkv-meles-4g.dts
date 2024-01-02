@@ -3,7 +3,7 @@
  * Copyright (C) 2022 Alibaba Group Holding Limited.
  */
 
-#include "light-milkv-meles.dts"
+#include "th1520-milkv-meles.dts"
 
 / {
 	model = "Milk-V Meles 4G";

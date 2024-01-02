@@ -3,9 +3,12 @@
  * Copyright (C) 2022 Alibaba Group Holding Limited.
  */
 
-#include "light-lpi4a-console.dts"
+#include "th1520-lpi4a-product.dts"
 
 / {
+	model = "T-HEAD Light Lichee Pi 4A configuration for 16GB DDR board";
+	compatible = "thead,light-val", "thead,light-lpi4a", "thead,light";
+
 	memory@0 {
 		device_type = "memory";
 		reg = <0x0 0x200000 0x3 0xffe00000>;
