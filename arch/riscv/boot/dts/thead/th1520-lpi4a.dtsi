@@ -247,7 +247,7 @@
 		regulator-max-microvolt = <1200000>;
 		gpio = <&pcal6408ahk_d 2 1>;
 		enable-active-high;
-		regulator-always-on;
+
 	};
 
 	reg_usb_hub_vcc5v: regulator-hub-vcc5v-en {
@@ -257,7 +257,7 @@
 		regulator-max-microvolt = <5000000>;
 		gpio = <&pcal6408ahk_d 3 1>;
 		enable-active-high;
-		regulator-always-on;
+
 	};
 
 	wcn_wifi: wireless-wlan {
@@ -282,7 +282,7 @@
 
 	gpio-keys {
 		compatible = "gpio-keys";
-		pinctrl-0 = <&pinctrl_volume>;
+		pinctrl-0 = <&pinctrl_volume &pinctrl_sleep>;
 		pinctrl-names = "default";
 		key-volumedown {
 			label = "Volume Down Key";
@@ -295,6 +295,13 @@
 			linux,code = <KEY_VOLUMEUP>;
 			debounce-interval = <1>;
 			gpios = <&gpio2_porta 25 0x1>;
+		};
+        key-sleep {
+			label = "Sleep Wake Key";
+			wakeup-source;
+			linux,code = <KEY_SLEEP>;
+			debounce-interval = <1>;
+			gpios = <&ao_gpio_porta 2 0x1>;
 		};
 	};
 
@@ -382,7 +389,7 @@
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio1_porta 22 1>;
 			enable-active-high;
-			regulator-always-on;
+		
 		};
 
 
@@ -1181,6 +1188,11 @@
 			};
 			pinctrl_audiopa30: audiopa30 {
 				thead,pins = < FM_AUDIO_PA30 LIGHT_PIN_FUNC_0 0x000 >;
+			};
+            pinctrl_sleep: sleep_grp {
+				thead,pins = <
+                    FM_CPU_JTG_TCLK 0x3   0x238
+				>;
 			};
 
 	};
