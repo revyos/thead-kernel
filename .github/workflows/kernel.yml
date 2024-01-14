@@ -72,7 +72,8 @@ jobs:
                 # cross rebuild scripts TODO: rebuild deb instead of tar
                 mv .config ../
                 make O=../buildhost scripts
-                make KBUILD_SCRIPTROOT=../buildhost O=../buildtarget HOSTCC="${CROSS_COMPILE}gcc" modules_prepare || true
+                make KBUILD_SCRIPTROOT=../buildhost O=../buildtarget HOSTCC="${CROSS_COMPILE}gcc" scripts || true
+                make KBUILD_SCRIPTROOT=../buildhost O=../buildtarget HOSTCC="${CROSS_COMPILE}gcc" scripts/mod/modpost || true
                 find ../buildtarget/scripts -type f > ../scripts.rebuild
                 mkdir ../scripts
                 tar -c -f - -T ../scripts.rebuild |tar -xf - -C ../scripts
