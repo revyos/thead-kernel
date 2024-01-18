@@ -1625,6 +1625,21 @@
 	status = "okay";
 };
 
+&dpu_enc0 {
+	status = "okay";
+
+	ports {
+		/* output */
+		port@1 {
+			reg = <1>;
+
+			enc0_out: endpoint {
+				remote-endpoint = <&dsi0_in>;
+			};
+		};
+	};
+};
+
 &dpu_enc1 {
         ports {
                 /delete-node/ port@0;
