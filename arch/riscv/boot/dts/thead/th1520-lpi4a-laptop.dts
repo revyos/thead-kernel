@@ -168,9 +168,13 @@
 		interrupts = <3 0>;
 		irq-gpios = <&ao_gpio_porta 3 0>;
 		reset-gpios = <&pcal6408ahk_d 0 0>;
-		touchscreen-size-x = <1024>;
-		touchscreen-size-y = <600>;
-		tp-size = <9271>;
+		// read xmax & ymax from touch screen chip, thank ice
+		//touchscreen-size-x = <1024>;
+		//touchscreen-size-y = <600>;
+		//tp-size = <9271>;
+		/delete-property/ touchscreen-size-x;
+		/delete-property/ touchscreen-size-y;
+		/delete-property/ tp-size;
 		status = "okay";
 	};
 
