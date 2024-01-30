@@ -930,14 +930,36 @@ static void goodix_read_config(struct goodix_ts_data *ts)
 	int x_max, y_max;
 	int error;
 
-	error = goodix_i2c_read(ts->client, ts->chip->config_addr,
-				ts->config, ts->chip->config_len);
-	if (error) {
-		dev_warn(&ts->client->dev, "Error reading config: %d\n",
-			 error);
-		ts->int_trigger_type = GOODIX_INT_TRIGGER;
-		ts->max_touch_num = GOODIX_MAX_CONTACTS;
-		return;
+	#define GOODIX_RETRY 10
+	int chk_ok = 0;
+	int i;
+
+	for ( i = 0; i < GOODIX_RETRY; i++) {
+		msleep(1);
+		error = goodix_i2c_read(ts->client, ts->chip->config_addr,
+					ts->config, ts->chip->config_len);
+		if (error) {
+			dev_warn(&ts->client->dev, "Error reading config: %d\n",
+				 error);
+			ts->int_trigger_type = GOODIX_INT_TRIGGER;
+			ts->max_touch_num = GOODIX_MAX_CONTACTS;
+			continue;
+		}
+		x_max = get_unaligned_le16(&ts->config[RESOLUTION_LOC]);
+		y_max = get_unaligned_le16(&ts->config[RESOLUTION_LOC + 2]);
+		dev_warn(&ts->client->dev, "%d: goodix x max: %d\n", __LINE__, x_max);
+		dev_warn(&ts->client->dev, "%d: goodix y max: %d\n", __LINE__, y_max);
+		error = goodix_check_cfg(ts, ts->config, ts->chip->config_len);
+		if (error) {
+		  dev_warn(&ts->client->dev, "config checksum failed, retry: %d\n", i);
+			continue;
+		}
+
+		chk_ok = 1;
+		break;
+	}
+	if (chk_ok == 0) {
+		dev_warn(&ts->client->dev, "retry failed, your config may include bad value\n");
 	}
 
 	ts->int_trigger_type = ts->config[TRIGGER_LOC] & 0x03;
@@ -946,6 +968,8 @@ static void goodix_read_config(struct goodix_ts_data *ts)
 	x_max = get_unaligned_le16(&ts->config[RESOLUTION_LOC]);
 	y_max = get_unaligned_le16(&ts->config[RESOLUTION_LOC + 2]);
 	if (x_max && y_max) {
+	        dev_warn(&ts->client->dev, "%d: goodix x max: %d\n", __LINE__, x_max);
+		dev_warn(&ts->client->dev, "%d: goodix y max: %d\n", __LINE__, y_max);
 		input_abs_set_max(ts->input_dev, ABS_MT_POSITION_X, x_max - 1);
 		input_abs_set_max(ts->input_dev, ABS_MT_POSITION_Y, y_max - 1);
 	}
@@ -1071,6 +1095,8 @@ static int goodix_configure_dev(struct goodix_ts_data *ts)
 		ts->prop.max_x = GOODIX_MAX_WIDTH - 1;
 		ts->prop.max_y = GOODIX_MAX_HEIGHT - 1;
 		ts->max_touch_num = GOODIX_MAX_CONTACTS;
+		dev_warn(&ts->client->dev, "%d: goodix x max: %d\n", __LINE__, ts->prop.max_x);
+		dev_warn(&ts->client->dev, "%d: goodix y max: %d\n", __LINE__, ts->prop.max_y);
 		input_abs_set_max(ts->input_dev,
 				  ABS_MT_POSITION_X, ts->prop.max_x);
 		input_abs_set_max(ts->input_dev,
