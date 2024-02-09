@@ -1245,7 +1245,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c0>;
 
-	pcal6408ahk_b: gpio@20 {
+	pcal6408ahk_b: gpio@18 {
 		compatible = "nxp,pca9557";
 		reg = <0x18>;
 		gpio-controller;
@@ -1259,7 +1259,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 
-	pcal6408ahk_c: gpio@20 {
+	pcal6408ahk_c: gpio@18 {
 		compatible = "nxp,pca9557";
 		reg = <0x18>;
 		gpio-controller;
@@ -1280,7 +1280,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 
-	pcal6408ahk_d: gpio@20 {
+	pcal6408ahk_d: gpio@18 {
 		compatible = "nxp,pca9557";
 		reg = <0x18>;
 		gpio-controller;

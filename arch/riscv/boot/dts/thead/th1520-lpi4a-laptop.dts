@@ -85,6 +85,33 @@
 		regulator-always-on;
 	};
 
+	aon: aon {
+		soc_dvdd12_rgb {
+			/delete-property/ gpio;
+		};
+		soc_avdd25_ir {
+			/delete-property/ gpio;
+		};
+		soc_dovdd18_ir {
+			/delete-property/ gpio;
+		};
+		soc_dvdd12_ir {
+			/delete-property/ gpio;
+		};
+		soc_cam2_avdd25_ir {
+			/delete-property/ gpio;
+		};
+		soc_cam2_dovdd18_ir {
+			/delete-property/ gpio;
+		};
+		soc_avdd28_rgb {
+			/delete-property/ gpio;
+		};
+		soc_dovdd18_rgb {
+			/delete-property/ gpio;
+		};
+	};
+
 	charger: dc-charger {
 		compatible = "gpio-charger";
 		charger-type = "mains";
@@ -149,7 +176,7 @@
 };
 
 &i2c0 {
-	/delete-node/ pcal6408ahk_b;
+	/delete-node/ gpio@18;
 
 	cw2015: cw2015@62 {
 		compatible = "cellwise,cw2015";
