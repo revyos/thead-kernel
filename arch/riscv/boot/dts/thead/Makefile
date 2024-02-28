@@ -61,7 +61,7 @@ dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-laptop.dtb
 dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-console.dtb th1520-lpi4a-console-16g.dtb
 dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-cluster.dtb th1520-lpi4a-cluster-16gb.dtb
 dtb-$(CONFIG_SOC_THEAD) += th1520-lpi4a-z14inch-m0.dtb th1520-lpi4a-z14inch-m0-16g.dtb
-dtb-$(CONFIG_SOC_THEAD) += th1520-milkv-meles.dtb th1520-milkv-meles-4g.dtb
+dtb-$(CONFIG_SOC_THEAD) += th1520-milkv-meles.dtb th1520-milkv-meles-4g.dtb th1520-milkv-meles-dsi0.dtb
 
 # compat old name
 dtb-$(CONFIG_SOC_THEAD) += light-lpi4a.dtb light-lpi4a-16gb.dtb

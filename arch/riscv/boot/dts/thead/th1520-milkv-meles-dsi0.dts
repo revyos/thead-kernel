@@ -1,0 +1,133 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2021-2022 Alibaba Group Holding Limited.
+ */
+
+/dts-v1/;
+
+#include "th1520-milkv-meles.dts"
+
+/ {
+	model = "Milk-V Meles";
+	compatible = "milkv,meles", "thead,light";
+
+	lcd0_backlight: pwm-backlight@0 {
+		status = "okay";
+		compatible = "pwm-backlight";
+		pwms = <&pwm 5 25000>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <7>;
+	};
+
+	vcc_lcd_mipi0: vcc-lcd-mipi0 {
+		status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_lcd_mipi0";
+		gpio = <&gpio1_porta 25 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+};
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	touch@14 {
+		#gpio-cells = <2>;
+		compatible = "goodix,gt9271";
+		reg = <0x14>;
+		interrupt-parent = <&gpio2_porta>;
+		interrupts = <20 0>;
+		irq-gpios = <&gpio2_porta 20 0>;
+		reset-gpios = <&gpio2_porta 18 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_touch_gpios>;
+	};
+};
+
+&padctrl0_apsys {
+	light-evb-padctrl0 {
+		pinctrl_dsi0_panel_gpio: dsi0-panel-gpio-group {
+			thead,pins = <
+				FM_GPIO2_21	0x0	0x238
+			>;
+		};
+
+		pinctrl_touch_gpios: touch-gpios-group {
+			thead,pins = <
+				FM_GPIO2_18	0x0	0x238
+				FM_GPIO2_20	0x0	0x208
+			>;
+		};
+	};
+};
+
+&pwm {
+	status = "okay";
+};
+
+&dpu_enc0 {
+	status = "okay";
+
+	ports {
+		/* output */
+		port@1 {
+			reg = <1>;
+
+			enc0_out: endpoint {
+				remote-endpoint = <&dsi0_in>;
+			};
+		};
+	};
+};
+
+/delete-node/ &disp1_out;
+
+/delete-node/ &hdmi_tx;
+
+&dsi0 {
+        status = "okay";
+};
+
+&dhost_0 {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			dsi0_in: endpoint {
+				remote-endpoint = <&enc0_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+
+			dsi0_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+
+	panel@0 {
+		compatible = "radxa,display-10fhd-ad003";
+		reg = <0>;
+		backlight = <&lcd0_backlight>;
+		vdd-supply = <&vcc_lcd_mipi0>;
+		vccio-supply = <&vdd_1v8>;
+		reset-gpios = <&gpio2_porta 21 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_dsi0_panel_gpio>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&dsi0_out>;
+			};
+		};
+	};
+};
