@@ -265,6 +265,16 @@
 		status = "okay";
 	};
 
+	usb_vbus_en: regulator-usb-vbus-en {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_vbus_en";
+		gpio = <&gpio0_porta 27 0>;	/* GPIO_ACTIVE_HIGH: 0 */
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+		status = "okay";
+	};
+
 	/* Select USB3.0 Type-A port */
 	usb_select: regulator-usb-select {
 		compatible = "regulator-fixed";
