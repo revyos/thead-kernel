@@ -136,7 +136,8 @@ pvrsrvkm-y += \
  dma_support.o \
  vmm_type_stub.o \
  sysconfig.o \
- thead_sys.o
+ thead_sys.o \
+ pvr_dvfs_device.o
 pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_DEBUG) += \
  client_ri_direct_bridge.o \
  server_ri_bridge.o \

@@ -43,6 +43,7 @@ override SUPPORT_DI_BRG_IMPL := 1
 override SUPPORT_NATIVE_FENCE_SYNC := 1
 override SUPPORT_DMA_FENCE := 1
 override SUPPORT_BUFFER_SYNC := 1
+override SUPPORT_LINUX_DVFS := 1
 ifeq ($(CONFIG_DRM_POWERVR_ROGUE_DEBUG),y)
 override BUILD := debug
 override PVRSRV_ENABLE_GPU_MEMORY_INFO := 1
