@@ -740,6 +740,10 @@ int vha_dbg_create_hwbufs(struct vha_session *session)
 					dev_warn(vha->dev,
 							"%s: failed to create buffer_dump!\n",
 							__func__);
+
+			debugfs_create_u64("sess_kicks", S_IRUGO, session->dbgfs, &session->kicks);
+			debugfs_create_u64("sess_polled", S_IRUGO, session->dbgfs, &session->polled);
+			debugfs_create_u64("sess_responsed", S_IRUGO, session->dbgfs, &session->responsed);
 		}
 	}
 
@@ -1778,11 +1782,14 @@ void vha_dbg_init(struct vha_dev *vha)
 #ifndef CONFIG_HW_MULTICORE
 	VHA_DBGFS_CREATE_RO(u64, "core_last_proc_us", stats.last_proc_us, debugfs_dir);
 #endif
-	VHA_DBGFS_CREATE_RO(u32, "cnn_kicks", stats.cnn_kicks, debugfs_dir);
-	VHA_DBGFS_CREATE_RO(u32, "cnn_kicks_queued", stats.cnn_kicks_queued, debugfs_dir);
-	VHA_DBGFS_CREATE_RO(u32, "cnn_kicks_completed", stats.cnn_kicks_completed, debugfs_dir);
-	VHA_DBGFS_CREATE_RO(u32, "cnn_kicks_cancelled", stats.cnn_kicks_cancelled, debugfs_dir);
-	VHA_DBGFS_CREATE_RO(u32, "cnn_kicks_aborted", stats.cnn_kicks_aborted, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_add_cmds", stats.cnn_add_cmds, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_kicks", stats.cnn_kicks, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_polled", stats.cnn_polled, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_responsed", stats.cnn_responsed, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_kicks_queued", stats.cnn_kicks_queued, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_kicks_completed", stats.cnn_kicks_completed, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_kicks_cancelled", stats.cnn_kicks_cancelled, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "cnn_kicks_aborted", stats.cnn_kicks_aborted, debugfs_dir);
 	VHA_DBGFS_CREATE_RO(u64, "cnn_total_proc_us", stats.cnn_total_proc_us, debugfs_dir);
 	VHA_DBGFS_CREATE_RO(u64, "cnn_last_proc_us", stats.cnn_last_proc_us, debugfs_dir);
 	VHA_DBGFS_CREATE_RO(u64, "cnn_avg_proc_us", stats.cnn_avg_proc_us, debugfs_dir);
@@ -1797,7 +1804,7 @@ void vha_dbg_init(struct vha_dev *vha)
 
 	VHA_DBGFS_CREATE_RO(u32, "mem_usage_last", stats.mem_usage_last, debugfs_dir);
 	VHA_DBGFS_CREATE_RO(u32, "mmu_usage_last", stats.mmu_usage_last, debugfs_dir);
-	VHA_DBGFS_CREATE_RO(u32, "total_failures", stats.total_failures, debugfs_dir);
+	VHA_DBGFS_CREATE_RO(u64, "total_failures", stats.total_failures, debugfs_dir);
 
 	if (vha->hw_props.supported.rtm) {
 		CTX_DBGFS_CREATE_RW(u64, "rtm_ctrl", rtm_ctrl, debugfs_dir);

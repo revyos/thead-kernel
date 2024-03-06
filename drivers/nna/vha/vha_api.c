@@ -89,14 +89,14 @@ static ssize_t vha_read(struct file *file, char __user *buf,
 		mutex_unlock(&vha->lock);
 
 		if (file->f_flags & O_NONBLOCK) {
-			dev_dbg(miscdev->this_device,
+			dev_err(miscdev->this_device,
 				"%s: returning, no block!\n", __func__);
 			return -EAGAIN;
 		}
 		dev_dbg(miscdev->this_device, "%s: going to sleep\n", __func__);
 		if (wait_event_interruptible(session->wq,
 						!list_empty(&session->rsps))) {
-			dev_dbg(miscdev->this_device, "%s: signal\n", __func__);
+			dev_err(miscdev->this_device, "%s: signal\n", __func__);
 			return -ERESTARTSYS;
 		}
 
@@ -109,6 +109,7 @@ static ssize_t vha_read(struct file *file, char __user *buf,
 
 	if (list_empty(&session->rsps)) {
 		ret = 0;
+		dev_err(miscdev->this_device, "%s: empty rsps!\n", __func__);
 		goto out_unlock;
 	}
 
@@ -125,10 +126,15 @@ static ssize_t vha_read(struct file *file, char __user *buf,
 	ret = copy_to_user(buf, &rsp->user_rsp, rsp->size);
 	if (ret) {
 		ret = -EFAULT;
+		dev_err(miscdev->this_device, "%s: copy to user failed!\n", __func__);
 		goto out_unlock;
 	}
 
 	list_del(&rsp->list);
+
+	vha->stats.cnn_responsed++;
+	session->responsed++;
+
 	mutex_unlock(&vha->lock);
 	ret = rsp->size;
 
@@ -200,6 +206,9 @@ static unsigned int vha_poll(struct file *file, poll_table *wait)
 		/* if no response item available just return 0 */
 	}
 
+	vha->stats.cnn_polled++;
+	session->polled++;
+
 	mutex_unlock(&vha->lock);
 	return mask;
 }
@@ -250,8 +259,10 @@ static ssize_t vha_write(struct file *file, const char __user *buf,
 	}
 
 	cmd = kzalloc(sizeof(*cmd) - sizeof(cmd->user_cmd) + size, GFP_KERNEL);
-	if (!cmd)
+	if (!cmd) {
+		dev_err(miscdev->this_device, "%s: kzalloc failed!\n", __func__);
 		return -ENOMEM;
+	}
 
 	cmd->size = size;
 	cmd->session = session;
@@ -266,9 +277,14 @@ static ssize_t vha_write(struct file *file, const char __user *buf,
 	}
 
 	ret = mutex_lock_interruptible(&vha->lock);
-	if (ret)
+	if (ret) {
+		dev_err(miscdev->this_device, "%s: mutex lock failed <0x%x>!\n",
+										__func__, ret);
 		goto out_free_item;
+	}
 
+	vha->stats.cnn_add_cmds++;
+	session->kicks++;
 	ret = vha_add_cmd(session, cmd);
 	mutex_unlock(&vha->lock);
 	if (ret)
