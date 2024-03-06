@@ -655,6 +655,9 @@ struct hantrovcmd_dev
     struct clk *pclk;
     char config_buf[VC8000E_MAX_CONFIG_LEN];
     int has_power_domains;
+    bi_list_node* last_linked_cmdbuf_node;
+    bi_list_node* suspend_running_cmdbuf_node;
+    bool suspend_entered;
 } ;
 
 /*
@@ -1752,6 +1755,7 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
   last_cmdbuf_node = find_last_linked_cmdbuf(new_cmdbuf_node);
   record_last_cmdbuf_rdy_num=dev->sw_cmdbuf_rdy_num;
   vcmd_link_cmdbuf(dev,last_cmdbuf_node);
+  dev->last_linked_cmdbuf_node = new_cmdbuf_node;  //record for resume when pm work
   if(dev->working_state==WORKING_STATE_IDLE)
   {
     //run
@@ -2610,12 +2614,63 @@ static int hantrovcmd_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
+static bool hantroenc_cmdbuf_range(size_t addr, size_t size);
+
+static int mmap_cmdbuf_mem(struct file *file, struct vm_area_struct *vma)
+{
+    size_t size = vma->vm_end - vma->vm_start;
+    phys_addr_t offset = (phys_addr_t)vma->vm_pgoff << PAGE_SHIFT;
+
+    /* Does it even fit in phys_addr_t? */
+    if (offset >> PAGE_SHIFT != vma->vm_pgoff)
+        return -EINVAL;
+
+    /* It's illegal to wrap around the end of the physical address space. */
+    if (offset + (phys_addr_t)size - 1 < offset)
+        return -EINVAL;
+
+
+    vma->vm_page_prot = phys_mem_access_prot(file, vma->vm_pgoff,
+                        size,
+                        vma->vm_page_prot);
+
+    /* Remap-pfn-range will mark the range VM_IO */
+    if (remap_pfn_range(vma,
+                        vma->vm_start,
+                        vma->vm_pgoff,
+                        size,
+                        vma->vm_page_prot))
+    {
+        return -EAGAIN;
+    }
+
+    return 0;
+}
+
+static int mmap_mem(struct file *file, struct vm_area_struct *vma)
+{
+    size_t size = vma->vm_end - vma->vm_start;
+    phys_addr_t offset = (phys_addr_t)vma->vm_pgoff << PAGE_SHIFT;
+
+    if (hantroenc_cmdbuf_range(offset, size))
+    {
+        return mmap_cmdbuf_mem(file, vma);
+    }
+    else
+    {
+        return -EINVAL;
+        /*TODO: need check if not need enc,in this condition*/
+        //return allocator_mmap(file,vma);
+    }
+}
+
 /* VFS methods */
 static struct file_operations hantrovcmd_fops = {
     .owner= THIS_MODULE,
     .open = hantrovcmd_open,
     .release = hantrovcmd_release,
     .unlocked_ioctl = hantrovcmd_ioctl,
+    .mmap = mmap_mem,
     .fasync = NULL,
 };
 
@@ -3591,6 +3646,110 @@ static int encoder_runtime_resume(struct device *dev)
 	return 0;
 }
 
+void encoder_vcmd_suspend_record(void)
+{
+    if (!hantrovcmd_data) {
+      return;
+    }
+    int i;
+    struct hantrovcmd_dev* dev = NULL;
+    unsigned long flags;
+    struct cmdbuf_obj* cmdbuf_obj;
+    int timeout = 100;
+    for(i=0;i<total_vcmd_core_num;i++) {
+        dev = &hantrovcmd_data[i];
+        if(!dev)
+        {
+          pr_info("%s: get core %d vcmd data null\n",__func__,i);
+          continue;
+        }
+
+        //when suspend working state is WORKING,record to suspend_running_cmdbuf_node for resume use
+        if (dev->working_state == WORKING_STATE_WORKING )
+          dev->suspend_running_cmdbuf_node = dev->last_linked_cmdbuf_node;
+        else
+          dev->suspend_running_cmdbuf_node = NULL;
+
+        dev->suspend_entered = true;
+        if(dev->last_linked_cmdbuf_node)
+        {
+          cmdbuf_obj = (struct cmdbuf_obj*)(dev->last_linked_cmdbuf_node->data);
+          while(timeout--){
+            if(cmdbuf_obj->cmdbuf_run_done)
+              break;
+            udelay(1000);
+          }
+        }
+        pr_info("%s:  core %d working state %s ,node %px \n",__func__,i,
+          dev->working_state == WORKING_STATE_WORKING ? "working":"idle",
+          dev->suspend_running_cmdbuf_node);
+    }
+}
+
+int encoder_vcmd_resume_start(void)
+{
+    if (!hantrovcmd_data) {
+      return 0;
+    }
+    int i;
+    struct hantrovcmd_dev* dev = NULL;
+    bi_list_node* last_cmdbuf_node;
+    int ret;
+    for(i=0;i<total_vcmd_core_num;i++) {
+        dev = &hantrovcmd_data[i];
+        if(!dev)
+        {
+          pr_info("%s: get core %d vcmd data null\n",__func__,i);
+          continue;
+        }
+        //when suspend working state is WORKING, reset to IDLE as well,we will start new
+        dev->working_state = WORKING_STATE_IDLE;
+        last_cmdbuf_node = dev->suspend_running_cmdbuf_node;
+        if(last_cmdbuf_node)
+        {
+          //run
+          while (last_cmdbuf_node &&
+                ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_run_done)
+            last_cmdbuf_node = last_cmdbuf_node->next;
+
+          if (last_cmdbuf_node && last_cmdbuf_node->data) {
+            pr_info("vcmd start for cmdbuf id %d, cmdbuf_run_done = %d\n",
+                  ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_id,
+                  ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_run_done);
+            ret = pm_runtime_resume_and_get(&hantrovcmd_data[0].pdev->dev);
+            if(ret < 0)
+              return ret;
+            vcmd_start(dev,last_cmdbuf_node);
+          }
+
+        }
+        dev->suspend_entered = false;
+        dev->suspend_running_cmdbuf_node = NULL;
+    }
+  return 0;
+}
+
+static int encoder_suspend(struct device *dev)
+{
+	pr_info("%s, %d: enter\n", __func__, __LINE__);
+	encoder_vcmd_suspend_record();
+	/*pm_runtime_force_suspend will check current clk state*/
+	return pm_runtime_force_suspend(dev);
+
+}
+
+static int encoder_resume(struct device *dev)
+{
+	int ret;
+	ret = pm_runtime_force_resume(dev);
+	if (ret < 0)
+		return ret;
+	ret = encoder_vcmd_resume_start();
+	pr_info("%s, %d: exit resume\n", __func__, __LINE__);
+
+	return ret;
+}
+
 int hantroenc_vcmd_probe(struct platform_device *pdev)
 {
   int i,k;
@@ -3924,6 +4083,7 @@ static int hantroenc_vcmd_remove(struct platform_device *pdev)
 
 
 static const struct dev_pm_ops encoder_runtime_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(encoder_suspend, encoder_resume)
 	SET_RUNTIME_PM_OPS(encoder_runtime_suspend, encoder_runtime_resume, NULL)
 };
 
@@ -4617,4 +4777,18 @@ static void vcmd_reset(void)
     }
     vcmd_reset_asic(hantrovcmd_data);
   }
+}
+
+static bool hantroenc_cmdbuf_range(size_t addr, size_t size)
+{
+    bool bInRange;
+
+    bInRange = (addr >= vcmd_buf_mem_pool.busAddress &&
+                (addr - vcmd_buf_mem_pool.busAddress  + size) <= CMDBUF_POOL_TOTAL_SIZE) ||
+               (addr >= vcmd_status_buf_mem_pool.busAddress &&
+                (addr - vcmd_status_buf_mem_pool.busAddress  + size) <= CMDBUF_POOL_TOTAL_SIZE) ||
+               (addr >= vcmd_registers_mem_pool.busAddress &&
+                (addr - vcmd_status_buf_mem_pool.busAddress + size) <= CMDBUF_VCMD_REGISTER_TOTAL_SIZE);
+
+    return bInRange;
 }
