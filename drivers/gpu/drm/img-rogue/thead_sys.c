@@ -62,7 +62,8 @@ int thead_mfg_enable(struct gpu_plat_if *mfg)
     int ret;
     int val;
 	ret = pm_runtime_get_sync(mfg->dev);
-	if (ret)
+	/* don't check ret > 0 here for pm status maybe ACTIVE */
+	if (ret < 0)
 		return ret;
 
 	thead_debug("23thead_mfg_enable aclk\n");
@@ -82,6 +83,19 @@ int thead_mfg_enable(struct gpu_plat_if *mfg)
 		}
 	}
 
+	regmap_read(mfg->vosys_regmap, 0x0, &val);
+	if (val)
+	{
+		regmap_update_bits(mfg->vosys_regmap, 0x0, 3, 0);
+		regmap_read(mfg->vosys_regmap, 0x0, &val);
+		if (val) {
+			pr_info("[GPU_RST]" "val is %x\r\n", val);
+			clk_disable_unprepare(mfg->gpu_cclk);
+			clk_disable_unprepare(mfg->gpu_aclk);
+			goto err_pm_runtime_put;
+		}
+		udelay(1);
+	}
     /* rst gpu clkgen */
     regmap_update_bits(mfg->vosys_regmap, 0x0, 2, 2);
     regmap_read(mfg->vosys_regmap, 0x0, &val);
@@ -148,7 +162,7 @@ struct gpu_plat_if *dt_hw_init(struct device *dev)
 	}
 
     mfg->gpu_aclk = devm_clk_get(dev, "aclk");
-	if (IS_ERR(mfg->gpu_cclk)) {
+	if (IS_ERR(mfg->gpu_aclk)) {
 		dev_err(dev, "devm_clk_get aclk failed !!!\n");
 	    pm_runtime_disable(dev);
 		return ERR_PTR(PTR_ERR(mfg->gpu_aclk));

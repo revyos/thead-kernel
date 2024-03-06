@@ -41,6 +41,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#include <linux/clk.h>
 #include <linux/interrupt.h>
 #include "interrupt_support.h"
 #include "pvrsrv_device.h"
@@ -81,6 +82,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define UMA_HEAP_USAGE_FLAG PHYS_HEAP_USAGE_GPU_LOCAL
 
 #define UMA_DEFAULT_HEAP PVRSRV_PHYS_HEAP_GPU_LOCAL
+
+#if defined(SUPPORT_LINUX_DVFS)
+static struct clk *thead_gpu_core_clk = NULL;
+
+static void SetFrequency(IMG_UINT32 ui32Frequency)
+{
+	if (!thead_gpu_core_clk)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "thead_gpu_core_clk is NULL"));
+		return;
+	}
+	clk_set_rate(thead_gpu_core_clk, ui32Frequency);
+}
+
+static void SetVoltage(IMG_UINT32 ui32Voltage)
+{
+	
+}
+#endif
 
 /*
 	CPU to Device physical address translation
@@ -363,6 +383,17 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 
 	psDevConfig->hDevData               = psRGXData;
     psDevConfig->hSysData               = mfg;
+
+#if defined(SUPPORT_LINUX_DVFS)
+	thead_gpu_core_clk = mfg->gpu_cclk;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pasOPPTable = NULL;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.bIdleReq = IMG_TRUE;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pfnSetFrequency = SetFrequency;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.pfnSetVoltage = SetVoltage;
+	psDevConfig->sDVFS.sDVFSDeviceCfg.ui32PollMs = 50;
+	psDevConfig->sDVFS.sDVFSGovernorCfg.ui32UpThreshold = 50;
+	psDevConfig->sDVFS.sDVFSGovernorCfg.ui32DownDifferential = 10;
+#endif
 
 	/* Setup other system specific stuff */
 #if defined(SUPPORT_ION)

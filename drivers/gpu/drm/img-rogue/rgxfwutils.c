@@ -4937,7 +4937,7 @@ PVRSRV_ERROR RGXPollForGPCommandCompletion(PVRSRV_DEVICE_NODE  *psDevNode,
 
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed! Error(%s) CPU linear address(%p) Expected value(%u)",
+		PVR_DPF((PVR_DBG_WARNING, "%s: Failed! Error(%s) CPU linear address(%p) Expected value(%u)",
 		                        __func__, PVRSRVGetErrorString(eError),
 								pui32LinMemAddr, ui32Value));
 	}

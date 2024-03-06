@@ -1398,7 +1398,7 @@ _RGXActivePowerRequest_PowerLock_failed:
 	RGXForcedIdleRequest
 */
 
-#define RGX_FORCED_IDLE_RETRY_COUNT 10
+#define RGX_FORCED_IDLE_RETRY_COUNT 20
 
 PVRSRV_ERROR RGXForcedIdleRequest(IMG_HANDLE hDevHandle, IMG_BOOL bDeviceOffPermitted)
 {
