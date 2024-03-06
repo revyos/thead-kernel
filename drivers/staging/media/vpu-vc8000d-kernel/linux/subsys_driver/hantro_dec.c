@@ -1875,6 +1875,7 @@ static int hantrodec_release(struct inode *inode, struct file *filp) {
 
   if (vcmd) {
     hantrovcmd_release(inode, filp);
+    MMURelease(filp, hantrodec_data.hwregs[0][HW_MMU]);
     allocator_release(inode, filp);
     return 0;
   }
