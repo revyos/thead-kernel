@@ -572,6 +572,7 @@ struct vha_dev {
 	void __iomem              *reg_base;
 	uint64_t                   reg_size;
 	void                      *plat_data;
+	void 					  *devfreq_data;
 
 	struct miscdevice          miscdev;	/* UM interface */
 	void                      *dbgfs_ctx;
@@ -962,6 +963,21 @@ static inline void *vha_get_plat_data(struct device *dev)
 		return vha->plat_data;
 	return NULL;
 }
+
+static inline void *vha_devfreq_get_drvdata(struct device* dev) 
+{
+	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+	if (vha)
+		return vha->devfreq_data;
+	return NULL;
+}
+
+static inline void vha_dev_add_devfreq(struct device *dev, void *vha_devfreq)
+{
+	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+	vha->devfreq_data = vha_devfreq;
+}
+
 int vha_api_add_dev(struct device *dev, struct vha_dev *vha, unsigned int id);
 int vha_api_rm_dev(struct device *dev, struct vha_dev *vha);
 
@@ -1068,6 +1084,14 @@ void vha_pdump_ldb_buf(struct vha_session *session, uint32_t pdump_num,
 		struct vha_buffer *buffer, uint32_t offset, uint32_t len, bool cache);
 void vha_pdump_sab_buf(struct vha_session *session, uint32_t pdump_num,
 		struct vha_buffer *buffer, uint32_t offset, uint32_t len);
+
+/* devfreq support */
+int vha_devfreq_init(struct device *dev);
+void vha_devfreq_term(struct device *dev);
+int vha_devfreq_suspend(struct device *dev);
+int vha_devfreq_resume(struct device *dev);
+int vha_get_cnntotal_proc_us(struct device *dev, uint64_t *proc_us, uint64_t *cur_proc_us);
+int vha_currcmd_exetime_req(struct vha_dev *vha, uint64_t *proc_us);
 
 /*
  * register event observers, notified when significant events occur

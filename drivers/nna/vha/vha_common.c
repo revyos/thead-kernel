@@ -1207,6 +1207,14 @@ int vha_add_dev(struct device *dev,
 				__func__);
 		goto out_alloc_common;
 	}
+
+#ifdef CONFIG_PM_DEVFREQ
+	ret = vha_devfreq_init(vha->dev);
+	if (ret) {
+		dev_err(vha->dev, "failed to add vha dev to devfreq!\n");
+	}
+#endif
+
 	pm_runtime_put_sync_autosuspend(vha->dev);
 
 	/* Add device to driver context */
@@ -1321,6 +1329,11 @@ void vha_rm_dev(struct device *dev)
 		pm_runtime_put_sync_suspend(vha->dev);
 	pm_runtime_dont_use_autosuspend(vha->dev);
 	pm_runtime_disable(vha->dev);
+
+#ifdef CONFIG_PM_DEVFREQ
+	vha_devfreq_term(dev);
+#endif
+
 	vha_free_common(vha);
 #ifdef CONFIG_HW_MULTICORE
 	vha_dev_scheduler_deinit(vha);
@@ -2482,6 +2495,13 @@ int vha_suspend_dev(struct device *dev)
 	struct vha_dev *vha = vha_dev_get_drvdata(dev);
 	int ret;
 	mutex_lock(&vha->lock);
+
+#ifdef CONFIG_PM_DEVFREQ
+	ret = vha_devfreq_suspend(dev);
+	if (ret)
+		dev_err(dev, "%s: Failed to suspend the vha devfreq!\n", __func__);
+#endif
+
 	dev_dbg(dev, "%s: taking a nap!\n", __func__);
 
 	ret = vha_dev_suspend_work(vha);
@@ -2494,11 +2514,18 @@ int vha_suspend_dev(struct device *dev)
 int vha_resume_dev(struct device *dev)
 {
 	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+	int ret;
 
 	mutex_lock(&vha->lock);
 	dev_dbg(dev, "%s: waking up!\n", __func__);
 	/* Call the worker */
 	vha_chk_cmd_queues(vha, true);
+
+#ifdef CONFIG_PM_DEVFREQ
+	ret = vha_devfreq_resume(dev);
+	if (ret)
+		dev_err(dev, "%s: Failed to resume the vha devfreq!\n", __func__);
+#endif
 
 	mutex_unlock(&vha->lock);
 
@@ -2535,6 +2562,20 @@ void vha_dump_digest(struct vha_session *session, struct vha_buffer *buf,
 		buf->kptr = NULL;
 	}
 }
+
+int vha_get_cnntotal_proc_us(struct device *dev, uint64_t *proc_us, uint64_t *cur_proc_us)
+{
+	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+	if (!vha)
+		return -EFAULT;
+
+	*proc_us = vha->stats.cnn_total_proc_us;
+
+	vha_currcmd_exetime_req(vha, cur_proc_us);
+	
+	return 0;
+}
+
 
 /*
  * register event observers.
