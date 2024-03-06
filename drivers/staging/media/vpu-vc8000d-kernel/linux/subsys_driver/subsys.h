@@ -180,6 +180,7 @@ long MMUIoctl(unsigned int cmd, void *filp, unsigned long arg,
               volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2]);
 
 void MMURestore(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2]);
+bool MMU_CheckPowerStayOn(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2]);
 
 int allocator_init(struct device *dev);
 void allocator_remove(void);

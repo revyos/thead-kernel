@@ -90,6 +90,17 @@
 #include <linux/debugfs.h>
 #include "kernel_allocator.h"
 
+//vpu devfreq
+#include <linux/devfreq.h>
+#include <linux/of_device.h>
+#include <linux/pm_opp.h>
+
+#include <linux/devfreq-event.h>
+#include <linux/export.h>
+
+#include <linux/regulator/consumer.h>
+#include "dec_devfreq.h"
+
 #undef PDEBUG
 #ifdef HANTRODEC_DEBUG
 #  ifdef __KERNEL__
@@ -100,6 +111,7 @@
 #else
 #  define PDEBUG(fmt, args...)
 #endif
+int debug_pr_devfreq_info = 0;
 
 #define PCI_VENDOR_ID_HANTRO            0x10ee// 0x1ae0//0x16c3
 #define PCI_DEVICE_ID_HANTRO_PCI        0x8014//0x001a// 0xabcd
@@ -309,6 +321,7 @@ typedef struct {
   struct clk *pclk;
   char config_buf[VC8000D_MAX_CONFIG_LEN];
   int has_power_domains;
+  struct decoder_devfreq devfreq;
 } hantrodec_t;
 
 typedef struct {
@@ -1347,7 +1360,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
 #ifdef CLK_CFG
   unsigned long flags;
 #endif
-
+  long ret;
 #ifdef HW_PERFORMANCE
   struct timeval *end_time_arg;
 #endif
@@ -1415,7 +1428,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     if(id >= hantrodec_data.cores) {
       return -EFAULT;
     }
+    decoder_dev_clk_lock();
     disable_irq(hantrodec_data.irq[id]);
+    decoder_dev_clk_unlock();
     break;
   }
   case HANTRODEC_IOC_STI: {
@@ -1425,7 +1440,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     if(id >= hantrodec_data.cores) {
       return -EFAULT;
     }
+    decoder_dev_clk_lock();
     enable_irq(hantrodec_data.irq[id]);
+    decoder_dev_clk_unlock();
     break;
   }
   case HANTRODEC_IOCGHWOFFSET: {
@@ -1441,19 +1458,17 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
   }
   case HANTRODEC_IOCGHWIOSIZE: {
     struct regsize_desc core;
-    pm_runtime_resume_and_get(&hantrodec_data.pdev->dev);
+
     /* get registers from user space*/
     tmp = copy_from_user(&core, (void*)arg, sizeof(struct regsize_desc));
     if (tmp) {
       PDEBUG("copy_from_user failed, returned %li\n", tmp);
-      pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-      pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
+
       return -EFAULT;
     }
 
     if(core.id >= MAX_SUBSYS_NUM /*hantrodec_data.cores*/) {
-      pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-      pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
+
       return -EFAULT;
     }
 
@@ -1461,7 +1476,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       u32 asic_id;
       /* Shaper is configured with l2cache. */
       if (vpu_subsys[core.id].submodule_hwregs[HW_L2CACHE]) {
+        decoder_dev_clk_lock();
         asic_id = ioread32((void*)vpu_subsys[core.id].submodule_hwregs[HW_L2CACHE]);
+        decoder_dev_clk_unlock();
         switch ((asic_id >> 16) & 0x3) {
         case 1: /* cache only */
           core.size = 0; break;
@@ -1470,8 +1487,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
           core.size = vpu_subsys[core.id].submodule_iosize[HW_L2CACHE];
           break;
         default:
-          pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-          pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
+
           return -EFAULT;
         }
       } else
@@ -1485,8 +1501,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       }
     }
     copy_to_user((u32 *) arg, &core, sizeof(struct regsize_desc));
-    pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-    pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
+
 
     return 0;
   }
@@ -1511,8 +1526,10 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       PDEBUG("copy_from_user failed, returned %li\n", tmp);
       return -EFAULT;
     }
-
-    return DecFlushRegs(&hantrodec_data, &core);
+    decoder_dev_clk_lock();
+    ret = DecFlushRegs(&hantrodec_data, &core);
+    decoder_dev_clk_unlock();
+    return ret;
   }
   case HANTRODEC_IOCS_DEC_WRITE_REG: {
     struct core_desc core;
@@ -1523,8 +1540,10 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       PDEBUG("copy_from_user failed, returned %li\n", tmp);
       return -EFAULT;
     }
-
-    return DecWriteRegs(&hantrodec_data, &core);
+    decoder_dev_clk_lock();
+    ret = DecWriteRegs(&hantrodec_data, &core);
+    decoder_dev_clk_unlock();
+    return ret;
   }
   case HANTRODEC_IOCS_DEC_WRITE_APBFILTER_REG: {
     struct core_desc core;
@@ -1566,7 +1585,10 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     }
 
 	printk("%s:return DecRefreshRegs!\n",__func__);
-    return DecRefreshRegs(&hantrodec_data, &core);
+    decoder_dev_clk_lock();
+    ret =  DecRefreshRegs(&hantrodec_data, &core);
+    decoder_dev_clk_unlock();
+    return ret;
   }
   case HANTRODEC_IOCS_DEC_READ_REG: {
     struct core_desc core;
@@ -1577,8 +1599,10 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       PDEBUG("copy_from_user failed, returned %li\n", tmp);
       return -EFAULT;
     }
-
-    return DecReadRegs(&hantrodec_data, &core);
+    decoder_dev_clk_lock();
+    ret =  DecReadRegs(&hantrodec_data, &core);
+    decoder_dev_clk_unlock();
+    return ret;
   }
   case HANTRODEC_IOCS_PP_PULL_REG: {
 #if 0
@@ -1600,7 +1624,10 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     u32 format = 0;
     __get_user(format, (unsigned long *)arg);
     PDEBUG("Reserve DEC core, format = %li\n", format);
-    return ReserveDecoder(&hantrodec_data, filp, format);
+    decoder_dev_clk_lock();
+    ret =  ReserveDecoder(&hantrodec_data, filp, format);
+    decoder_dev_clk_unlock();
+    return ret;
   }
   case HANTRODEC_IOCT_DEC_RELEASE: {
     u32 core = 0;
@@ -1611,9 +1638,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     }
 
     PDEBUG("Release DEC, core = %li\n", core);
-
+    decoder_dev_clk_lock();
     ReleaseDecoder(&hantrodec_data, core);
-
+    decoder_dev_clk_unlock();
     break;
   }
   case HANTRODEC_IOCQ_PP_RESERVE:
@@ -1689,6 +1716,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     }
 
     core.size = vpu_subsys[core.id].submodule_iosize[core.type];
+    decoder_dev_clk_lock();
     if (vpu_subsys[core.id].submodule_hwregs[core.type])
       core.asic_id = ioread32((void*)hantrodec_data.hwregs[core.id][core.type]);
     else if (core.type == HW_VC8000D &&
@@ -1696,6 +1724,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       core.asic_id = ioread32((void*)hantrodec_data.hwregs[core.id][HW_VC8000DJ]);
     } else
       core.asic_id = 0;
+    decoder_dev_clk_unlock();
     copy_to_user((u32 *) arg, &core, sizeof(struct core_param));
 
     return 0;
@@ -1717,6 +1746,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
     if (hantrodec_data.hwregs[id][HW_VC8000D] ||
         hantrodec_data.hwregs[id][HW_VC8000DJ]) {
       volatile u8 *hwregs;
+      decoder_dev_clk_lock();
       /* VC8000D first if it exists, otherwise VC8000DJ. */
       if (hantrodec_data.hwregs[id][HW_VC8000D])
         hwregs = hantrodec_data.hwregs[id][HW_VC8000D];
@@ -1734,9 +1764,12 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       hw_id = ioread32((void*)(hantrodec_data.hwregs[id][HW_BIGOCEAN]));
       if (IS_BIGOCEAN(hw_id >> 16))
         __put_user(hw_id, (u32 *) arg);
-      else
+      else {
+        decoder_dev_clk_unlock();
         return -EFAULT;
+      }
     }
+    decoder_dev_clk_unlock();
     return 0;
   }
   case HANTRODEC_DEBUG_STATUS: {
@@ -1757,7 +1790,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
   case HANTRODEC_IOX_SUBSYS: {
     struct subsys_desc subsys = {0};
     /* TODO(min): check all the subsys */
-    pm_runtime_resume_and_get(&hantrodec_data.pdev->dev);
+
     if (vcmd) {
       subsys.subsys_vcmd_num = 1;
       subsys.subsys_num = subsys.subsys_vcmd_num;
@@ -1766,12 +1799,12 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
       subsys.subsys_vcmd_num = 0;
     }
     copy_to_user((u32 *) arg, &subsys, sizeof(struct subsys_desc));
-    pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-    pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
     return 0;
   }
   case HANTRODEC_IOCX_POLL: {
+    decoder_dev_clk_lock();
     hantrodec_isr(0, &hantrodec_data);
+    decoder_dev_clk_unlock();
     return 0;
   }
   case HANTRODEC_IOC_APBFILTER_CONFIG: {
@@ -1826,10 +1859,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
          mmu_hwregs[i][0] = hantrodec_data.hwregs[i][HW_MMU];
          mmu_hwregs[i][1] = hantrodec_data.hwregs[i][HW_MMU_WR];
       }
-      pm_runtime_resume_and_get(&hantrodec_data.pdev->dev);
       long retval = MMUIoctl(cmd, filp, arg, mmu_hwregs);
-      pm_runtime_mark_last_busy(&hantrodec_data.pdev->dev);
-      pm_runtime_put_autosuspend(&hantrodec_data.pdev->dev);
       return retval;
     } else if (_IOC_TYPE(cmd) == HANTRO_VCMD_IOC_MAGIC) {
       return (hantrovcmd_ioctl(filp, cmd, arg));
@@ -2079,6 +2109,17 @@ static ssize_t decoder_config_write(struct file *filp,
 			pm_runtime_set_autosuspend_delay(&dev->pdev->dev, value);
 			pr_info("Set pm runtime auto suspend delay to %ldms\n", value);
 			break;
+		case 'p':
+			if (strncmp(&(dev->config_buf[0]),"pfreq-en",8) == 0)
+			{
+				debug_pr_devfreq_info = 1;
+			}
+			else if (strncmp(&(dev->config_buf[0]),"pfreq-dis",9) == 0)
+			{
+				debug_pr_devfreq_info = 0;
+			}
+			pr_info("cmd %s set debug_pr_devfreq_info %ld \n",&(dev->config_buf[0]),debug_pr_devfreq_info);
+			break;
 		default:
 			printk(KERN_WARNING "Unsupported config!\n");
 	}
@@ -2150,14 +2191,26 @@ static int decoder_runtime_suspend(struct device *dev)
 	clk_disable_unprepare(decdev->cclk);
 	clk_disable_unprepare(decdev->aclk);
 	clk_disable_unprepare(decdev->pclk);
-
+	//decoder_devfreq_set_rate(dev); //for the last set rate request,may not handled in cmd
+	decoder_devfreq_suspend(decoder_get_devfreq_priv_data());
 	return 0;
+}
+
+bool dec_power_domains_chk_stay_on = 0;
+static bool decoder_check_power_stay_on(struct device *dev,void* mmu_hwregs)
+{
+  /*check state of power if not powered off,we preferd MMU reg to check*/
+  if (hantrodec_data.hwregs[0][HW_MMU])
+    return MMU_CheckPowerStayOn(mmu_hwregs);
+  else
+    return 0;
 }
 
 static int decoder_runtime_resume(struct device *dev)
 {
 	hantrodec_t *decdev = &hantrodec_data;
 	int ret;
+	bool dec_power_domains_stay_on_flag = 0;
 
 	ret = clk_prepare_enable(decdev->cclk);
 	if (ret < 0) {
@@ -2188,21 +2241,33 @@ static int decoder_runtime_resume(struct device *dev)
 				mmu_hwregs[i][0] = hantrodec_data.hwregs[i][HW_MMU];
 				mmu_hwregs[i][1] = hantrodec_data.hwregs[i][HW_MMU_WR];
 			}
-			MMURestore(mmu_hwregs);
+			if(dec_power_domains_chk_stay_on) {
+				dec_power_domains_stay_on_flag = decoder_check_power_stay_on(dev,mmu_hwregs);
+			}
+			if(!dec_power_domains_stay_on_flag)
+				MMURestore(mmu_hwregs);
 		}
-		hantrovcmd_reset(false);
+		if(!dec_power_domains_stay_on_flag)
+		{
+			hantrovcmd_reset(false);
+		}
+		else
+			pr_info("%s, %d,hantrovcmd not need reset\n",__func__, __LINE__);
 	}
 
-	pr_debug("%s, %d: Enabled clock\n", __func__, __LINE__);
-
+	pr_debug("%s, %d: Enabled clock  %d\n", __func__, __LINE__);
+	decoder_devfreq_resume(decoder_get_devfreq_priv_data());
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int decoder_suspend(struct device *dev)
 {
-	pr_info("%s, %d: enter\n", __func__, __LINE__);
+	pr_info("%s, %d: enter state %d\n", __func__, __LINE__,pm_suspend_target_state);
 	hantrovcmd_suspend_record();
 	/*pm_runtime_force_suspend will check current clk state*/
+
+	pr_debug("  suspend pm_count %ld\n",atomic_read(&dev->power.usage_count));
 	return pm_runtime_force_suspend(dev);
 
 }
@@ -2210,15 +2275,347 @@ static int decoder_suspend(struct device *dev)
 static int decoder_resume(struct device *dev)
 {
 	int ret;
+	if(pm_suspend_target_state != PM_SUSPEND_MEM) /**power domains stays on if  is suspend to disk **/
+		dec_power_domains_chk_stay_on = 1;
+
 	ret = pm_runtime_force_resume(dev);
+
+	dec_power_domains_chk_stay_on = 0;
+
 	if (ret < 0)
 		return ret;
 
 	ret = hantrovcmd_resume_start();
 
-	pr_info("%s, %d: exit resume\n", __func__, __LINE__);
+	pr_info("%s, %d: exit resume pm_count %ld\n", __func__, __LINE__,atomic_read(&dev->power.usage_count));
 	return ret;
 }
+#endif
+
+/******************************************************************************\
+******************************* VPU Devfreq support START***********************
+\******************************************************************************/
+
+static void decoder_devfreq_update_utilization(struct decoder_devfreq *devfreq)
+{
+    ktime_t now, last;
+
+    now = ktime_get();
+    last = devfreq->time_last_update;
+
+    if (devfreq->busy_count > 0)
+      devfreq->busy_time += ktime_sub(now, last);
+    else
+    {
+      if(devfreq->busy_time > 0)  //if first time in not recorded busy time,ignore idle time.
+          devfreq->idle_time += ktime_sub(now, last);
+    }
+    devfreq->time_last_update = now;
+}
+
+static void decoder_devfreq_reset(struct decoder_devfreq *devfreq)
+{
+    devfreq->busy_time = 0;
+    devfreq->idle_time = 0;
+    devfreq->time_last_update = ktime_get();
+}
+
+void decoder_devfreq_record_busy(struct decoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+    int busy_count;
+    if (!devfreq)
+      return;
+    decoder_dev_clk_lock();
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    busy_count = devfreq->busy_count;
+    //pr_info("record_busy:busy_count = %d\n",busy_count);
+    if(devfreq->busy_count > 0)
+    { 
+        devfreq->busy_count++;
+        spin_unlock_irqrestore(&devfreq->lock, irqflags);
+        decoder_dev_clk_unlock();
+        return;
+    }
+
+    decoder_devfreq_update_utilization(devfreq);
+
+    devfreq->busy_count++;
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    if(!busy_count)
+        decoder_devfreq_set_rate(&hantrodec_data.pdev->dev);
+
+    decoder_dev_clk_unlock();
+}
+
+void decoder_devfreq_record_idle(struct decoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+
+    if (!devfreq)
+      return;
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    //pr_info("record_idle:busy_count = %d\n",devfreq->busy_count);
+    if(devfreq->busy_count > 1)
+    { 
+      devfreq->busy_count--;
+      spin_unlock_irqrestore(&devfreq->lock, irqflags);
+      return;
+    }
+
+    decoder_devfreq_update_utilization(devfreq);
+
+    WARN_ON(--devfreq->busy_count < 0);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+#ifdef DEV_FREQ_DEBUG    
+    unsigned long busy_time,idle_time;
+    busy_time = ktime_to_us(devfreq->busy_time);
+    idle_time = ktime_to_us(devfreq->idle_time);
+    pr_info("busy %lu idle %lu %lu %%  \n",
+        busy_time,idle_time,
+        busy_time / ( (idle_time+busy_time) / 100) );
+#endif
+}
+struct decoder_devfreq * decoder_get_devfreq_priv_data(void)
+{
+    return &hantrodec_data.devfreq;
+}
+/* only reset record time now */
+int decoder_devfreq_resume(struct decoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+
+    if (!devfreq->df)
+        return 0;
+
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    devfreq->busy_count = 0;//need reset avoid up
+    decoder_devfreq_reset(devfreq);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    return devfreq_resume_device(devfreq->df);
+}
+
+int decoder_devfreq_suspend(struct decoder_devfreq *devfreq)
+{
+    if (!devfreq->df)
+        return 0;
+    wake_up_all(&devfreq->target_freq_wait_queue);
+    return devfreq_suspend_device(devfreq->df);
+}
+
+void decoder_dev_clk_lock(void)
+{
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    if(!devfreq->df)
+       return;
+    mutex_lock(&devfreq->clk_mutex);
+}
+
+void decoder_dev_clk_unlock(void)
+{
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    if(!devfreq->df)
+       return;
+    mutex_unlock(&devfreq->clk_mutex);
+}
+
+unsigned int g_cur_devfreq = 594000000;
+bool hantrovcmd_devfreq_check_state(void);
+
+/* set rate need clk disabled,so carefully calling this function
+ * which will disabled clk
+*/
+int decoder_devfreq_set_rate(struct device * dev)
+{
+    int ret;
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    hantrodec_t *decdev = &hantrodec_data;
+    if (!devfreq->df)
+        return 0;
+    if(!devfreq->update_freq_flag)
+        return 0;
+    if(debug_pr_devfreq_info)
+        pr_info("start set rate %ldMHz \n",devfreq->next_target_freq/1000/1000);
+    if( !hantrovcmd_devfreq_check_state() ) {
+        pr_info("devfreq check state not ok\n");
+        return 0;
+    }
+    clk_disable_unprepare(decdev->cclk);
+    ret = dev_pm_opp_set_rate(dev, devfreq->next_target_freq);
+    if(ret) {
+        pr_err("set rate %ld MHz failed \n",devfreq->next_target_freq/1000/1000);
+    } else {
+        devfreq->cur_devfreq = devfreq->next_target_freq;
+    }
+    devfreq->update_freq_flag = false;
+    wake_up_all(&devfreq->target_freq_wait_queue);
+    ret = clk_prepare_enable(decdev->cclk);
+
+    if(debug_pr_devfreq_info)
+        pr_info("finished set rate \n");
+    if (ret < 0) {
+        dev_err(dev, "could not prepare or enable core clock\n");
+        return ret;
+    }
+    return 0;
+}
+
+static int decoder_devfreq_target(struct device * dev, unsigned long *freq, u32 flags)
+{
+    int ret;
+    struct dev_pm_opp *opp;
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    opp = devfreq_recommended_opp(dev, freq, flags);
+    if (IS_ERR(opp)) {
+        dev_info(dev, "Failed to find opp for %lu Hz\n", *freq);
+        return PTR_ERR(opp);
+    }
+    dev_pm_opp_put(opp);
+    
+    devfreq->next_target_freq = *freq;
+    if(*freq != devfreq->cur_devfreq)
+    {
+        devfreq->update_freq_flag = true;
+        if( !wait_event_timeout( devfreq->target_freq_wait_queue, (!devfreq->update_freq_flag),
+                msecs_to_jiffies(100) ) )
+        {
+            if(debug_pr_devfreq_info) //usually last req,but all vcmd done
+                dev_info(dev,"devfreq target freq set : wait queue timeout\n");
+        }
+    }
+     
+    return 0;
+}
+
+static int decoder_devfreq_get_status(struct device *dev, struct devfreq_dev_status *stat)
+{
+    unsigned long irqflags;
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    stat->current_frequency = devfreq->cur_devfreq;
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+
+    decoder_devfreq_update_utilization(devfreq);
+
+    stat->total_time = ktime_to_ns(ktime_add(devfreq->busy_time,
+                devfreq->idle_time));
+    stat->busy_time = ktime_to_ns(devfreq->busy_time);
+
+    decoder_devfreq_reset(devfreq);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    if(debug_pr_devfreq_info){
+        dev_info(dev, "busy %lu total %lu %lu %% freq %lu MHz\n",
+            stat->busy_time/1000, stat->total_time/1000,
+            stat->busy_time / (stat->total_time / 100),
+            stat->current_frequency / 1000 / 1000);
+    }
+    return 0;
+}
+
+static int decoder_devfreq_get_cur_freq(IN struct device *dev, OUT unsigned long *freq)
+{
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    *freq = devfreq->cur_devfreq;
+    return 0;
+}
+
+struct devfreq_simple_ondemand_data decoder_gov_data;
+
+static struct devfreq_dev_profile decoder_devfreq_gov_data =
+{
+    .polling_ms = 100,
+    .target = decoder_devfreq_target,
+    .get_dev_status = decoder_devfreq_get_status,
+    .get_cur_freq = decoder_devfreq_get_cur_freq,
+};
+
+void decoder_devfreq_fini(struct device *dev)
+{
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    if (devfreq->df) {
+        devm_devfreq_remove_device(dev, devfreq->df);
+        devfreq->df = NULL;
+    }
+
+    if (devfreq->opp_of_table_added) {
+        dev_pm_opp_of_remove_table(dev);
+        devfreq->opp_of_table_added = false;
+    }
+    if (devfreq->clkname_opp_table) {
+        dev_pm_opp_put_clkname(devfreq->clkname_opp_table);
+        devfreq->clkname_opp_table = NULL;
+    }
+    mutex_destroy(&devfreq->clk_mutex);
+}
+
+int decoder_devfreq_init(struct device *dev)
+{
+    struct devfreq *df;
+    struct clk *new_clk;
+    struct opp_table *opp_table;
+    int ret = 0;
+    struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
+    
+    memset(devfreq,sizeof(struct decoder_devfreq),0);
+    spin_lock_init(&devfreq->lock);
+    init_waitqueue_head(&devfreq->target_freq_wait_queue);
+    mutex_init(&devfreq->clk_mutex);
+
+    opp_table = dev_pm_opp_set_clkname(dev,"cclk");
+    if(IS_ERR(opp_table)) {
+        pr_err("dec set cclk failed\n");
+        ret = PTR_ERR(opp_table);
+		    goto err_fini;
+    }
+    devfreq->clkname_opp_table = opp_table;
+
+    ret = dev_pm_opp_of_add_table(dev);
+    if(ret) {
+        pr_info("dec opp table not found in dtb\n");
+        goto err_fini;
+    }
+    devfreq->opp_of_table_added = true;
+
+    new_clk = devm_clk_get(dev, "cclk");
+
+    devfreq->cur_devfreq = clk_get_rate(new_clk);
+
+    decoder_devfreq_gov_data.initial_freq = devfreq->cur_devfreq;
+
+    decoder_gov_data.upthreshold = 80;
+    decoder_gov_data.downdifferential = 10;
+
+    df = devm_devfreq_add_device(dev,
+                &decoder_devfreq_gov_data,
+                DEVFREQ_GOV_SIMPLE_ONDEMAND,
+                &decoder_gov_data);
+    
+    if(IS_ERR(df)) {
+        pr_err("Error: init devfreq %lx %ld\n", (unsigned long)dev,(long)df);
+        devfreq->df = NULL;
+        ret = PTR_ERR(df);
+        goto err_fini;
+    }
+    df->suspend_freq = 0; // not set freq when suspend,not suitable for async set rate
+    devfreq->df = df;
+    return 0;
+
+err_fini:
+    decoder_devfreq_fini(dev);
+    return ret;
+}
+
+/******************************************************************************\
+******************************* VPU Devfreq support END ************************
+\******************************************************************************/
+
+
 static int decoder_hantrodec_probe(struct platform_device *pdev)
 {
   printk("enter %s\n",__func__);
@@ -2334,14 +2731,14 @@ static int decoder_hantrodec_probe(struct platform_device *pdev)
         goto err;
     }
 
-    pm_runtime_set_autosuspend_delay(&pdev->dev, VC8000D_PM_TIMEOUT);
-    pm_runtime_use_autosuspend(&pdev->dev);
+    //pm_runtime_set_autosuspend_delay(&pdev->dev, VC8000D_PM_TIMEOUT);
+    //pm_runtime_use_autosuspend(&pdev->dev);
     pm_runtime_enable(&pdev->dev);
     if (!pm_runtime_enabled(&pdev->dev)) {
       if (decoder_runtime_resume(&pdev->dev))
       {
         pm_runtime_disable(&pdev->dev);
-        pm_runtime_dont_use_autosuspend(&pdev->dev);
+        //pm_runtime_dont_use_autosuspend(&pdev->dev);
       }
     }
     pm_runtime_resume_and_get(&pdev->dev);
@@ -2451,8 +2848,16 @@ static int decoder_hantrodec_probe(struct platform_device *pdev)
       }
     }
     result = hantrovcmd_init(pdev);
+    //devfreq
+    pr_info("start vdec devfreq init \n");
+    if(decoder_devfreq_init(&pdev->dev) ) {
+      pr_err("vdec devfreq not enabled\n");
+    } else {
+      pr_info("vdec devfreq init ok\n");
+    }
+
     pm_runtime_mark_last_busy(&pdev->dev);
-    pm_runtime_put_autosuspend(&pdev->dev);
+    pm_runtime_put_sync_suspend(&pdev->dev);
     if (result) return result;
 
     pr_info("PM runtime was enable\n");
@@ -2531,7 +2936,7 @@ static int decoder_hantrodec_probe(struct platform_device *pdev)
   }
 
   pm_runtime_mark_last_busy(&pdev->dev);
-  pm_runtime_put_autosuspend(&pdev->dev);
+  pm_runtime_put_sync_suspend(&pdev->dev);
   pr_info("hantrodec: module inserted. Major = %d\n", hantrodec_major);
 
   /* Please call the TEE functions to set VC8000D DRM relative registers here */
@@ -2546,7 +2951,7 @@ err:
   ReleaseIO();
   pr_info("hantrodec: module not inserted\n");
   pm_runtime_mark_last_busy(&pdev->dev);
-  pm_runtime_put_autosuspend(&pdev->dev);
+  pm_runtime_put_sync_suspend(&pdev->dev);
   unregister_chrdev_region(hantrodec_devt, 1);
   return result;
 }
@@ -2612,10 +3017,12 @@ static int decoder_hantrodec_remove(struct platform_device *pdev)
 #endif
 
   pm_runtime_mark_last_busy(&pdev->dev);
-  pm_runtime_put_autosuspend(&pdev->dev);
+  pm_runtime_put_sync_suspend(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
 		decoder_runtime_suspend(&pdev->dev);
+
+  decoder_devfreq_fini(&pdev->dev);
 
   cdev_del(&hantrodec_cdev);
   device_destroy(hantrodec_class, hantrodec_devt);
