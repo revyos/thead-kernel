@@ -8,6 +8,7 @@ obj-$(CONFIG_VHA_INFO)  += vha_info.o
 
 # Common files
 vha-y                   := vha_api.o vha_common.o
+vha-y                   += vha_devfreq.o
 vha-y                   += vha_dbg.o vha_pdump.o
 
 ifeq ($(CONFIG_HW_AX3_MC), y) 

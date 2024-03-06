@@ -285,6 +285,12 @@ static int vha_plat_runtime_suspend(struct device *dev)
 		container_of(dev, struct platform_device, dev);
 	int ret = 0;
 
+#ifdef CONFIG_PM_DEVFREQ
+	ret = vha_devfreq_suspend(dev);
+	if (ret)
+		dev_err(dev, "%s: Failed to suspend the vha devfreq!\n", __func__);
+#endif
+
 	ret = vha_plat_dt_hw_suspend(ofdev);
 	if (ret)
 		dev_err(dev, "failed to suspend platform-specific hw!\n");
@@ -301,6 +307,12 @@ static int vha_plat_runtime_resume(struct device *dev)
 	ret = vha_plat_dt_hw_resume(ofdev);
 	if (ret)
 		dev_err(dev, "failed to resume platform-specific hw!\n");
+
+#ifdef CONFIG_PM_DEVFREQ
+	ret = vha_devfreq_resume(dev);
+	if (ret)
+		dev_err(dev, "%s: Failed to resume the vha devfreq!\n", __func__);
+#endif
 
 	return ret;
 }

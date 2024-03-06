@@ -1532,6 +1532,37 @@ uint64_t vha_dbg_rtm_read(struct vha_dev *vha, uint64_t addr)
 	return IOREAD64(vha->reg_base, VHA_CR_RTM_DATA);
 }
 
+int vha_currcmd_exetime_req(struct vha_dev *vha, uint64_t *proc_us)
+{
+	uint64_t proc_time = 0;
+	struct vha_cmd *cmd = NULL;
+	struct TIMESPEC to;
+
+	cmd = vha->pendcmd[VHA_CNN_CMD].cmd;
+	if(!cmd || !cmd->in_hw) {
+		goto err_out;
+	}
+
+	{
+		struct TIMESPEC from = vha->stats.hw_proc_start;
+		GETNSTIMEOFDAY(&to);
+
+		if (cmd->subsegs_completed == cmd->subseg_current) {
+			*proc_us = 0;
+		} else if (get_timespan_us(&from, &to, &proc_time)) {
+			*proc_us = proc_time;
+		} else {
+			goto err_out;
+		}
+	}
+
+	return 0;
+
+err_out:
+	*proc_us = 0;
+	return -1;
+}
+
 /* List of predefined registers to be shown in debugfs */
 const struct vha_reg vha_regs[] = {
 #define REG_DESC(reg) VHA_CR_##reg, VHA_CR_##reg##_MASKFULL
