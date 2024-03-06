@@ -75,6 +75,7 @@
 #include <linux/dma-buf.h>
 #include "hantrommu.h"
 #include "subsys.h"
+#include "dec_devfreq.h"
 
 MODULE_DESCRIPTION("Verisilicon VPU Driver");
 MODULE_LICENSE("GPL");
@@ -1105,7 +1106,7 @@ enum MMUStatus MMURelease(void *filp, volatile unsigned char *hwregs) {
   unsigned long long address;
   unsigned int *page_table_entry;
 
-  if(!hwregs || (ioread32((void*)(hwregs + MMU_REG_HW_ID))>>16) != 0x4D4D)
+  if(!hwregs)
     return MMU_STATUS_FALSE;
 
   /* if mmu or TLB not enabled, return */
@@ -1379,6 +1380,7 @@ static enum MMUStatus MMUFlush(u32 core_id, volatile unsigned char *hwregs[MAX_S
   AcquireMutex(g_mmu->page_table_mutex, MMU_INFINITE);
   mutex = MMU_TRUE;
 
+  decoder_dev_clk_lock();
   if (hwregs[core_id][0] != NULL) {
     iowrite32(0x10, (void*)(hwregs[core_id][0] + MMU_REG_FLUSH));
     iowrite32(0x00, (void*)(hwregs[core_id][0] + MMU_REG_FLUSH));
@@ -1391,12 +1393,13 @@ static enum MMUStatus MMUFlush(u32 core_id, volatile unsigned char *hwregs[MAX_S
     iowrite32(0x10, (void*)(hwregs[core_id][1] + MMU_REG_FLUSH));
     iowrite32(0x00, (void*)(hwregs[core_id][1] + MMU_REG_FLUSH));
   }
-
+  decoder_dev_clk_unlock();
   ReleaseMutex(g_mmu->page_table_mutex);
   return MMU_STATUS_OK;
 
 onerror:
   if (mutex) {
+    decoder_dev_clk_unlock();
     ReleaseMutex(g_mmu->page_table_mutex);
   }
   MMUDEBUG(" *****MMU Flush Error*****\n");
@@ -1812,14 +1815,20 @@ long MMUIoctl(unsigned int cmd, void *filp, unsigned long arg,
                   volatile unsigned char *hwregs[HXDEC_MAX_CORES][2]) {
 
   u32 i = 0;
+  decoder_dev_clk_lock();
   for (i = 0; i < MAX_SUBSYS_NUM; i++) {
     if (hwregs[i][0] != NULL &&
-        (ioread32((void*)(hwregs[i][0] + MMU_REG_HW_ID))>>16) != 0x4D4D)
+        (ioread32((void*)(hwregs[i][0] + MMU_REG_HW_ID))>>16) != 0x4D4D) {
+      decoder_dev_clk_unlock();
       return -MMU_ENOTTY;
+    }
     if (hwregs[i][1] != NULL &&
-        (ioread32((void*)(hwregs[i][1] + MMU_REG_HW_ID))>>16) != 0x4D4D)
+        (ioread32((void*)(hwregs[i][1] + MMU_REG_HW_ID))>>16) != 0x4D4D) {
+      decoder_dev_clk_unlock();
       return -MMU_ENOTTY;
+    }
   }
+  decoder_dev_clk_unlock();
 
   switch (cmd) {
   case HANTRO_IOCS_MMU_MEM_MAP: {
@@ -1834,6 +1843,34 @@ long MMUIoctl(unsigned int cmd, void *filp, unsigned long arg,
   default:
     return -MMU_ENOTTY;
   }
+}
+
+bool MMU_CheckPowerStayOn(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2])
+{
+  if (g_mmu == NULL)
+    return false;
+
+  int i;
+  unsigned int address;
+  u32 address_ext;
+  address = g_mmu->page_table_array_physical;
+  address_ext = ((u32)(g_mmu->page_table_array_physical >> 32))&0xff;
+  for (i = 0; i < MAX_SUBSYS_NUM; i++) {
+    if (hwregs[i][0] != NULL) {
+      pr_debug("software save pg table addr %lx\n",g_mmu->page_table_array_physical);
+      pr_debug("subsys[%d]: MMU reg LSB %x MSB %x\n",i,ioread32( (void*)(hwregs[i][0] + MMU_REG_ADDRESS)),
+              ioread32( (void *)(hwregs[i][0] + MMU_REG_ADDRESS_MSB)));
+
+      if(address != ioread32( (void*)(hwregs[i][0] + MMU_REG_ADDRESS) )
+         || address_ext != ioread32( (void *)(hwregs[i][0] + MMU_REG_ADDRESS_MSB) )
+        )
+      {
+        return false;
+      }
+
+    }
+  }
+  return true;
 }
 
 void MMURestore(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2])
