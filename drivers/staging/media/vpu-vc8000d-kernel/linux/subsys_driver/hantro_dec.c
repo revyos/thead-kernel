@@ -2135,7 +2135,7 @@ static int check_power_domain(void)
 	dn = of_find_node_by_name(NULL, "vdec");
 	if (dn != NULL)
 		info = of_find_property(dn, "power-domains", NULL);
-	pr_debug("%s, %d: power gating is %s\n", __func__, __LINE__, 
+	pr_info("%s, %d: power gating is %s\n", __func__, __LINE__, 
 		(info == NULL) ? "disabled" : "enabled");
 	return (info == NULL) ? 0 : 1;
 }
@@ -2189,7 +2189,7 @@ static int decoder_runtime_resume(struct device *dev)
 			}
 			MMURestore(mmu_hwregs);
 		}
-		hantrovcmd_reset();
+		hantrovcmd_reset(false);
 	}
 
 	pr_debug("%s, %d: Enabled clock\n", __func__, __LINE__);
@@ -2197,6 +2197,27 @@ static int decoder_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int decoder_suspend(struct device *dev)
+{
+	pr_info("%s, %d: enter\n", __func__, __LINE__);
+	hantrovcmd_suspend_record();
+	/*pm_runtime_force_suspend will check current clk state*/
+	return pm_runtime_force_suspend(dev);
+
+}
+
+static int decoder_resume(struct device *dev)
+{
+	int ret;
+	ret = pm_runtime_force_resume(dev);
+	if (ret < 0)
+		return ret;
+
+	ret = hantrovcmd_resume_start();
+
+	pr_info("%s, %d: exit resume\n", __func__, __LINE__);
+	return ret;
+}
 static int decoder_hantrodec_probe(struct platform_device *pdev)
 {
   printk("enter %s\n",__func__);
@@ -2606,6 +2627,7 @@ static int decoder_hantrodec_remove(struct platform_device *pdev)
 
 
 static const struct dev_pm_ops decoder_runtime_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(decoder_suspend, decoder_resume)
 	SET_RUNTIME_PM_OPS(decoder_runtime_suspend, decoder_runtime_resume, NULL)
 };
 
