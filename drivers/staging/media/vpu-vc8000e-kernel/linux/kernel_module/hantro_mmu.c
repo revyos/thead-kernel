@@ -1109,7 +1109,7 @@ enum MMUStatus MMURelease(void *filp, volatile unsigned char *hwregs) {
       return MMU_STATUS_OK;
   }
 
-  pr_notice(" *****MMU Release*****\n");
+  pr_debug(" *****MMU Release*****\n");
 
   AcquireMutex(g_mmu->page_table_mutex, MMU_INFINITE);
 
