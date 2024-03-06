@@ -361,17 +361,23 @@ struct vha_stats {
 	/* Latest processing time of the core (CNN) */
 	uint64_t last_proc_us;
 	/* Total number of hw kicks for which a failure has been detected */
-	uint32_t total_failures;
+	uint64_t total_failures;
+	/* Total cnn add cmds */
+	uint64_t cnn_add_cmds;
+	/* Total cnn polled cmds */
+	uint64_t cnn_polled;
+	/* Total cnn responsed cmds */
+	uint64_t cnn_responsed;
 	/* Total cnn kicks */
-	uint32_t cnn_kicks;
+	uint64_t cnn_kicks;
 	/* Total cnn kicks that were queued */
-	uint32_t cnn_kicks_queued;
+	uint64_t cnn_kicks_queued;
 	/* Total cnn kicks that were completed */
-	uint32_t cnn_kicks_completed;
+	uint64_t cnn_kicks_completed;
 	/* Total cnn kicks that were cancelled */
-	uint32_t cnn_kicks_cancelled;
+	uint64_t cnn_kicks_cancelled;
 	/* Total cnn kicks that were interrupted during processing */
-	uint32_t cnn_kicks_aborted;
+	uint64_t cnn_kicks_aborted;
 	/* CNN total processing time */
 	uint64_t cnn_total_proc_us;
 	/* CNN last processing time */
@@ -750,6 +756,9 @@ struct vha_session {
 											for device buffers allocated in the kernel */
 	struct dentry         *dbgfs;       /* file in debugfs */
 	struct cnn_dbg         cnn_dbg;
+	uint64_t         		kicks;
+	uint64_t         		polled;
+	uint64_t         		responsed;
 };
 
 /* pdump cache info structure used for LDB commands */
