@@ -628,6 +628,9 @@ struct hantrovcmd_dev
     unsigned int mmu_vcmd_reg_mem_busAddress;  //start mmu mapping address of vcmd registers memory of CMDBUF.
     u32  vcmd_reg_mem_size;              // size of vcmd registers memory of CMDBUF.
     struct platform_device *pdev;
+    bi_list_node* last_linked_cmdbuf_node;
+    bi_list_node* suspend_running_cmdbuf_node;
+    bool suspend_entered;
 } ;
 
 /*
@@ -1745,6 +1748,8 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
   last_cmdbuf_node = find_last_linked_cmdbuf(new_cmdbuf_node);
   record_last_cmdbuf_rdy_num=dev->sw_cmdbuf_rdy_num;
   vcmd_link_cmdbuf(dev,last_cmdbuf_node);
+  dev->last_linked_cmdbuf_node = new_cmdbuf_node;  //record for resume when pm work
+
   if(dev->working_state==WORKING_STATE_IDLE)
   {
     //run
@@ -2077,7 +2082,7 @@ long hantrovcmd_ioctl(struct file *filp,
         long retVal;
         copy_from_user(&input_para,(struct exchange_parameter*)arg,sizeof(struct exchange_parameter));
 
-        PDEBUG("VCMD link and run cmdbuf\n");
+        PDEBUG("filp=%p,VCMD link and run cmdbuf,[%d] \n",(void *)filp, input_para.cmdbuf_id);
         retVal = pm_runtime_resume_and_get(&hantrovcmd_data[0].pdev->dev);
         if (retVal < 0)
             return retVal;
@@ -2098,10 +2103,11 @@ long hantrovcmd_ioctl(struct file *filp,
         __get_user(cmdbuf_id, (u16*)arg);
         /*high 16 bits are core id, low 16 bits are cmdbuf_id*/
 
-        PDEBUG("VCMD wait for CMDBUF finishing. \n");
+        PDEBUG("filp=%p,VCMD wait for CMDBUF finishing. %d,\n",filp,cmdbuf_id);
 
         //TODO
         tmp = wait_cmdbuf_ready(filp,cmdbuf_id,&irq_status_ret);
+        PDEBUG("filp=%p,VCMD wait for CMDBUF finished. %d,\n",filp,cmdbuf_id);
         cmdbuf_id=(u16)irq_status_ret;
         if (tmp==0)
         {
@@ -2122,7 +2128,7 @@ long hantrovcmd_ioctl(struct file *filp,
         __get_user(cmdbuf_id, (u16*)arg);
         /*16 bits are cmdbuf_id*/
 
-        PDEBUG("VCMD release CMDBUF\n");
+        PDEBUG("filp=%p,VCMD release CMDBUF ,%d\n",filp,cmdbuf_id);
 
         pm_runtime_mark_last_busy(&hantrovcmd_data[0].pdev->dev);
         pm_runtime_put_autosuspend(&hantrovcmd_data[0].pdev->dev);
@@ -4020,18 +4026,104 @@ static void printk_vcmd_register_debug(const void *hwregs, char * info) {
 #endif
 }
 
-void hantrovcmd_reset(void)
+void hantrovcmd_reset(bool only_asic)
 {
   if (hantrovcmd_data) {
     int i;
-    for(i=0;i<total_vcmd_core_num;i++) {
-      hantrovcmd_data[i].working_state = WORKING_STATE_IDLE;
-      hantrovcmd_data[i].sw_cmdbuf_rdy_num = 0;
+    if(!only_asic)
+    {
+      for(i=0;i<total_vcmd_core_num;i++) {
+        hantrovcmd_data[i].working_state = WORKING_STATE_IDLE;
+        hantrovcmd_data[i].sw_cmdbuf_rdy_num = 0;
+      }
     }
     vcmd_reset_asic(hantrovcmd_data);
   }
 }
 
+void hantrovcmd_suspend_record(void)
+{
+    if (!hantrovcmd_data) {
+      return;
+    }
+    int i;
+    struct hantrovcmd_dev* dev = NULL;
+    unsigned long flags;
+    struct cmdbuf_obj* cmdbuf_obj;
+    int timeout = 100;
+    for(i=0;i<total_vcmd_core_num;i++) {
+        dev = &hantrovcmd_data[i];
+        if(!dev)
+        {
+          pr_info("%s: get core %d vcmd data null\n",__func__,i);
+          continue;
+        }
+
+        //when suspend working state is WORKING,record to suspend_running_cmdbuf_node for resume use
+        if (dev->working_state == WORKING_STATE_WORKING )
+          dev->suspend_running_cmdbuf_node = dev->last_linked_cmdbuf_node;
+        else
+          dev->suspend_running_cmdbuf_node = NULL;
+
+        dev->suspend_entered = true;
+        if(dev->last_linked_cmdbuf_node)
+        {
+          cmdbuf_obj = (struct cmdbuf_obj*)(dev->last_linked_cmdbuf_node->data);
+          while(timeout--){
+            if(cmdbuf_obj->cmdbuf_run_done)
+              break;
+            udelay(1000);
+          }
+        }
+        pr_info("%s:  core %d working state %s ,node %px \n",__func__,i,
+          dev->working_state == WORKING_STATE_WORKING ? "working":"idle",
+          dev->suspend_running_cmdbuf_node);
+    }
+}
+
+int hantrovcmd_resume_start(void)
+{
+    if (!hantrovcmd_data) {
+      return 0;
+    }
+    int i;
+    struct hantrovcmd_dev* dev = NULL;
+    bi_list_node* last_cmdbuf_node;
+    int ret;
+    for(i=0;i<total_vcmd_core_num;i++) {
+        dev = &hantrovcmd_data[i];
+        if(!dev)
+        {
+          pr_info("%s: get core %d vcmd data null\n",__func__,i);
+          continue;
+        }
+        //when suspend working state is WORKING, reset to IDLE as well,we will start new
+        dev->working_state = WORKING_STATE_IDLE;
+        pr_info("%s:  core %d working state working(%d) \n",__func__,i,dev->working_state);
+        last_cmdbuf_node = dev->suspend_running_cmdbuf_node;
+        if(last_cmdbuf_node)
+        {
+          //run
+          while (last_cmdbuf_node &&
+                ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_run_done)
+            last_cmdbuf_node = last_cmdbuf_node->next;
+
+          if (last_cmdbuf_node && last_cmdbuf_node->data) {
+            pr_info("vcmd start for cmdbuf id %d, cmdbuf_run_done = %d\n",
+                  ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_id,
+                  ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_run_done);
+            ret = pm_runtime_resume_and_get(&hantrovcmd_data[0].pdev->dev);
+            if(ret < 0)
+              return ret;
+            vcmd_start(dev,last_cmdbuf_node);
+          }
+
+        }
+        dev->suspend_entered = false;
+        dev->suspend_running_cmdbuf_node = NULL;
+    }
+    return 0;
+}
 bool hantro_cmdbuf_range(addr_t addr,size_t size){
    bool bInRange;
 
