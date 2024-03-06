@@ -78,7 +78,7 @@
 #include <linux/dma-buf.h>
 #include <asm/io.h>
 #endif
-
+#include "vc8000_devfreq.h"
 #include "hantrommu.h"
 
 MODULE_DESCRIPTION("Verisilicon VPU Driver");
@@ -1097,7 +1097,7 @@ enum MMUStatus MMURelease(void *filp, volatile unsigned char *hwregs) {
   unsigned long long address;
   unsigned int *page_table_entry;
 
-  if(!hwregs || (ioread32((void*)(hwregs + MMU_REG_HW_ID))>>16) != 0x4D4D)
+  if(!hwregs)
     return MMU_STATUS_FALSE;
 
   /* if mmu or TLB not enabled, return */
@@ -1328,6 +1328,7 @@ enum MMUStatus MMUEnable(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2]) {
   }
 
 #ifndef HANTROVCMD_ENABLE_IP_SUPPORT
+  encoder_dev_clk_lock();
   /* set regs of all MMUs */
   for (i = 0; i < MAX_SUBSYS_NUM; i++) {
     if (hwregs[i][0] != NULL) {
@@ -1351,6 +1352,7 @@ enum MMUStatus MMUEnable(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2]) {
       iowrite32(1, (void*)(hwregs[i][1] + MMU_REG_CONTROL));
     }
   }
+  encoder_dev_clk_unlock();
 #endif
   mmu_enable = MMU_TRUE;
   return MMU_STATUS_OK;
@@ -1376,6 +1378,7 @@ static enum MMUStatus MMUFlush(u32 core_id, volatile unsigned char *hwregs[MAX_S
   AcquireMutex(g_mmu->page_table_mutex, MMU_INFINITE);
   mutex = MMU_TRUE;
 
+  encoder_dev_clk_lock();
   if (hwregs[core_id][0] != NULL) {
     iowrite32(0x10, (void*)(hwregs[core_id][0] + MMU_REG_FLUSH));
     iowrite32(0x00, (void*)(hwregs[core_id][0] + MMU_REG_FLUSH));
@@ -1388,12 +1391,13 @@ static enum MMUStatus MMUFlush(u32 core_id, volatile unsigned char *hwregs[MAX_S
     iowrite32(0x10, (void*)(hwregs[core_id][1] + MMU_REG_FLUSH));
     iowrite32(0x00, (void*)(hwregs[core_id][1] + MMU_REG_FLUSH));
   }
-
+  encoder_dev_clk_unlock();
   ReleaseMutex(g_mmu->page_table_mutex);
   return MMU_STATUS_OK;
 
 onerror:
   if (mutex) {
+    encoder_dev_clk_unlock();
     ReleaseMutex(g_mmu->page_table_mutex);
   }
   MMUDEBUG(" *****MMU Flush Error*****\n");
@@ -1823,18 +1827,24 @@ long MMUIoctl(unsigned int cmd, void *filp, unsigned long arg,
                   volatile unsigned char *hwregs[HXDEC_MAX_CORES][2]) {
 
   u32 i = 0;
+  encoder_dev_clk_lock();
   for (i = 0; i < MAX_SUBSYS_NUM; i++) {
     if (hwregs[i][0] != NULL &&
         (ioread32((void*)(hwregs[i][0] + MMU_REG_HW_ID))>>16) != 0x4D4D)
+    {
+      encoder_dev_clk_unlock();
       return -MMU_ENOTTY;
-
+    }
     if (hwregs[i][1] != NULL &&
         (ioread32((void*)(hwregs[i][1] + MMU_REG_HW_ID))>>16) != 0x4D4D)
+    {
+      encoder_dev_clk_unlock();
       return -MMU_ENOTTY;
+    }
     MMUDEBUG("mmu_hwregs[%d][0].mmu_hwregs[0]=%p", i, hwregs[i][0]);
     MMUDEBUG("mmu_hwregs[%d][1].mmu_hwregs[0]=%p", i, hwregs[i][1]);
   }
-
+  encoder_dev_clk_unlock();
   switch (cmd) {
   case HANTRO_IOCS_MMU_MEM_MAP: {
     return (MMUCtlBufferMap((struct file *)filp, arg));
