@@ -1541,7 +1541,7 @@ static long release_cmdbuf(struct file *filp,u16 cmdbuf_id)
           spin_lock_irqsave(&cmdbuf_obj->process_manager_obj->spinlock, flags);
           cmdbuf_obj->process_manager_obj->total_exe_time -= cmdbuf_obj->executing_time;
           spin_unlock_irqrestore(&cmdbuf_obj->process_manager_obj->spinlock, flags);
-          wake_up_interruptible_all(&cmdbuf_obj->process_manager_obj->wait_queue);
+          wake_up_all(&cmdbuf_obj->process_manager_obj->wait_queue);
         }
         free_cmdbuf_node(new_cmdbuf_node);
 
@@ -1940,11 +1940,16 @@ static unsigned int wait_cmdbuf_ready(struct file *filp,u16 cmdbuf_id,u32 *irq_s
 #endif
     }
 #endif
-
-    if(wait_event_interruptible(*dev->wait_queue, check_cmdbuf_irq(dev,cmdbuf_obj,irq_status_ret)))
+    /*In suspend, it got a signal from "Freezing user space processes" period,
+     * wait_event_interruptible() will be interrupted,return user space a IO error.
+     * So,here changed to wait_event_timeout().
+     */
+    if(!wait_event_timeout(*dev->wait_queue,
+              check_cmdbuf_irq(dev,cmdbuf_obj,irq_status_ret),msecs_to_jiffies(500))
+      )
     {
-        PDEBUG("vcmd_wait_queue_0 interrupted\n");
-        return -ERESTARTSYS;
+        pr_err("vcmd_wait_queue_0 timeout");
+        return -ETIME;
     }
 
     pr_debug("filp=%p, VCMD Wait    CMDBUF [%d]\n", (void *)filp, cmdbuf_id);
@@ -1952,10 +1957,12 @@ static unsigned int wait_cmdbuf_ready(struct file *filp,u16 cmdbuf_id,u32 *irq_s
   } else {
     if (check_mc_cmdbuf_irq(filp, cmdbuf_obj, irq_status_ret))
       return 0;
-    if(wait_event_interruptible(mc_wait_queue, check_mc_cmdbuf_irq(filp,cmdbuf_obj,irq_status_ret)))
+    if(!wait_event_timeout(mc_wait_queue,
+              check_mc_cmdbuf_irq(filp,cmdbuf_obj,irq_status_ret),msecs_to_jiffies(500))
+      )
     {
-        PDEBUG("multicore wait queue interrupted\n");
-        return -ERESTARTSYS;
+        pr_err("multicore wait queue timeout\n");
+        return -ETIME;
     }
     return 0;
   }
@@ -2609,7 +2616,7 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
       spin_unlock_irqrestore(dev[core_id].spinlock, flags);
       // VCMD aborted but not restarted, nedd to wake up
       if (vcmd_aborted && !restart_cmdbuf)
-        wake_up_interruptible_all(dev[core_id].wait_queue);
+        wake_up_all(dev[core_id].wait_queue);
     }
 
     if(release_cmdbuf_num)
@@ -3644,10 +3651,10 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       vcmd_delink_cmdbuf(dev,base_cmdbuf_node);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
-        wake_up_interruptible_all(dev->wait_queue);
+        wake_up_all(dev->wait_queue);
       //to let high priority cmdbuf be inserted
-      wake_up_interruptible_all(dev->wait_abort_queue);
-      wake_up_interruptible_all(&mc_wait_queue);
+      wake_up_all(dev->wait_abort_queue);
+      wake_up_all(&mc_wait_queue);
       handled++;
       return IRQ_HANDLED;
     }
@@ -3716,9 +3723,9 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
-        wake_up_interruptible_all(dev->wait_queue);
+        wake_up_all(dev->wait_queue);
       handled++;
-      wake_up_interruptible_all(&mc_wait_queue);
+      wake_up_all(&mc_wait_queue);
       return IRQ_HANDLED;
     }
     if(vcmd_get_register_mirror_value(dev->reg_mirror,HWIF_VCMD_IRQ_TIMEOUT))
@@ -3782,9 +3789,9 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
-        wake_up_interruptible_all(dev->wait_queue);
+        wake_up_all(dev->wait_queue);
       handled++;
-      wake_up_interruptible_all(&mc_wait_queue);
+      wake_up_all(&mc_wait_queue);
       return IRQ_HANDLED;
     }
     if(vcmd_get_register_mirror_value(dev->reg_mirror,HWIF_VCMD_IRQ_CMDERR))
@@ -3852,9 +3859,9 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
-        wake_up_interruptible_all(dev->wait_queue);
+        wake_up_all(dev->wait_queue);
       handled++;
-      wake_up_interruptible_all(&mc_wait_queue);
+      wake_up_all(&mc_wait_queue);
       return IRQ_HANDLED;
     }
 
@@ -3916,9 +3923,9 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
-        wake_up_interruptible_all(dev->wait_queue);
+        wake_up_all(dev->wait_queue);
       handled++;
-      wake_up_interruptible_all(&mc_wait_queue);
+      wake_up_all(&mc_wait_queue);
       return IRQ_HANDLED;
     }
     if(dev->hw_version_id <= HW_ID_1_0_C )
@@ -3962,12 +3969,12 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
 
     spin_unlock_irqrestore(dev->spinlock, flags);
     if(cmdbuf_processed_num)
-      wake_up_interruptible_all(dev->wait_queue);
+      wake_up_all(dev->wait_queue);
     if(!handled)
     {
         PDEBUG("IRQ received, but not hantro's!\n");
     }
-    wake_up_interruptible_all(&mc_wait_queue);
+    wake_up_all(&mc_wait_queue);
     return IRQ_HANDLED;
 }
 
