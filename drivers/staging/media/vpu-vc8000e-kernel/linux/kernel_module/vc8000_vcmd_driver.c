@@ -97,6 +97,13 @@
 #include <linux/pm_runtime.h>
 #include <linux/debugfs.h>
 
+//vpu devfreq
+#include <linux/devfreq.h>
+#include <linux/of_device.h>
+#include <linux/pm_opp.h>
+
+#include "vc8000_devfreq.h"
+
 /* our own stuff */
 #include <linux/platform_device.h>
 #include <linux/of.h>
@@ -585,6 +592,8 @@ static struct cmdbuf_obj *g_cmdbuf_obj_pool;
 static struct bi_list_node *g_cmdbuf_node_pool;
 #endif
 
+int debug_pr_devfreq_info = 0;
+
 struct noncache_mem
 {
   u32 *virtualAddress;
@@ -658,6 +667,7 @@ struct hantrovcmd_dev
     bi_list_node* last_linked_cmdbuf_node;
     bi_list_node* suspend_running_cmdbuf_node;
     bool suspend_entered;
+    struct encoder_devfreq devfreq;
 } ;
 
 /*
@@ -1705,6 +1715,8 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
 
   if (down_interruptible(&vcmd_reserve_cmdbuf_sem[cmdbuf_obj->module_type]))
       return -ERESTARTSYS;
+  
+  encoder_devfreq_record_busy( encoder_get_devfreq_priv_data() );
 
   return_value=select_vcmd(new_cmdbuf_node);
   if(return_value)
@@ -1929,6 +1941,18 @@ static unsigned int wait_cmdbuf_ready(struct file *filp,u16 cmdbuf_id,u32 *irq_s
   return 0;
 }
 
+bool hantrovcmd_devfreq_check_state(void)
+{
+    struct hantrovcmd_dev *dev = hantrovcmd_data;
+    u32 core_id = 0;
+    u32 state = 0;
+    for (core_id = 0;core_id < total_vcmd_core_num; core_id++) {
+      state = vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_WORK_STATE);
+      if((state != 3) && (state != 0))  //HW state pend or idle
+          return false;
+    }
+    return true;
+}
 
 static long hantrovcmd_ioctl(struct file *filp,
                           unsigned int cmd, unsigned long arg)
@@ -3464,6 +3488,7 @@ static void read_main_module_all_registers(u32 main_module_type)
   //msleep(1000);
   hantrovcmd_isr(input_para.core_id, &hantrovcmd_data[input_para.core_id]);
   wait_cmdbuf_ready(NULL,input_para.cmdbuf_id,&irq_status_ret);
+  encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
   status_base_virt_addr=vcmd_status_buf_mem_pool.virtualAddress + input_para.cmdbuf_id*CMDBUF_MAX_SIZE/4+(vcmd_manager[input_para.module_type][0]->vcmd_core_cfg.submodule_main_addr/2/4+0);
   pr_info("vc8000_vcmd_driver: main module register 0:0x%x\n",*status_base_virt_addr);
   pr_info("vc8000_vcmd_driver: main module register 80:0x%x\n",*(status_base_virt_addr+80));
@@ -3555,7 +3580,18 @@ static ssize_t encoder_config_write(struct file *filp,
 			pm_runtime_set_autosuspend_delay(&dev->pdev->dev, value);
 			pr_info("Set pm runtime auto suspend delay to %ldms\n", value);
 			break;
-		default:
+		case 'p':
+			if (strncmp(&(dev->config_buf[0]),"pfreq-en",8) == 0)
+			{
+				debug_pr_devfreq_info = 1;
+			}
+			else if (strncmp(&(dev->config_buf[0]),"pfreq-dis",9) == 0)
+			{
+				debug_pr_devfreq_info = 0;
+			}
+			pr_info("cmd %s set debug_pr_devfreq_info %ld \n",&(dev->config_buf[0]),debug_pr_devfreq_info);
+			break;
+    default:
 			pr_warn("Unsupported config!\n");
 	}
 
@@ -3625,7 +3661,8 @@ static int encoder_runtime_suspend(struct device *dev)
 	clk_disable_unprepare(encdev->cclk);
 	clk_disable_unprepare(encdev->aclk);
 	clk_disable_unprepare(encdev->pclk);
-
+	encoder_devfreq_set_rate(dev); //for the last set rate request,may not handled in cmd
+	encoder_devfreq_suspend(encoder_get_devfreq_priv_data());
 	return 0;
 }
 
@@ -3662,6 +3699,7 @@ static int encoder_runtime_resume(struct device *dev)
 		vcmd_reset();
 	}
 	pr_debug("%s, %d: Enabled clock\n", __func__, __LINE__);
+  encoder_devfreq_resume(encoder_get_devfreq_priv_data());
 
 	return 0;
 }
@@ -3769,6 +3807,327 @@ static int encoder_resume(struct device *dev)
 
 	return ret;
 }
+
+/******************************************************************************\
+******************************* VPU Devfreq support START***********************
+\******************************************************************************/
+
+static void encoder_devfreq_update_utilization(struct encoder_devfreq *devfreq)
+{
+    ktime_t now, last;
+
+    now = ktime_get();
+    last = devfreq->time_last_update;
+
+    if (devfreq->busy_count > 0)
+      devfreq->busy_time += ktime_sub(now, last);
+    else
+    {
+      if(devfreq->busy_time > 0)  //if first time in not recorded busy time,ignore idle time.
+          devfreq->idle_time += ktime_sub(now, last);
+    }
+    devfreq->time_last_update = now;
+}
+
+static void encoder_devfreq_reset(struct encoder_devfreq *devfreq)
+{
+    devfreq->busy_time = 0;
+    devfreq->idle_time = 0;
+    devfreq->time_last_update = ktime_get();
+}
+
+void encoder_devfreq_record_busy(struct encoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+    int busy_count;
+    if (!devfreq)
+      return;
+    encoder_dev_clk_lock();
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    busy_count = devfreq->busy_count;
+    //pr_info("record_busy:busy_count = %d\n",busy_count);
+    if(devfreq->busy_count > 0)
+    { 
+        devfreq->busy_count++;
+        spin_unlock_irqrestore(&devfreq->lock, irqflags);
+        encoder_dev_clk_unlock();
+        return;
+    }
+
+    encoder_devfreq_update_utilization(devfreq);
+
+    devfreq->busy_count++;
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    if(!busy_count)
+        encoder_devfreq_set_rate(&hantrovcmd_data->pdev->dev);
+
+    encoder_dev_clk_unlock();
+}
+
+void encoder_devfreq_record_idle(struct encoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+
+    if (!devfreq)
+      return;
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    //pr_info("record_idle:busy_count = %d\n",devfreq->busy_count);
+    if(devfreq->busy_count > 1)
+    { 
+      devfreq->busy_count--;
+      spin_unlock_irqrestore(&devfreq->lock, irqflags);
+      return;
+    }
+
+    encoder_devfreq_update_utilization(devfreq);
+
+    WARN_ON(--devfreq->busy_count < 0);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+#ifdef DEV_FREQ_DEBUG    
+    unsigned long busy_time,idle_time;
+    busy_time = ktime_to_us(devfreq->busy_time);
+    idle_time = ktime_to_us(devfreq->idle_time);
+    pr_info("busy %lu idle %lu %lu %%  \n",
+        busy_time,idle_time,
+        busy_time / ( (idle_time+busy_time) / 100) );
+#endif
+}
+struct encoder_devfreq * encoder_get_devfreq_priv_data(void)
+{
+    return &hantrovcmd_data->devfreq;
+}
+/* only reset record time now */
+int encoder_devfreq_resume(struct encoder_devfreq *devfreq)
+{
+    unsigned long irqflags;
+
+    if (!devfreq->df)
+        return 0;
+
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+    devfreq->busy_count = 0;//need reset avoid up
+    encoder_devfreq_reset(devfreq);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    return devfreq_resume_device(devfreq->df);
+}
+
+int encoder_devfreq_suspend(struct encoder_devfreq *devfreq)
+{
+    if (!devfreq->df)
+        return 0;
+    wake_up_all(&devfreq->target_freq_wait_queue);
+    return devfreq_suspend_device(devfreq->df);
+}
+
+void encoder_dev_clk_lock(void)
+{
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    if(!devfreq->df)
+       return;
+    mutex_lock(&devfreq->clk_mutex);
+}
+
+void encoder_dev_clk_unlock(void)
+{
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    if(!devfreq->df)
+       return;
+    mutex_unlock(&devfreq->clk_mutex);
+}
+
+
+/* set rate need clk disabled,so carefully calling this function
+ * which will disabled clk
+*/
+int encoder_devfreq_set_rate(struct device * dev)
+{
+    int ret;
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    struct hantrovcmd_dev *encdev = hantrovcmd_data;
+    if (!devfreq->df)
+        return 0;
+    if(!devfreq->update_freq_flag)
+        return 0;
+    if(debug_pr_devfreq_info)
+        pr_info("start set rate %ldMHz \n",devfreq->next_target_freq/1000/1000);
+    if( !hantrovcmd_devfreq_check_state() ) {
+        pr_info("devfreq check state not ok\n");
+        return 0;
+    }
+    clk_disable_unprepare(encdev->cclk);
+    ret = dev_pm_opp_set_rate(dev, devfreq->next_target_freq);
+    if(ret) {
+        pr_err("set rate %ld MHz failed \n",devfreq->next_target_freq/1000/1000);
+    } else {
+        devfreq->cur_devfreq = devfreq->next_target_freq;
+    }
+    devfreq->update_freq_flag = false;
+    wake_up_all(&devfreq->target_freq_wait_queue);
+    ret = clk_prepare_enable(encdev->cclk);
+
+    if(debug_pr_devfreq_info)
+        pr_info("finished set rate \n");
+    if (ret < 0) {
+        dev_err(dev, "could not prepare or enable core clock\n");
+        return ret;
+    }
+    return 0;
+}
+
+static int encoder_devfreq_target(struct device * dev, unsigned long *freq, u32 flags)
+{
+    int ret;
+    struct dev_pm_opp *opp;
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    opp = devfreq_recommended_opp(dev, freq, flags);
+    if (IS_ERR(opp)) {
+        dev_info(dev, "Failed to find opp for %lu Hz\n", *freq);
+        return PTR_ERR(opp);
+    }
+    dev_pm_opp_put(opp);
+    
+    devfreq->next_target_freq = *freq;
+    if(*freq != devfreq->cur_devfreq)
+    {
+        devfreq->update_freq_flag = true;
+        if( !wait_event_timeout( devfreq->target_freq_wait_queue, (!devfreq->update_freq_flag),
+                msecs_to_jiffies(100) ) )
+        {
+            if(debug_pr_devfreq_info) //usually last req,but all vcmd done
+                dev_info(dev,"devfreq target freq set : wait queue timeout\n");
+        }
+    }
+     
+    return 0;
+}
+
+static int encoder_devfreq_get_status(struct device *dev, struct devfreq_dev_status *stat)
+{
+    unsigned long irqflags;
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    stat->current_frequency = devfreq->cur_devfreq;
+    spin_lock_irqsave(&devfreq->lock, irqflags);
+
+    encoder_devfreq_update_utilization(devfreq);
+
+    stat->total_time = ktime_to_ns(ktime_add(devfreq->busy_time,
+                devfreq->idle_time));
+    stat->busy_time = ktime_to_ns(devfreq->busy_time);
+
+    encoder_devfreq_reset(devfreq);
+
+    spin_unlock_irqrestore(&devfreq->lock, irqflags);
+
+    if(debug_pr_devfreq_info){
+        dev_info(dev, "busy %lu total %lu %lu %% freq %lu MHz\n",
+            stat->busy_time/1000, stat->total_time/1000,
+            stat->busy_time / (stat->total_time / 100),
+            stat->current_frequency / 1000 / 1000);
+    }
+    return 0;
+}
+
+static int encoder_devfreq_get_cur_freq( struct device *dev, unsigned long *freq)
+{
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    *freq = devfreq->cur_devfreq;
+    return 0;
+}
+
+struct devfreq_simple_ondemand_data encoder_gov_data;
+
+static struct devfreq_dev_profile encoder_devfreq_gov_data =
+{
+    .polling_ms = 100,
+    .target = encoder_devfreq_target,
+    .get_dev_status = encoder_devfreq_get_status,
+    .get_cur_freq = encoder_devfreq_get_cur_freq,
+};
+
+void encoder_devfreq_fini(struct device *dev)
+{
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    if (devfreq->df) {
+        devm_devfreq_remove_device(dev, devfreq->df);
+        devfreq->df = NULL;
+    }
+
+    if (devfreq->opp_of_table_added) {
+        dev_pm_opp_of_remove_table(dev);
+        devfreq->opp_of_table_added = false;
+    }
+    if (devfreq->clkname_opp_table) {
+        dev_pm_opp_put_clkname(devfreq->clkname_opp_table);
+        devfreq->clkname_opp_table = NULL;
+    }
+    mutex_destroy(&devfreq->clk_mutex);
+}
+
+int encoder_devfreq_init(struct device *dev)
+{
+    struct devfreq *df;
+    struct clk *new_clk;
+    struct opp_table *opp_table;
+    int ret = 0;
+    struct encoder_devfreq *devfreq = encoder_get_devfreq_priv_data();
+    
+    memset(devfreq,sizeof(struct encoder_devfreq),0);
+    spin_lock_init(&devfreq->lock);
+    init_waitqueue_head(&devfreq->target_freq_wait_queue);
+    mutex_init(&devfreq->clk_mutex);
+
+    opp_table = dev_pm_opp_set_clkname(dev,"cclk");
+    if(IS_ERR(opp_table)) {
+        pr_err("enc set cclk failed\n");
+        ret = PTR_ERR(opp_table);
+		    goto err_fini;
+    }
+    devfreq->clkname_opp_table = opp_table;
+
+    ret = dev_pm_opp_of_add_table(dev);
+    if(ret) {
+        pr_info("enc opp table not found in dtb\n");
+        goto err_fini;
+    }
+    devfreq->opp_of_table_added = true;
+
+    new_clk = devm_clk_get(dev, "cclk");
+
+    devfreq->cur_devfreq = clk_get_rate(new_clk);
+
+    encoder_devfreq_gov_data.initial_freq = devfreq->cur_devfreq;
+
+    encoder_gov_data.upthreshold = 80;
+    encoder_gov_data.downdifferential = 10;
+
+    df = devm_devfreq_add_device(dev,
+                &encoder_devfreq_gov_data,
+                DEVFREQ_GOV_SIMPLE_ONDEMAND,
+                &encoder_gov_data);
+    
+    if(IS_ERR(df)) {
+        pr_err("Error: init devfreq %lx %ld\n", (unsigned long)dev,(long)df);
+        devfreq->df = NULL;
+        ret = PTR_ERR(df);
+        goto err_fini;
+    }
+    df->suspend_freq = 0; // not set freq when suspend,not suitable for async set rate
+    devfreq->df = df;
+    return 0;
+
+err_fini:
+    encoder_devfreq_fini(dev);
+    return ret;
+}
+
+/******************************************************************************\
+******************************* VPU Devfreq support END ************************
+\******************************************************************************/
 
 int hantroenc_vcmd_probe(struct platform_device *pdev)
 {
@@ -4006,7 +4365,13 @@ int hantroenc_vcmd_probe(struct platform_device *pdev)
     PDEBUG("hantrovcmd_init: vcmd_core_type is %d\n", i);
     read_main_module_all_registers(i);
   }
-
+  //devfreq
+  pr_info("start venc devfreq init \n");
+  if(encoder_devfreq_init(&pdev->dev) ) {
+    pr_err("venc devfreq not enabled\n");
+  } else {
+    pr_info("venc devfreq init ok\n");
+  }
   pm_runtime_mark_last_busy(&pdev->dev);
   pm_runtime_put_autosuspend(&pdev->dev);
 
@@ -4074,7 +4439,8 @@ static int hantroenc_vcmd_remove(struct platform_device *pdev)
    //release_vcmd_non_cachable_memory();
   MMU_Kernel_unmap();
   vcmd_pool_release(pdev);
-
+  encoder_devfreq_fini(&pdev->dev);
+  
   pm_runtime_mark_last_busy(&pdev->dev);
   pm_runtime_put_autosuspend(&pdev->dev);
   pm_runtime_disable(&pdev->dev);
@@ -4388,6 +4754,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
@@ -4457,6 +4824,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
@@ -4527,6 +4895,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
@@ -4591,6 +4960,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
@@ -4660,6 +5030,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
@@ -4710,6 +5081,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           cmdbuf_obj->cmdbuf_run_done=1;
           cmdbuf_obj->executing_status = CMDBUF_EXE_STATUS_OK;
           cmdbuf_processed_num++;
+          encoder_devfreq_record_idle( encoder_get_devfreq_priv_data() );
         }
         else
           break;
