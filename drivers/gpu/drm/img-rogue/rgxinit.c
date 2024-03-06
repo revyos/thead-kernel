@@ -560,7 +560,30 @@ static void RGX_MISRHandler_CheckFWActivePowerState(void *psDevice)
 	PVRSRV_DEVICE_NODE *psDeviceNode = psDevice;
 	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
 	const RGXFWIF_SYSDATA *psFwSysData = psDevInfo->psRGXFWIfFwSysData;
+#if defined(SUPPORT_LINUX_DVFS)
+	IMG_DVFS_DEVICE	*psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	static IMG_BOOL bSuspendDevfreq = IMG_TRUE;
+#endif
 	PVRSRV_ERROR eError = PVRSRV_OK;
+
+#if defined(SUPPORT_LINUX_DVFS)
+	if (psFwSysData->ePowState == RGXFWIF_POW_ON)
+	{
+		if (bSuspendDevfreq)
+		{
+			devfreq_resume_device(psDVFSDevice->psDevFreq);
+			bSuspendDevfreq = IMG_FALSE;
+		}
+	}
+	else
+	{
+		if (!bSuspendDevfreq)
+		{
+			devfreq_suspend_device(psDVFSDevice->psDevFreq);
+			bSuspendDevfreq = IMG_TRUE;
+		}
+	}
+#endif
 
 	if (psFwSysData->ePowState == RGXFWIF_POW_ON || psFwSysData->ePowState == RGXFWIF_POW_IDLE)
 	{
