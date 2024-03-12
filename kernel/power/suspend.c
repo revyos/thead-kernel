@@ -32,6 +32,9 @@
 #include <linux/moduleparam.h>
 #include <linux/wakeup_reason.h>
 
+#include <linux/of.h>
+#include <linux/of_fdt.h>
+
 #include "power.h"
 
 const char * const pm_labels[] = {
@@ -171,6 +174,12 @@ static bool valid_state(suspend_state_t state)
 
 void __init pm_states_init(void)
 {
+	// lichee th1520 laptop is not ready for suspend, need more code
+	// TODO: fix it
+	if (of_machine_is_compatible("sipeed,th1520-laptop")) {
+		printk("lichee th1520 laptop suspend not ready\n\r");
+		return;
+        }
 	/* "mem" and "freeze" are always present in /sys/power/state. */
 	pm_states[PM_SUSPEND_MEM] = pm_labels[PM_SUSPEND_MEM];
 	pm_states[PM_SUSPEND_TO_IDLE] = pm_labels[PM_SUSPEND_TO_IDLE];

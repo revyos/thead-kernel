@@ -8,6 +8,7 @@
 
 / {
         model = "T-HEAD Light Lichee Pi 4A configuration for LicheeConsole4A";
+	compatible = "thead,light", "sipeed,th1520-laptop", "sipeed,console4a";
 };
 
 &dsi0_panel0 {
