@@ -868,6 +868,9 @@ static int __maybe_unused thead_dwmac_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	pm_debug(dev,"enter %s()\n",__func__);
 
+	if (!netif_running(ndev))
+		return 0;
+
 	if (priv->plat->init)
 		priv->plat->init(pdev, priv->plat->bsp_priv);
 
