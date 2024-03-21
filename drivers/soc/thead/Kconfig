@@ -22,6 +22,12 @@ config LIGHT_REBOOTMODE
 	help
 	 This driver supports check rebootmode feature in Light FM platform
 
+config LIGHT_DDR_PMU
+	tristate "Thead light ddr-pmu support"
+	default m
+	help
+	 This driver supports thead-ddr-pmu is a IP module used to do performance monitor
+
 endmenu
 
 endif
