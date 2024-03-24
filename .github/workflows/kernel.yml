@@ -26,7 +26,6 @@ jobs:
       fail-fast: false
       matrix:
         name: [thead-gcc, gcc-13]
-        board: [lpi4a, ahead]
 
     runs-on: ubuntu-22.04
     env:
@@ -61,22 +60,18 @@ jobs:
               ${CROSS_COMPILE}gcc -v
 
               pushd kernel
-                if [ x"${{ matrix.board }}" = x"lpi4a" ]; then
-                  make revyos_defconfig
-                elif [ x"${{ matrix.board }}" = x"ahead" ]; then
-                  make revyos_beaglev_defconfig
-                fi
+                make revyos_defconfig
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 cat .config | grep "CONFIG_THEAD_ISA"
-                make -j$(nproc) bindeb-pkg LOCALVERSION="-${{ matrix.board }}"
+                make -j$(nproc) bindeb-pkg
 
                 # Copy deb
                 sudo dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
 
                 # record commit-id
-                git rev-parse HEAD > ${{ matrix.board }}-kernel-commitid
-                sudo cp -v ${{ matrix.board }}-kernel-commitid ${GITHUB_WORKSPACE}/rootfs/
+                git rev-parse HEAD > kernel-commitid
+                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/
 
                 ls -al ${GITHUB_WORKSPACE}/rootfs/
               popd
@@ -84,6 +79,6 @@ jobs:
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v4
         with:
-          name: thead-kernel-${{ matrix.name }}-${{ matrix.board }}
+          name: thead-kernel-${{ matrix.name }}
           path: rootfs/*
           retention-days: 30
