@@ -1,0 +1,28 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/";
+
+		__overlay__ {
+			ext_antenna: ext-antenna {
+				status = "okay";
+				compatible = "regulator-fixed";
+				enable-active-low;
+				gpio = <&gpio1_porta 24 1>;
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-name = "ext_antenna";
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&board_antenna>;
+
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+};
