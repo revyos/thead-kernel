@@ -285,6 +285,16 @@
 		status = "okay";
 	};
 
+	board_antenna: board-antenna {
+		status = "okay";
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&gpio1_porta 24 0>;
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-name = "board_antenna";
+	};
+
 	aon {
 		compatible = "thead,light-aon";
 		mbox-names = "aon";
