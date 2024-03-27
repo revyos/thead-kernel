@@ -296,10 +296,10 @@
 			debounce-interval = <1>;
 			gpios = <&gpio2_porta 25 0x1>;
 		};
-        key-sleep {
-			label = "Sleep Wake Key";
+		key-wake {
+			label = "Wake Key";
 			wakeup-source;
-			linux,code = <KEY_SLEEP>;
+			linux,code = <KEY_WAKEUP>;
 			debounce-interval = <1>;
 			gpios = <&ao_gpio_porta 2 0x1>;
 		};
@@ -1104,6 +1104,16 @@
 					FM_UART3_RXD	0x1	0x202
 				>;
 			};
+
+
+			pinctrl_uart3_tx_is_gpio: uart3txisgpiogrp {
+				thead,pins = <
+					FM_UART3_TXD	0x3	0x202
+					FM_UART3_RXD	0x1	0x202
+				>;
+			};
+
+
 
 			pinctrl_wifi_wake: wifi_grp {
 				thead,pins = <

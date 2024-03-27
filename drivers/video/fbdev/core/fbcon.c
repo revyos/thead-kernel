@@ -79,6 +79,7 @@
 #include <linux/uaccess.h>
 #include <asm/fb.h>
 #include <asm/irq.h>
+#include <linux/of.h>
 
 #include "fbcon.h"
 
@@ -986,6 +987,12 @@ static const char *fbcon_startup(void)
 	ops->info = info;
 	info->fbcon_par = ops;
 
+	// lichee th1520 console4a need rotate the framebuffer
+	// TODO: move it into sep prop
+	if (of_machine_is_compatible("sipeed,console4a") && (initial_rotation == -1)) {
+		initial_rotation = 1;
+		printk("licheeconsol4a fbcon rotate: %d\n\r", initial_rotation);
+	}
 	p->con_rotate = initial_rotation;
 	if (p->con_rotate == -1)
 		p->con_rotate = info->fbcon_rotate_hint;
@@ -1108,6 +1115,13 @@ static void fbcon_init(struct vc_data *vc, int init)
 
 	ops = info->fbcon_par;
 	ops->cur_blink_jiffies = msecs_to_jiffies(vc->vc_cur_blink_ms);
+
+	// lichee th1520 console4a need rotate the framebuffer
+	// TODO: move it into sep prop
+	if (of_machine_is_compatible("sipeed,console4a") && (initial_rotation == -1)) {
+		initial_rotation = 1;
+		printk("licheeconsol4a fbcon rotate: %d\n\r", initial_rotation);
+	}
 
 	p->con_rotate = initial_rotation;
 	if (p->con_rotate == -1)
