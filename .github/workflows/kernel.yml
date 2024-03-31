@@ -79,7 +79,7 @@ jobs:
 
               pushd kernel
                 make revyos_defconfig
-                export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
+                export KDEB_PKGVERSION="$(make kernelversion)-$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 cat .config | grep "CONFIG_THEAD_ISA"
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
