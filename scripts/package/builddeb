@@ -112,7 +112,7 @@ dbg_dir=debian/linux-image-dbg
 perf_dir="$objtree/debian/toolstmp"
 packagename=linux-image-$version
 dbg_packagename=$packagename-dbg
-perf_packagename=linux-perf-thead
+perf_packagename=linux-perf-vendor-th1520
 
 if [ "$ARCH" = "um" ] ; then
 	packagename=user-mode-linux-$version
@@ -257,7 +257,7 @@ Description: Performance analysis tools for Linux $version
  kernel version $version .
 EOF
 
-	mv $tools_dest/usr/bin/perf $tools_dest/usr/bin/perf-thead
+	mv $tools_dest/usr/bin/perf $tools_dest/usr/bin/perf-vendor-th1520
 	dpkg-shlibdeps $tools_dest/usr/bin/*
 	create_package "$perf_packagename" "$perf_dir"
 fi
