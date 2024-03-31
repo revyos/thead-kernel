@@ -25,20 +25,36 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [thead-gcc, gcc-13]
+        include:
+          - name: gcc-13
+            cross: riscv64-unknown-linux-gnu-
+            machine: ubuntu-22.04
+            run_image: ubuntu:22.04
+          - name: thead-gcc
+            cross: riscv64-unknown-linux-gnu-
+            machine: ubuntu-22.04
+            run_image: ubuntu:22.04
+          - name: native
+            cross: riscv64-linux-gnu-
+            machine: [ self-hosted, Linux, riscv64 ]
+            run_image: riscv64/debian:sid-20240330
 
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.machine }}
+    container:
+      image: ${{ matrix.run_image }}
     env:
-      CROSS_COMPILE: riscv64-unknown-linux-gnu-
+      CROSS_COMPILE: ${{ matrix.cross }}
 
     steps:
       - name: Install software
         run: |
-              sudo apt update && \
-              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
+              apt update && \
+              apt install -y gdisk dosfstools build-essential \
                                   libncurses-dev gawk flex bison openssl libssl-dev tree \
                                   dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler \
-                                  devscripts pahole
+                                  devscripts pahole bc rsync bash wget cpio sudo python-is-python3
+              apt install -y nodejs
+              ln -sf /bin/bash /bin/sh
 
       - name: Checkout kernel
         uses: actions/checkout@v4
@@ -52,10 +68,12 @@ jobs:
                 ${wget_alias} ${xuantie_toolchain}/${toolchain_file_name}
                 tar -xvf ${toolchain_file_name} -C /opt
                 export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.8.1/bin:$PATH"
-              else
+              elif [[ ${{ matrix.name }} = "gcc-13" ]]; then
                 ${wget_alias} ${mainline_toolchain}/${mainline_toolchain_file_name}
                 tar -xvf ${mainline_toolchain_file_name} -C /opt
                 export PATH="/opt/riscv/bin:$PATH"
+              else
+                echo "No download toolchain."
               fi
               ${CROSS_COMPILE}gcc -v
 
@@ -67,11 +85,11 @@ jobs:
                 make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
 
                 # Copy deb
-                sudo dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
+                dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
 
                 # record commit-id
                 git rev-parse HEAD > kernel-commitid
-                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/
+                cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/
 
                 ls -al ${GITHUB_WORKSPACE}/rootfs/
               popd
