@@ -29,15 +29,15 @@ jobs:
           - name: gcc-13
             cross: riscv64-unknown-linux-gnu-
             machine: ubuntu-22.04
-            run_image: ubuntu:22.04
+            run_image: ghcr.io/revyos/revyos-kernel-builder:amd64-2024.04.02
           - name: thead-gcc
             cross: riscv64-unknown-linux-gnu-
             machine: ubuntu-22.04
-            run_image: ubuntu:22.04
+            run_image: ghcr.io/revyos/revyos-kernel-builder:amd64-2024.04.02
           - name: native
             cross: riscv64-linux-gnu-
             machine: [ self-hosted, Linux, riscv64 ]
-            run_image: riscv64/debian:sid-20240330
+            run_image: ghcr.io/revyos/revyos-kernel-builder:riscv64-2024.04.02
 
     runs-on: ${{ matrix.machine }}
     container:
