@@ -14,7 +14,7 @@ env:
   mainline_toolchain_file_name: riscv64-glibc-ubuntu-22.04-gcc-nightly-2024.03.01-nightly.tar.gz
   wget_alias: 'wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 0'
   ARCH: riscv
-  board: lpi4a
+  board: th1520
   KBUILD_BUILD_USER: builder
   KBUILD_BUILD_HOST: revyos-riscv-builder
   KDEB_COMPRESS: xz
@@ -64,7 +64,7 @@ jobs:
                 export KDEB_PKGVERSION="$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 cat .config | grep "CONFIG_THEAD_ISA"
-                make -j$(nproc) bindeb-pkg
+                make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
 
                 # Copy deb
                 sudo dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
