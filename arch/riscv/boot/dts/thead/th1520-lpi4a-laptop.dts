@@ -7,6 +7,7 @@
 
 / {
 	model = "T-HEAD Light Lichee Pi 4A configuration for 8GB DDR board use on laptop";
+	compatible = "thead,light", "sipeed,th1520-laptop";
 
 	reg_sys_vcc_5v: regulator-sys-vcc-5v-en {
 		status = "okay";
@@ -19,12 +20,15 @@
 		regulator-boot-on;
 		regulator-always-on;
 
+		// suspend for lichee laptop is not ready so dont turn it off
+		/*
 		regulator-state-mem {
 			regulator-off-in-suspend;
 		};
 		regulator-state-standby {
 			regulator-off-in-suspend;
 		};
+		*/
 	};
 
 	reg_sys_vcc_3v3: regulator-sys-vcc-3v3-en {
@@ -115,7 +119,7 @@
 	charger: dc-charger {
 		compatible = "gpio-charger";
 		charger-type = "mains";
-		gpios = <&ao_gpio_porta 2 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio0_porta 16 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -228,6 +232,7 @@
 
 &uart3 {
 	clock-frequency = <100000000>;
+	pinctrl-0 = <&pinctrl_uart3_tx_is_gpio>;
 	status = "okay";
 };
 
