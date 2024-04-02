@@ -72,8 +72,13 @@ jobs:
                 export KDEB_PKGVERSION="$(make kernelversion)-$(date "+%Y.%m.%d.%H.%M")+$(git rev-parse --short HEAD)"
                 sed -i '/CONFIG_LOCALVERSION_AUTO/d' .config && echo "CONFIG_LOCALVERSION_AUTO=n" >> .config
                 cat .config | grep "CONFIG_THEAD_ISA"
-                make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
-
+                if [ `uname -m` = "riscv64" ]; then
+                  # FIXME: force use 32 thread
+                  make -j32 bindeb-pkg LOCALVERSION="-${board}"
+                else
+                  make -j$(nproc) bindeb-pkg LOCALVERSION="-${board}"
+                fi
+                
                 # Copy deb
                 dcmd cp -v ../*.changes ${GITHUB_WORKSPACE}/rootfs/
 
