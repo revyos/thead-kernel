@@ -3,7 +3,6 @@
 # Makefile for the linux journaling routines.
 #
 
-ccflags-y += -DDEFAULT_SYMBOL_NAMESPACE=ANDROID_GKI_VFS_EXPORT_ONLY
 
 obj-$(CONFIG_JBD2) += jbd2.o
 

@@ -3014,7 +3014,6 @@ static void __exit journal_exit(void)
 }
 
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS(ANDROID_GKI_VFS_EXPORT_ONLY);
 module_init(journal_init);
 module_exit(journal_exit);
 
