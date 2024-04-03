@@ -17,7 +17,7 @@ env:
   board: th1520
   KBUILD_BUILD_USER: builder
   KBUILD_BUILD_HOST: revyos-riscv-builder
-  KDEB_COMPRESS: xz
+  KDEB_COMPRESS: none
   KDEB_CHANGELOG_DIST: unstable
 
 jobs:
