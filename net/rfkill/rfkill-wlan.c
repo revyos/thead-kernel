@@ -60,6 +60,7 @@ struct rfkill_wlan_data {
 
 static struct rfkill_wlan_data *g_rfkill = NULL;
 static int power_set_time = 0;
+static int support_power_ctrl = 0; //Used to control whether power switch control is supported.
 
 static const char wlan_name[] = 
 #if defined (CONFIG_BCM4330)
@@ -660,6 +661,15 @@ static int wlan_platdata_parse_dt(struct device *dev,
 			LOG("%s: get property: WIFI,poweren_gpio = %d, flags = %d.\n", __func__, gpio, flags);
         } else data->power_n.io = -1;
 	gpio = of_get_named_gpio_flags(node, "WIFI,vbat_gpio", 0, &flags);
+
+    if (of_find_property(node, "support_power_ctrl", NULL)) {
+        support_power_ctrl = true;
+        LOG("%s: Turn off the power during suspension and turn it on when resuming, support_power_ctrl = %d.\n", __func__, support_power_ctrl);
+    } else {
+        support_power_ctrl = false;
+        LOG("%s: power is only turned on during initialization and is not controlled afterwards, support_power_ctrl = %d.\n", __func__, support_power_ctrl);
+    }
+
 	if (gpio_is_valid(gpio)) {
 			data->vbat_n.io = gpio;
 			data->vbat_n.enable = (flags == GPIO_ACTIVE_HIGH) ? 1:0;
@@ -901,12 +911,53 @@ static int rfkill_wlan_remove(struct platform_device *pdev)
 
 static int rfkill_wlan_suspend(struct platform_device *pdev, pm_message_t state)
 {
+    struct rfkill_wlan_data *mrfkill = g_rfkill;
+    struct rksdmmc_gpio *poweron, *reset;
+    poweron = &mrfkill->pdata->power_n;
+    reset = &mrfkill->pdata->reset_n;
+
+    // turn off the wifi's power
+    if( support_power_ctrl ){
+        if (gpio_is_valid(poweron->io)) {
+            gpio_set_value(poweron->io, !(poweron->enable));
+            msleep(100);
+        }
+
+        if (gpio_is_valid(reset->io)) {
+            gpio_set_value(reset->io, !(reset->enable));
+        }
+
+        wifi_power_state = 0;
+        LOG("wifi shut off power.\n");
+    }
+
     LOG("Enter %s\n", __func__);
     return 0;
 }
 
 static int rfkill_wlan_resume(struct platform_device *pdev)
 {
+    struct rfkill_wlan_data *mrfkill = g_rfkill;
+    struct rksdmmc_gpio *poweron, *reset;
+    poweron = &mrfkill->pdata->power_n;
+    reset = &mrfkill->pdata->reset_n;
+
+    // turn on the wifi's power
+    if( support_power_ctrl ){
+        if (gpio_is_valid(poweron->io)) {
+            gpio_set_value(poweron->io, poweron->enable);
+            msleep(500);
+        }
+
+        if (gpio_is_valid(reset->io)) {
+            gpio_set_value(reset->io, reset->enable);
+            msleep(100);
+        }
+
+        wifi_power_state = 1;
+        LOG("wifi turn on power. %d\n", poweron->io);
+    }
+
     LOG("Enter %s\n", __func__);
     return 0;
 }

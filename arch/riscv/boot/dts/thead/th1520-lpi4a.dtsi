@@ -274,6 +274,7 @@
 		pinctrl-0 = <&pinctrl_wifi_wake>;
 		wifi_chip_type = "rtl8723ds";
 		WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
+		support_power_ctrl;
 		status = "okay";
 	};
 
@@ -992,12 +993,13 @@
 	pull_up;
 	no-sd;
 	no-mmc;
-	non-removable;
+	broken-cd;
 	io_fixed_1v8;
 	post-power-on-delay-ms = <50>;
 	wprtn_ignore;
 	cap-sd-highspeed;
 	wakeup-source;
+	keep-power-in-suspend;
 	status = "okay";
 };
 
