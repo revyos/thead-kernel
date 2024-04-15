@@ -165,7 +165,8 @@ static int sg_table_map(struct device *dev, struct virtio_vdmabuf_buf *exp_buf,
 	case VIRTIO_VDMABUF_HEAP_TYPE_SYSTEM:
 	case VIRTIO_VDMABUF_HEAP_TYPE_SYSTEM_CONTIG:
 		/* SYSTEM, SYSTEM_CONFIG has the same logic */
-		if (dma_map_sgtable(dev, sgt, dir, 0)) {
+		if (dma_map_sgtable(dev, sgt, dir,  exp_buf->flags &
+				 VIRTIO_VDAMBUF_NONCACHED ? DMA_ATTR_SKIP_CPU_SYNC : 0)) {
 			dev_err(dev, "[%s:%d] error\n",
 				__func__, __LINE__);
 			sg_free_table(sgt);
@@ -204,7 +205,8 @@ static int sg_table_unmap(struct device *dev, struct virtio_vdmabuf_buf *exp_buf
 	case VIRTIO_VDMABUF_HEAP_TYPE_USER:
 	case VIRTIO_VDMABUF_HEAP_TYPE_SYSTEM:
 	case VIRTIO_VDMABUF_HEAP_TYPE_SYSTEM_CONTIG:
-		dma_unmap_sgtable(dev, sgt, dir, 0);
+		dma_unmap_sgtable(dev, sgt, dir, exp_buf->flags &
+				VIRTIO_VDAMBUF_NONCACHED ? DMA_ATTR_SKIP_CPU_SYNC : 0);
 		break;
 
 	case VIRTIO_VDMABUF_HEAP_TYPE_CARVEOUT:
