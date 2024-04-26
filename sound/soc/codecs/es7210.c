@@ -1642,6 +1642,71 @@ static int es7210_i2c_probe(struct i2c_client *i2c_client,
                 return -ENOMEM;
         es7210->i2c_client = i2c_client;
         es7210->tdm_mode =  ES7210_WORK_MODE;  //to set tdm mode or normal mode       
+
+        property = of_get_property(np, "work-mode", NULL);
+        if (property) {
+                if (!strcmp(property, "ES7210_TDM_1LRCK_DSPB")) {
+                        es7210->tdm_mode =  ES7210_TDM_1LRCK_DSPB;
+                } else if (!strcmp(property, "ES7210_NORMAL_I2S")) {
+                        es7210->tdm_mode =  ES7210_NORMAL_I2S;
+                } else {
+                        pr_err("unsupported work mode\n");
+                        return -EINVAL;
+                }
+        } else {
+                pr_warn("es7210 work-mode not defined.using ES7210_NORMAL_I2S by default\n");
+                es7210->tdm_mode =  ES7210_NORMAL_I2S;
+        }
+
+        if (of_property_read_u32(np, "channels-max", &ES7210_CHANNELS_MAX) == 0) {
+                if (ES7210_CHANNELS_MAX == MIC_CHN_2 || ES7210_CHANNELS_MAX == MIC_CHN_4) {
+                        ADC_DEV_MAXNUM =  1;
+                } else if (ES7210_CHANNELS_MAX == MIC_CHN_6 || ES7210_CHANNELS_MAX == MIC_CHN_8) {
+                        ADC_DEV_MAXNUM =  2;
+                } else if (ES7210_CHANNELS_MAX == MIC_CHN_10 || ES7210_CHANNELS_MAX == MIC_CHN_12) {
+                        ADC_DEV_MAXNUM =  3;
+                } else if (ES7210_CHANNELS_MAX == MIC_CHN_14 || ES7210_CHANNELS_MAX == MIC_CHN_16) {
+                        ADC_DEV_MAXNUM =  4;
+                } else {
+                        pr_err("es7210 unsupported channels-max\n");
+                        return -EINVAL;
+                }
+        } else {
+                pr_warn("es7210 channels-max not defined.using MIC_CHN_2 by default\n");
+                ES7210_CHANNELS_MAX = MIC_CHN_2;
+                ADC_DEV_MAXNUM =  1;
+        }
+        pr_debug("%s es7210->tdm_mode=%d channels-max=%d ADC_DEV_MAXNUM=%d\n", __func__, es7210->tdm_mode, ES7210_CHANNELS_MAX, ADC_DEV_MAXNUM);
+
+        es7210->mvdd = devm_regulator_get(&i2c_client->dev, "MVDD");
+        if (IS_ERR(es7210->mvdd)) {
+                ret = PTR_ERR(es7210->mvdd);
+                dev_warn(&i2c_client->dev, "Failed to get MVDD regulator: %d\n", ret);
+                es7210->mvdd = NULL;
+        }
+        es7210->avdd = devm_regulator_get(&i2c_client->dev, "AVDD");
+        if (IS_ERR(es7210->avdd)) {
+                ret = PTR_ERR(es7210->avdd);
+                dev_warn(&i2c_client->dev, "Failed to get AVDD regulator: %d\n", ret);
+                es7210->avdd = NULL;
+        }
+        es7210->dvdd = devm_regulator_get(&i2c_client->dev, "DVDD");
+        if (IS_ERR(es7210->dvdd)) {
+                ret = PTR_ERR(es7210->dvdd);
+                dev_warn(&i2c_client->dev, "Failed to get DVDD regulator: %d\n", ret);
+                es7210->dvdd = NULL;
+        }
+        es7210->pvdd = devm_regulator_get(&i2c_client->dev, "PVDD");
+        if (IS_ERR(es7210->pvdd)) {
+                ret = PTR_ERR(es7210->pvdd);
+                dev_warn(&i2c_client->dev, "Failed to get PVDD regulator: %d\n", ret);
+                es7210->pvdd = NULL;
+        }
+
+        if (of_property_read_u32(np, "mclk-sclk-ratio", &es7210->mclk_sclk_ratio) != 0) {
+                es7210->mclk_sclk_ratio = 1;
+        }
+
         i2c_set_clientdata(i2c_client, es7210);
         if (i2c_id->driver_data < ADC_DEV_MAXNUM) {
                 i2c_clt1[i2c_id->driver_data] = i2c_client;

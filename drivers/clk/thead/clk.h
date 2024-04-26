@@ -90,6 +90,15 @@ struct clk *thead_clk_light_divider(const char *name, const char *parent,
 				    u8 sync, enum light_div_type div_type,
 				    u16 min, u16 max);
 
+/**
+* By default, the clk framework calculates frequency by rounding downwards.
+* This function is to achieve closest frequency.
+*/
+struct clk *thead_clk_light_divider_closest(const char *name, const char *parent,
+				    void __iomem *reg, u8 shift, u8 width,
+				    u8 sync, enum light_div_type div_type,
+				    u16 min, u16 max);
+
 void thead_unregister_clocks(struct clk *clks[], unsigned int count);
 
 static inline struct clk *thead_clk_fixed(const char *name, unsigned long rate)

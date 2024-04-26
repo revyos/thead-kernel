@@ -29,7 +29,7 @@ struct rpc_msg_regu_vol_set {
 	u32 dc1;                        ///< voltage uinit in uv for single rail or first rail of dual rail
 	u32 dc2;                        ///< voltage uinit in uv for second rail of dual rail,ignore it if "is_dual_rail" is false
 	u16 reserved[6];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct rpc_msg_regu_vol_get {
 	u16 regu_id;                    ///< virtual regu id
@@ -38,20 +38,35 @@ struct rpc_msg_regu_vol_get {
 	u32 dc2;                        ///< voltage uinit in uv for second rail of dual rail,ignore it if "is_dual_rail" is false
 	u16 reserved[6];
 
-} __packed __aligned(4);
+} __packed __aligned(1);
+
+struct rpc_msg_regu_vol_get_ack {
+	struct light_aon_rpc_ack_common ack_hdr; ///< ack_hdr
+	u16 regu_id;                    ///< virtual regu id
+	u16 is_dual_rail;               ///< whether this regu has dual rails
+	u32 dc1;                        ///< voltage uinit in uv for single rail or first rail of dual rail
+	u32 dc2;                        ///< voltage uinit in uv for second rail of dual rail,ignore it if "is_dual_rail" is false
+	u16 reserved[6];
+
+} __packed __aligned(1);
 
 struct rpc_msg_regu_pwr_set {
 	u16 regu_id;                    ///< virtual regu id
 	u16 status;                     ///< 0: power off; 1: powr on
 	u32 reserved[5];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct rpc_msg_regu_pwr_get {
 	u16 regu_id;                    ///< virtual regu id
+	u32 reserved[5];
+} __packed __aligned(1);
+
+struct rpc_msg_regu_pwr_get_ack {
+	struct light_aon_rpc_ack_common ack_hdr; ///< ack_hdr
+	u16 regu_id;                    ///< virtual regu id
 	u16 status;                     ///< 0: power off; 1: powr on
 	u32 reserved[5];
-
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct light_aon_msg_regulator_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
@@ -60,8 +75,8 @@ struct light_aon_msg_regulator_ctrl {
 	struct rpc_msg_regu_vol_get    regu_vol_get;
 	struct rpc_msg_regu_pwr_set    regu_pwr_set;
 	struct rpc_msg_regu_pwr_get    regu_pwr_get;
-	} __packed __aligned(4) rpc;
-} __packed __aligned(4);
+	} __packed __aligned(1) rpc;
+} __packed __aligned(1);
 
 enum pm_resource {
 	SOC_DVDD18_AON,      /*da9063:  ldo-3 */
@@ -110,6 +125,8 @@ struct aon_regu_info {
 	struct device              *dev;
 	const struct apcpu_vol_set *cpu_vol;         ///< signed-off voltage of cpu
 	u32                        vddm;             ///< cpu-mem voltage
+	uint8_t                    cpu_dual_rail_flag; ///< cpu dual rail flag
+	uint8_t                    vddm_dual_rail_flag; ///< cpu-mem dual rail flag
 	struct aon_regu_desc       *regu_desc;       ///< regu-desc set
 	struct light_aon_ipc       *ipc_handle;      ///< handle of mail-box
 };
@@ -143,22 +160,31 @@ static const struct apcpu_vol_set apcpu_volts[] = {
  * dual-rail regulator means that a virtual regulator involes two hw-regulators
  */
 static int aon_set_regulator(struct light_aon_ipc *ipc, u16 regu_id,
-			    u32 dc1, u32 dc2, u16 is_dual_rail)
+			    u32 dc1, u32 dc2, u8 dc1_is_dual_rail, u8 dc2_is_dual_rail)
 {
+	uint16_t is_dual_rail = 0;
 	struct light_aon_msg_regulator_ctrl msg = {0};
+	struct light_aon_rpc_ack_common  ack_msg = {0};
 	struct light_aon_rpc_msg_hdr *hdr = &msg.hdr;
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
 	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_PM;
 	hdr->func = (uint8_t)LIGHT_AON_PM_FUNC_SET_RESOURCE_REGULATOR;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	msg.rpc.regu_vol_set.regu_id = regu_id;
-	msg.rpc.regu_vol_set.is_dual_rail = is_dual_rail;
-	msg.rpc.regu_vol_set.dc1 = dc1;
-	msg.rpc.regu_vol_set.dc2 = dc2;
+	if(dc1_is_dual_rail) {
+        is_dual_rail |= 1 << 0;
+	}
 
-	return light_aon_call_rpc(ipc, &msg, true);
+	if(dc2_is_dual_rail) {
+        is_dual_rail |= 1 << 1;
+	}
+
+	RPC_SET_BE16(&msg.rpc.regu_vol_set.regu_id, 0, regu_id);
+	RPC_SET_BE16(&msg.rpc.regu_vol_set.regu_id, 2, is_dual_rail);
+	RPC_SET_BE32(&msg.rpc.regu_vol_set.regu_id, 4, dc1);
+	RPC_SET_BE32(&msg.rpc.regu_vol_set.regu_id, 8, dc2);
+
+	return light_aon_call_rpc(ipc, &msg, &ack_msg, true);
 }
 
 /* dc2 is valid when is_dual_rail is true
@@ -169,25 +195,33 @@ static int aon_get_regulator(struct light_aon_ipc *ipc, u16 regu_id,
 			    u32 *dc1, u32 *dc2, u16 is_dual_rail)
 {
 	struct light_aon_msg_regulator_ctrl msg = {0};
+	struct rpc_msg_regu_vol_get_ack     ack_msg = {0};
 	struct light_aon_rpc_msg_hdr *hdr = &msg.hdr;
 	int ret;
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
 	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_PM;
 	hdr->func = (uint8_t)LIGHT_AON_PM_FUNC_GET_RESOURCE_REGULATOR;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
-	msg.rpc.regu_vol_get.regu_id  = regu_id;
-	msg.rpc.regu_vol_get.is_dual_rail = is_dual_rail;
 
-	ret = light_aon_call_rpc(ipc, &msg, true);
+	RPC_SET_BE16(&msg.rpc.regu_vol_get.regu_id, 0, regu_id);
+    RPC_SET_BE16(&msg.rpc.regu_vol_get.regu_id, 2, is_dual_rail);
+
+
+	ret = light_aon_call_rpc(ipc, &msg, &ack_msg, true);
 	if (ret)
 		return ret;
+    /*fix me:set local */
+	ack_msg.regu_id = regu_id;
+	ack_msg.is_dual_rail = is_dual_rail;
+
+	RPC_GET_BE32(&ack_msg.regu_id, 4, &ack_msg.dc1);
+	RPC_GET_BE32(&ack_msg.regu_id, 8, &ack_msg.dc2);
 
 	if (dc1 != NULL)
-		*dc1 = msg.rpc.regu_vol_get.dc1;
+		*dc1 = ack_msg.dc1;
 
 	if (dc2 != NULL)
-		*dc2 = msg.rpc.regu_vol_get.dc2;
+		*dc2 = ack_msg.dc2;
 
 	return 0;
 }
@@ -195,16 +229,17 @@ static int aon_get_regulator(struct light_aon_ipc *ipc, u16 regu_id,
 static int aon_regu_power_ctrl(struct light_aon_ipc *ipc,u32 regu_id,u16 pwr_on)
 {
 	struct light_aon_msg_regulator_ctrl msg = {0};
+	struct light_aon_rpc_ack_common  ack_msg = {0};
 	struct light_aon_rpc_msg_hdr *hdr = &msg.hdr;
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
 	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_PM;
 	hdr->func = (uint8_t)LIGHT_AON_PM_FUNC_PWR_SET;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	msg.rpc.regu_pwr_set.regu_id = regu_id;
-	msg.rpc.regu_pwr_set.status  = pwr_on;
-	return light_aon_call_rpc(ipc, &msg, true);
+	RPC_SET_BE16(&msg.rpc.regu_pwr_set.regu_id, 0, regu_id);
+	RPC_SET_BE16(&msg.rpc.regu_pwr_set.regu_id, 2, pwr_on);
+
+	return light_aon_call_rpc(ipc, &msg, &ack_msg, true);
 }
 static int aon_regu_dummy_enable(struct regulator_dev *reg)
 {
@@ -233,22 +268,23 @@ static int aon_regu_disable(struct regulator_dev *reg)
 static int aon_regu_is_enabled(struct regulator_dev *reg)
 {
 	struct light_aon_msg_regulator_ctrl msg = {0};
+	struct rpc_msg_regu_pwr_get_ack  ack_msg = {0};
 	struct light_aon_rpc_msg_hdr *hdr = &msg.hdr;
 	int ret;
 	u16 regu_id =(u16) rdev_get_id(reg);
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
 	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_PM;
 	hdr->func = (uint8_t)LIGHT_AON_PM_FUNC_PWR_GET;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	msg.rpc.regu_pwr_get.regu_id = regu_id;
-	ret = light_aon_call_rpc(light_aon_pmic_info.ipc_handle, &msg, true);
+	RPC_SET_BE16(&msg.rpc.regu_pwr_get.regu_id, 0, regu_id);
+
+	ret = light_aon_call_rpc(light_aon_pmic_info.ipc_handle, &msg, &ack_msg, true);
 	if (ret < 0) {
 		return ret;
 	}
-
-	return (int) msg.rpc.regu_pwr_get.status;
+	RPC_GET_BE16(&ack_msg.regu_id, 2, &ack_msg.status);
+	return (int) ack_msg.status;
 }
 
 static int aon_regu_set_voltage(struct regulator_dev *reg,
@@ -261,7 +297,7 @@ static int aon_regu_set_voltage(struct regulator_dev *reg,
 	pr_debug("[%s,%d]minuV = %d, uV = %d\n", __func__, __LINE__, minuV, uV);
 
 	err = aon_set_regulator(light_aon_pmic_info.ipc_handle, regu_id,
-				       voltage, 0, 0);
+				       voltage, 0, 0, 0);
 	if (err) {
 		pr_err("failed to set Voltages to %d!\n", minuV);
 		return -EINVAL;
@@ -327,7 +363,7 @@ static int apcpu_set_vdd_vddm_voltage(struct regulator_dev *reg,
 	info->vddm = cpu_vol->vddm;
 
 	err = aon_set_regulator(light_aon_pmic_info.ipc_handle, (u16)SOC_APCPU_DVDD_DVDDM,
-				       dc1, dc2, 1);
+				       dc1, dc2, info->cpu_dual_rail_flag, info->vddm_dual_rail_flag);
 	if (err) {
 		dev_err(info->dev, "failed to set Voltages to %d!\n", uV);
 		return -EINVAL;
@@ -402,6 +438,14 @@ static const struct regulator_ops regu_common_ops = {
 	.set_voltage =   aon_regu_set_voltage,
 	.get_voltage =   aon_regu_get_voltage,
 };
+
+static const struct regulator_ops regu_gpio_ops = {
+	.enable =        aon_regu_enable,
+	.disable =       aon_regu_disable,
+	.is_enabled =    aon_regu_is_enabled,
+	.list_voltage =  regulator_list_voltage_linear,
+};
+
 static const struct regulator_ops apcpu_dvdd_ops = {
 	.enable =        aon_regu_dummy_enable,
 	.disable =       aon_regu_dummy_disable,
@@ -423,15 +467,14 @@ static const struct regulator_ops apcpu_dvddm_ops = {
 /* Macros for voltage DC/DC converters (BUCKs) for cpu */
 #define REGU_DSC_DEF(regu_id, of_math_name) \
 	.id = regu_id, \
-	.name = #regu_id, \
+	.name = of_match_ptr(__stringify(of_math_name)), \
 	.of_match = of_match_ptr(__stringify(of_math_name)), \
-	.ops = &regu_common_ops, \
 	.type = REGULATOR_VOLTAGE, \
 	.owner = THIS_MODULE
 
 #define BUCK_APCPU_DVDD(regu_id,min_mV, step_mV, max_mV) \
 	.id = regu_id, \
-	.name = "APCPU_DVDD", \
+	.name = of_match_ptr("appcpu_dvdd"), \
 	.of_match = of_match_ptr("appcpu_dvdd"), \
 	.ops = &apcpu_dvdd_ops, \
 	.min_uV = (min_mV), \
@@ -442,7 +485,7 @@ static const struct regulator_ops apcpu_dvddm_ops = {
 
 #define BUCK_APCPU_DVDDM(regu_id, min_mV, step_mV, max_mV) \
 	.id = regu_id, \
-	.name = "APCPU_DVDDM", \
+	.name = of_match_ptr("appcpu_dvddm"),\
 	.of_match = of_match_ptr("appcpu_dvddm"), \
 	.ops = &apcpu_dvddm_ops, \
 	.min_uV = (min_mV) , \
@@ -450,67 +493,6 @@ static const struct regulator_ops apcpu_dvddm_ops = {
 	.n_voltages = ((max_mV) - (min_mV))/(step_mV) + 1, \
 	.type = REGULATOR_VOLTAGE, \
 	.owner = THIS_MODULE
-
-/* regulator desc for dialog */
-static struct regulator_desc light_dialog_ant_regu_desc[] = {
-	/*cpu vdd vddm regulators, used to adjust vol dynamicaly */
-	{
-		BUCK_APCPU_DVDD(SOC_APCPU_DVDD_DVDDM, 300000, 10000, 1570000),
-	},
-	{
-		BUCK_APCPU_DVDDM(SOC_APCPU_DVDD_DVDDM, 300000, 10000, 1570000),
-	},
-
-	/*common regu ,no need to adjust vol dynamicaly */
-	{
-		REGU_DSC_DEF(SOC_DVDD18_AON,soc_dvdd18_aon),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD33_USB3,soc_avdd33_usb3),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_AON,soc_dvdd08_aon),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_DDR,soc_dvdd08_ddr),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_1V8,soc_vdd_ddr_1v8),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_1V1,soc_vdd_ddr_1v1),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_0V6,soc_vdd_ddr_0v6),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD18_AP,soc_dvdd18_ap),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_AP,soc_dvdd08_ap),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD08_MIPI_HDMI,soc_avdd08_mipi_hdmi),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD18_MIPI_HDMI,soc_avdd18_mipi_hdmi),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD33_EMMC,soc_dvdd33_emmc),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD18_EMMC,soc_dvdd18_emmc),
-	},
-	{
-		REGU_DSC_DEF(SOC_DOVDD18_SCAN,soc_dovdd18_scan),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD12_SCAN,soc_dvdd12_scan),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD28_SCAN_EN,soc_avdd28_scan_en),
-	},
-};
 
 static struct regulator_desc light_dialog_regu_desc[] = {
 	/*cpu vdd vddm regulators, used to adjust vol dynamicaly */
@@ -591,58 +573,6 @@ static struct regulator_desc light_dialog_regu_desc[] = {
 	{
 		REGU_DSC_DEF(SOC_DVDD12_IR,soc_dvdd12_ir),
 	},
-};
-
-/* regulator desc for ricoh */
-static struct regulator_desc light_ricoh_regu_desc[] = {
-    /*cpu vdd vddm regulators, used to adjust vol dynamicaly */
-	{
-		BUCK_APCPU_DVDD(SOC_APCPU_DVDD_DVDDM, 600000, 12500, 1500000),
-	},
-	{
-		BUCK_APCPU_DVDDM(SOC_APCPU_DVDD_DVDDM, 600000, 12500, 1500000),
-	},
-
-	/*common regu ,no need to adjust vol dynamicaly */
-	{
-		REGU_DSC_DEF(SOC_DVDD18_AON,soc_dvdd18_aon),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD33_USB3,soc_avdd33_usb3),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_AON,soc_dvdd08_aon),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_DDR,soc_dvdd08_ddr),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_1V8,soc_vdd_ddr_1v8),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_1V1,soc_vdd_ddr_1v1),
-	},
-	{
-		REGU_DSC_DEF(SOC_VDD_DDR_0V6,soc_vdd_ddr_0v6),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD18_AP,soc_dvdd18_ap),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD08_AP,soc_dvdd08_ap),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD08_MIPI_HDMI,soc_avdd08_mipi_hdmi),
-	},
-	{
-		REGU_DSC_DEF(SOC_AVDD18_MIPI_HDMI,soc_avdd18_mipi_hdmi),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD33_EMMC,soc_dvdd33_emmc),
-	},
-	{
-		REGU_DSC_DEF(SOC_DVDD18_EMMC,soc_dvdd18_emmc),
-	},
 	{
 		REGU_DSC_DEF(SOC_LCD0_EN,soc_lcd0_en),
 	},
@@ -651,169 +581,39 @@ static struct regulator_desc light_ricoh_regu_desc[] = {
 	},
 };
 
-#define GEN_REGISTER_SHOW(x, y)	\
-static ssize_t x##_registers_show(struct device *dev,				\
-				     struct device_attribute *attr,		\
-				     char *buf)					\
-{										\
-	struct platform_device *pdev = to_platform_device(dev);			\
-	struct aon_regu_info *info = platform_get_drvdata(pdev);	\
-	u32 dc1, dc2;								\
-	ssize_t ret;								\
-										\
-	ret = aon_get_regulator(light_aon_pmic_info.ipc_handle, y,		\
-				       &dc1, &dc2, 0);				\
-	if (ret) {								\
-		dev_err(info->dev, "failed to get Voltages!\n");		\
-		return -EINVAL;							\
-	}									\
-										\
-	ret = sprintf(buf, "%u\n", dc1);					\
-	return ret;								\
-}
-
-#define GEN_REGISTER_STORE(x, y)	\
-static ssize_t x##_register_store(struct device *dev,			\
-				      struct device_attribute *attr,		\
-				      const char *buf, size_t count)		\
-{										\
-	struct platform_device *pdev = to_platform_device(dev);			\
-	struct aon_regu_info *info = platform_get_drvdata(pdev);	\
-	unsigned long dc1, dc2 = 0;						\
-	int err;								\
-										\
-	if (kstrtoul(buf, 0, &dc1))						\
-		return -EINVAL;							\
-										\
-	err = aon_set_regulator(light_aon_pmic_info.ipc_handle, y,		\
-				       dc1, dc2, 0);				\
-	if (err) {								\
-		dev_err(info->dev, "failed to set Voltages to [%lu]!\n", dc1);	\
-		return -EINVAL;							\
-	}									\
-										\
-	return count;								\
-}
-
-static ssize_t soc_apcpu_dvdd_dvddm_registers_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct aon_regu_info *info = platform_get_drvdata(pdev);
-	size_t bufpos = 0, count = 26;
-	const struct apcpu_vol_set *cpu_vol;
-	u32 dc1, dc2;
-	int i = 0;
-	int err;
-	err = aon_get_regulator(light_aon_pmic_info.ipc_handle, SOC_APCPU_DVDD_DVDDM,
-				       &dc1, &dc2, 1);
-	if (err) {
-		dev_err(info->dev, "failed to get Voltages!\n");
-		return -EINVAL;
-	}
-	cpu_vol = apcpu_get_matched_signed_off_voltage(dc1, dc2);
-	if (!cpu_vol)
-		dev_err(info->dev, "Read [%d:%d] is not existing in matching table\n", dc1, dc2);
-	snprintf(buf + bufpos, count - bufpos, "%.*x: ", 2, i);
-	bufpos += 4;
-	snprintf(buf + bufpos, count - bufpos, "%u", dc1);
-	bufpos += 8;
-	buf[bufpos++] = '\n';
-	i++;
-	snprintf(buf + bufpos, count - bufpos, "%.*x: ", 2, i);
-	bufpos += 4;
-	snprintf(buf + bufpos, count - bufpos, "%u", dc2);
-	bufpos += 8;
-	buf[bufpos++] = '\n';
-	return bufpos;
-}
-static ssize_t soc_apcpu_dvdd_dvddm_register_store(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf, size_t size)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct aon_regu_info *info = platform_get_drvdata(pdev);
-	const struct apcpu_vol_set *cpu_vol;
-	char *start = (char *)buf;
-	unsigned long dc1, dc2;
-	int err;
-	while (*start == ' ')
-		start++;
-	dc1 = simple_strtoul(start, &start, 0);
-	while (*start == ' ')
-		start++;
-	if (kstrtoul(start, 0, &dc2))
-		return -EINVAL;
-	cpu_vol = apcpu_get_matched_signed_off_voltage(dc1, dc2);
-	if (!cpu_vol) {
-		dev_err(info->dev, "failed to find bcore1/bcore2 matching table\n");
-#ifndef CONFIG_AON_REG_DEBUG
-		return -EINVAL;
-#endif
-	}
-	info->cpu_vol = cpu_vol;
-	info->vddm = cpu_vol->vddm;
-	err = aon_set_regulator(light_aon_pmic_info.ipc_handle, SOC_APCPU_DVDD_DVDDM,
-				       dc1, dc2, 1);
-	if (err) {
-		dev_err(info->dev, "failed to set Voltages to [%lu,%lu]!\n", dc1, dc2);
-#ifndef CONFIG_AON_REG_DEBUG
-		return -EINVAL;
-#endif
-	}
-	return size;
-}
-
-GEN_REGISTER_SHOW(soc_dvdd18_aon, SOC_DVDD18_AON)
-GEN_REGISTER_STORE(soc_dvdd18_aon, SOC_DVDD18_AON)
-GEN_REGISTER_SHOW(soc_dvdd08_ap, SOC_DVDD08_AP)
-GEN_REGISTER_STORE(soc_dvdd08_ap, SOC_DVDD08_AP)
-GEN_REGISTER_SHOW(soc_dvdd18_emmc, SOC_DVDD18_EMMC)
-GEN_REGISTER_STORE(soc_dvdd18_emmc, SOC_DVDD18_EMMC)
-GEN_REGISTER_SHOW(soc_dvdd33_emmc, SOC_DVDD33_EMMC)
-GEN_REGISTER_STORE(soc_dvdd33_emmc, SOC_DVDD33_EMMC)
-
-static DEVICE_ATTR(soc_dvdd18_aon_regs, 0644, soc_dvdd18_aon_registers_show, soc_dvdd18_aon_register_store);
-static DEVICE_ATTR(soc_dvdd08_ap_regs, 0644, soc_dvdd08_ap_registers_show, soc_dvdd08_ap_register_store);
-static DEVICE_ATTR(soc_dvdd33_emmc_regs, 0644, soc_dvdd33_emmc_registers_show, soc_dvdd33_emmc_register_store);
-static DEVICE_ATTR(soc_dvdd18_emmc_regs, 0644, soc_dvdd18_emmc_registers_show, soc_dvdd18_emmc_register_store);
-static DEVICE_ATTR(soc_apcpu_dvdd_dvddm_regs, 0644, soc_apcpu_dvdd_dvddm_registers_show, soc_apcpu_dvdd_dvddm_register_store);
-
-static struct attribute *aon_regs_sysfs_entries[] = {
-	&dev_attr_soc_dvdd18_aon_regs.attr,
-	&dev_attr_soc_dvdd08_ap_regs.attr,
-	&dev_attr_soc_dvdd33_emmc_regs.attr,
-	&dev_attr_soc_dvdd18_emmc_regs.attr,
-	&dev_attr_soc_apcpu_dvdd_dvddm_regs.attr,
-	NULL
-};
-static const struct attribute_group dev_attr_aon_regs_group = {
-	.attrs = aon_regs_sysfs_entries,
-};
-
-
 static const struct aon_regu_desc light_dialog_regus = {
     .regu_desc = (struct regulator_desc*) &light_dialog_regu_desc,
     .regu_num  = ARRAY_SIZE(light_dialog_regu_desc),
 };
 
-static const struct aon_regu_desc light_dialog_ant_regus = {
-    .regu_desc = (struct regulator_desc*) &light_dialog_ant_regu_desc,
-    .regu_num  = ARRAY_SIZE(light_dialog_ant_regu_desc),
-};
+int light_match_regulator_name(struct aon_regu_desc *regus_set, const char *string)
+{
+    int index;
+    const char *item;
 
-static const struct aon_regu_desc light_ricoh_regus = {
-    .regu_desc = (struct regulator_desc*)&light_ricoh_regu_desc,
-    .regu_num  = ARRAY_SIZE(light_ricoh_regu_desc),
-};
+    for(index = 0; index < regus_set->regu_num; index++) {
+	    item = regus_set->regu_desc[index].name;
+	    if(!item)
+		    break;
+	    if(!strcmp(item, string))
+		    return index;
+    }
+
+    return -EINVAL;
+}
 
 static int light_aon_regulator_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct regulator_config config = { };
-	int i;
+	int index;
 	int ret;
 	struct aon_regu_desc *regus_set = NULL;
+	const char *regulator_type;
+	const char *regulator_name;
+	struct regulator_dev *rdev;
+	struct regulator_desc *desc;
+	int    get_dual_rail_flag = 0;
 
 	if (!np)
 		return -ENODEV;
@@ -836,37 +636,76 @@ static int light_aon_regulator_probe(struct platform_device *pdev)
 	light_aon_pmic_info.cpu_vol = &apcpu_volts[2]; /* pmic default voltages */
 	light_aon_pmic_info.vddm = light_aon_pmic_info.cpu_vol->vddm;
 
-	/*register all regulators*/
+	/*register regulators*/
 	config.dev = &pdev->dev;
 	config.driver_data = &light_aon_pmic_info;
-	for (i = 0; i < regus_set->regu_num; i++) {
-		struct regulator_dev *rdev;
-		struct regulator_desc *desc;
 
-		desc = &regus_set->regu_desc[i];
-		rdev = devm_regulator_register(&pdev->dev, desc, &config);
-		if (IS_ERR(rdev)) {
-			dev_err(&pdev->dev,
-				"Failed to initialize regulator-%d\n", i);
-			return PTR_ERR(rdev);
+	of_property_read_string(np, "regulator-name", &regulator_name);
+	if(!regulator_name){
+	    dev_err(&pdev->dev, "failed to get the regulator-name\n");
+	    return -EINVAL;
+	}
+
+	of_property_read_string(np, "regulator-type", &regulator_type);
+	if(!regulator_type){
+	    dev_err(&pdev->dev, "failed to get the regulator-type\n");
+	    return -EINVAL;
+	}
+
+	/*dual rail only work for cpu/cpu_mem*/
+	if(of_property_read_bool(np, "regulator-dual-rail")){
+		printk("get regual dual rail---->\n");
+        get_dual_rail_flag = 1;
+	}
+
+	index = light_match_regulator_name(regus_set, regulator_name);
+	if(index < 0)
+	{
+	    dev_err(&pdev->dev, "no regulator matches %s\n", regulator_name);
+	    return -EINVAL;
+	}
+
+	desc = &regus_set->regu_desc[index];
+	if(!strcmp(regulator_type, "dvdd")) {
+		desc->ops = &apcpu_dvdd_ops;
+		if(get_dual_rail_flag) {
+            light_aon_pmic_info.cpu_dual_rail_flag = 1;
+			get_dual_rail_flag = 0;
 		}
 	}
-
-	i = sysfs_create_group(&config.dev->kobj, &dev_attr_aon_regs_group);
-	if (i) {
-		dev_err(&pdev->dev, "Failed to create aon regs debug sysfs.\n");
-		return i;
+	else if(!strcmp(regulator_type, "dvddm")) {
+		desc->ops = &apcpu_dvddm_ops;
+		if(get_dual_rail_flag) {
+            light_aon_pmic_info.vddm_dual_rail_flag = 1;
+			get_dual_rail_flag = 0;
+		}
 	}
+	else if(!strcmp(regulator_type, "common")) {
+		desc->ops = &regu_common_ops;
+	}
+	else if(!strcmp(regulator_type, "gpio")) {
+		desc->ops = &regu_gpio_ops;
+	}
+	else
+	    {
+    		dev_err(&pdev->dev,
+		    "%s, regulator type is not clarified\n", desc->name);
+		return -EINVAL;
+	    }
+
+    	rdev = devm_regulator_register(&pdev->dev, desc, &config);
+	if (IS_ERR(rdev)) {
+	    dev_err(&pdev->dev,
+			"Failed to initialize regulator%s\n", desc->name);
+			return PTR_ERR(rdev);
+		}
 
 	platform_set_drvdata(pdev, &light_aon_pmic_info);
-
 	return 0;
 }
 
 static const struct of_device_id light_pmic_dev_id[] = {
-	{ .compatible = "thead,light-dialog-pmic-ant", .data = &light_dialog_ant_regus},
 	{ .compatible = "thead,light-dialog-pmic", .data = &light_dialog_regus},
-	{ .compatible = "thead,light-ricoh-pmic",  .data = &light_ricoh_regus},
 	{},
 };
 MODULE_DEVICE_TABLE(of, light_pmic_dev_id);
@@ -880,7 +719,17 @@ static struct platform_driver light_aon_regulator_driver = {
 	.probe = light_aon_regulator_probe,
 };
 
-module_platform_driver(light_aon_regulator_driver);
+static int __init light_aon_regulator_init(void)
+{
+	return platform_driver_register(&light_aon_regulator_driver);
+}
+postcore_initcall(light_aon_regulator_init);
+
+static void __exit light_aon_regulator_exit(void)
+{
+	platform_driver_unregister(&light_aon_regulator_driver);
+}
+module_exit(light_aon_regulator_exit);
 
 MODULE_AUTHOR("fugang.duan <duanfugang.dfg@linux.alibaba.com>");
 MODULE_AUTHOR("linghui.zlh <linghui.zlh@linux.alibaba.com>");

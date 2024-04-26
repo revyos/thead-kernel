@@ -29,6 +29,8 @@ static void vs_crtc_reset(struct drm_crtc *crtc)
 {
     struct vs_crtc_state *state;
 
+    vs_crtc_reset_count ++;
+
     if (crtc->state) {
         __drm_atomic_helper_crtc_destroy_state(crtc->state);
 

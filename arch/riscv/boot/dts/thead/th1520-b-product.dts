@@ -3,6 +3,7 @@
  * Copyright (C) 2021 Alibaba Group Holding Limited.
  */
 
+
 /dts-v1/;
 
 #include "th1520.dtsi"
@@ -10,7 +11,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include "th1520-vi-devices.dtsi"
 / {
-	model = "T-HEAD Light val board";
+	model = "T-HEAD Light product board";
 	compatible = "thead,light-val", "thead,light";
 
 	memory@0 {
@@ -49,10 +50,8 @@
 
 		/* config#1: multiple valid regions */
 		iopmp_emmc: IOPMP_EMMC {
-			regions = <0x000000 0x100000>,
-				  <0x100000 0x200000>;
 			attr = <0xFFFFFFFF>;
-			dummy_slave= <0x800000>;
+			is_default_region;
 		};
 
 		/* config#2: iopmp bypass */
@@ -212,6 +211,7 @@
 			vdev-nums = <1>;
             reg = <0x0 0x1E000000 0 0x10000>;
 			compatible = "light,light-rpmsg";
+			log-memory-region = <&audio_log_mem>;
 			status = "okay";
 		};
 	};
@@ -224,22 +224,22 @@
 	};
 
 	reg_vref_1v8: regulator-adc-verf {
-			compatible = "regulator-fixed";
-			regulator-name = "vref-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-	status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "vref-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		status = "okay";
 	};
 
-        reg_tp_pwr_en: regulator-pwr-en {
-                compatible = "regulator-fixed";
-                regulator-name = "PWR_EN";
-                regulator-min-microvolt = <2800000>;
-                regulator-max-microvolt = <2800000>;
-                gpio = <&gpio1_porta 12 1>;
-                enable-active-high;
-                regulator-always-on;
-        };
+	reg_tp_pwr_en: regulator-pwr-en {
+		compatible = "regulator-fixed";
+		regulator-name = "PWR_EN";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&gpio1_porta 12 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
 	wcn_wifi: wireless-wlan {
 		compatible = "wlan-platdata";
@@ -284,6 +284,7 @@
 		compatible = "thead,light-aon";
 		mbox-names = "aon";
 		mboxes = <&mbox_910t 1 0>;
+		log-memory-region = <&aon_log_mem>;
 		status = "okay";
 
 		pd: light-aon-pd {
@@ -445,112 +446,143 @@
 			enable-active-high;
 		};
 
-		aon_reg_ricoh: light-ricoh-reg {
-			compatible = "thead,light-ricoh-pmic";
-			status = "okay";
-
 			dvdd_cpu_reg: appcpu_dvdd {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvdd";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <1500000>;
+				regulator-type = "dvdd";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			dvddm_cpu_reg: appcpu_dvddm {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvddm";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <1500000>;
+				regulator-type = "dvddm";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dvdd18_aon_reg: soc_dvdd18_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd33_usb3_reg: soc_avdd33_usb3 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd33_usb3";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_aon_reg: soc_dvdd08_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ddr_reg: soc_dvdd08_ddr {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ddr";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v8_reg: soc_vdd_ddr_1v8 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v8";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v1_reg: soc_vdd_ddr_1v1 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v1";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_0v6_reg: soc_vdd_ddr_0v6 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_0v6";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd18_ap_reg: soc_dvdd18_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_ap";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ap_reg: soc_dvdd08_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ap";
+				regulator-type = "gpio";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd08_mipi_hdmi_reg: soc_avdd08_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd08_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd18_mipi_hdmi_reg: soc_avdd18_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd18_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			soc_vdd33_emmc_reg: soc_vdd33_emmc {
-				regulator-name = "soc_vdd33_emmc";
+			soc_dvdd33_emmc_reg: soc_dvdd33_emmc {
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd33_emmc";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			soc_vdd18_emmc_reg: soc_vdd18_emmc {
-				regulator-name = "soc_vdd18_emmc";
+			soc_dvdd18_emmc_reg: soc_dvdd18_emmc {
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd18_emmc";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd18_lcd0_en_reg: soc_lcd0_en {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_lcd0_en";
-			};
-			soc_vext_1v8_reg: soc_vext_1v8 {
-				regulator-name = "soc_vext_1v8";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
-		};
+			soc_vext_1v8_reg: soc_vext_1v8 {
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_vext_1v8";
+				regulator-type = "common";
+				regulator-boot-on;
+				regulator-always-on;
+			};
 
 		c910_cpufreq {
 			compatible = "thead,light-mpw-cpufreq";
@@ -560,8 +592,13 @@
 		test: light-aon-test {
 			compatible = "thead,light-aon-test";
 		};
-	};
+};
 
+};
+
+&aon_suspend_ctrl {
+	audio-text-memory-region = <&audio_text_mem>;
+	status = "okay";
 };
 
 &resmem {
@@ -599,11 +636,24 @@
 		reg = <0x0 0x17000000 0 0x02000000>;
 		//no-map;
 	};
-
-	audio_mem: memory@32000000 {
-		reg = <0x0 0x32000000 0x0 0x6400000>;
+    audio_text_mem: memory@32000000 {
+		reg = <0x0 0x32000000 0x0 0xE00000>;
 		//no-map;
     };
+    audio_data_mem: memory@32E00000 {
+		reg = <0x0 0x32E00000 0x0 0x600000>;
+		//no-map;
+    };
+	audio_log_mem: memory@33400000 {
+        reg = <0x0 0x33400000 0x0 0x200000>;
+	};
+	aon_log_mem: memory@33600000 {
+        reg = <0x0 0x33600000 0x0 0x200000>;
+	};
+	regdump_mem: memory@38400000 {
+		reg = <0x0 0x38400000 0x0 0x1E00000>;
+		no-map;
+	};
 	rpmsgmem: memory@1E000000 {
 		reg = <0x0 0x1E000000 0x0 0x10000>;
 		//no-map;
@@ -684,60 +734,16 @@
         status = "okay";
 };
 
-&spi0 {
-	num-cs = <1>;
-	cs-gpios = <&gpio2_porta 15 0>; // GPIO_ACTIVE_HIGH: 0
-	rx-sample-delay-ns = <10>;
-	status = "disabled";
-
-	spi_norflash@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "winbond,w25q64jwm", "jedec,spi-nor";
-		reg = <0>;
-		spi-max-frequency = <50000000>;
-		w25q,fast-read;
-	};
-
-	spidev@1 {
-		compatible = "spidev";
-		#address-cells = <0x1>;
-		#size-cells = <0x1>;
-		reg = <0x1>;
-		spi-max-frequency = <50000000>;
-	};
-};
-
 &uart0 {
 	clock-frequency = <100000000>;
-};
-
-&qspi0 {
-	num-cs = <1>;
-	cs-gpios = <&gpio2_porta 3 0>;
-	rx-sample-dly = <4>;
-	status = "disabled";
-
-	spi-flash@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "spi-nand";
-		spi-max-frequency = <100000000>;
-		spi-tx-bus-width = <4>;
-		spi-rx-bus-width = <4>;
-		reg = <0>;
-
-		partition@0 {
-			label = "ubi1";
-			reg = <0x00000000 0x08000000>;
-		};
-	};
 };
 
 &qspi1 {
 	compatible = "snps,dw-apb-ssi";
 	num-cs = <1>;
 	cs-gpios = <&gpio0_porta 1 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_qspi1>;
 	status = "okay";
 
 	spidev@0 {
@@ -1021,6 +1027,10 @@
 	};
 };
 
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm>;
+};
 
 &i2c0 {
 	clock-frequency = <400000>;
@@ -1135,37 +1145,28 @@
 	status = "okay";
 };
 
-/*
-&vvcam_sensor0 {
-	sensor_name = "IMX334";
+&vvcam_sensor1 {
+	sensor_name = "OV5693";
 	sensor_regulators = "DOVDD18_RGB", "DVDD12_RGB", "AVDD28_RGB";
+	sensor_regulator_voltage_uV = <1800000 1200000 2800000>;
 	sensor_regulator_timing_us = <70 50 20>;
 	sensor_rst = <&gpio1_porta 16 0>;
-	sensor_pdn_delay_us = <1000>; //powerdown pin / shutdown pin actived till I2C ready
+	sensor_pdn_delay_us = <4000>; //powerdown pin / shutdown pin actived till I2C ready
 	DOVDD18_RGB-supply = <&soc_dovdd18_rgb_reg>;
 	DVDD12_RGB-supply = <&soc_dvdd12_rgb_reg>;
 	AVDD28_RGB-supply = <&soc_avdd28_rgb_reg>;
-    i2c_reg_width = /bits/ 8 <2>;
-    i2c_data_width = /bits/ 8 <1>;
-    i2c_addr = /bits/ 8 <0x1a>;
+	i2c_reg_width = /bits/ 8 <2>;
+	i2c_data_width = /bits/ 8 <1>;
+	i2c_addr = /bits/ 8 <0x36>;
 	i2c_bus = /bits/ 8 <3>;
 	status = "okay";
-};
-*/
-
-&vvcam_sensor1 {
-	sensor_name = "OV5693";
-	i2c_bus = /bits/ 8 <3>;
-	i2c_reg_width = /bits/ 8 <1>;
-	i2c_data_width = /bits/ 8 <1>;
-	status = "disabled";
 };
 
 &vvcam_sensor2 {
 	sensor_name = "GC5035";
 	sensor_regulators = "DOVDD18_SCAN", "DVDD12_SCAN", "AVDD28_SCAN";
 	sensor_regulator_timing_us = <100 50 0>;
-	sensor_pdn = <&gpio1_porta 30 0>; //powerdown pin / shutdown pin 
+	sensor_pdn = <&gpio1_porta 30 0>; //powerdown pin / shutdown pin
 	sensor_rst = <&gpio1_porta 29 0>;
 	sensor_pdn_delay_us = <1000>; //powerdown pin / shutdown pin actived till I2C ready
 	DOVDD18_SCAN-supply = <&soc_dovdd18_scan_reg>;
@@ -1236,14 +1237,31 @@
 	DOVDD18_RGB-supply = <&soc_dovdd18_rgb_reg>;
 	DVDD12_RGB-supply = <&soc_dvdd12_rgb_reg>;
 	AVDD28_RGB-supply = <&soc_avdd28_rgb_reg>;
-    i2c_reg_width = /bits/ 8 <1>;
-    i2c_data_width = /bits/ 8 <1>;
-    i2c_addr = /bits/ 8 <0x37>;
+	i2c_reg_width = /bits/ 8 <1>;
+	i2c_data_width = /bits/ 8 <1>;
+	i2c_addr = /bits/ 8 <0x37>;
+	i2c_bus = /bits/ 8 <3>;
+	status = "okay";
+};
+
+&vvcam_sensor7 {
+	sensor_name = "IMX334";
+	sensor_regulators = "DOVDD18_RGB", "DVDD12_RGB", "AVDD28_RGB";
+	sensor_regulator_timing_us = <70 50 20>;
+	sensor_rst = <&gpio1_porta 16 0>;
+	sensor_pdn_delay_us = <1000>; //powerdown pin / shutdown pin actived till I2C ready
+	DOVDD18_RGB-supply = <&soc_dovdd18_rgb_reg>;
+	DVDD12_RGB-supply = <&soc_dvdd12_rgb_reg>;
+	AVDD28_RGB-supply = <&soc_avdd28_rgb_reg>;
+	i2c_reg_width = /bits/ 8 <2>;
+	i2c_data_width = /bits/ 8 <1>;
+	i2c_addr = /bits/ 8 <0x1a>;
 	i2c_bus = /bits/ 8 <3>;
 	status = "okay";
 };
 
 &video0{
+	status = "okay";
 	vi_mem_pool_region = <2>;	// vi_mem: framebuffer, region[2]
 	channel0 {
 		sensor0 {
@@ -1330,6 +1348,7 @@
 
 
 &video1{
+	status = "okay";
 	vi_mem_pool_region = <2>;	// vi_mem: framebuffer, region[2]
 	channel0 {
 		sensor0 {
@@ -1433,7 +1452,8 @@
 };
 
 &video2{
-    vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
+	status = "okay";
+	vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -1518,7 +1538,8 @@
 };
 
 &video3{
-    vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
+	status = "okay";
+	vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -1621,7 +1642,8 @@
 };
 
 &video4{
-    vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
+	status = "okay";
+	vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -1772,6 +1794,7 @@
 };
 
 &video5{
+	status = "okay";
 	vi_mem_pool_region = <0>;	// vi_mem: framebuffer, region[0]
 	channel0 {
 		sensor0 {
@@ -1941,6 +1964,7 @@
 };
 
 &video6{
+	status = "okay";
 	vi_mem_pool_region = <1>;	// vi_mem: framebuffer, region[1]
 	channel0 {
 		sensor0 {
@@ -1982,6 +2006,7 @@
 };
 
 &video7{
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2151,6 +2176,7 @@
 
 
 &video8{
+	status = "okay";
 	vi_mem_pool_region = <1>;	// vi_mem: framebuffer, region[1]
     channel0 {
 		sensor0 {
@@ -2182,6 +2208,7 @@
 };
 
 &video9{
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2203,6 +2230,7 @@
 
 
 &video10{ // TUNINGTOOL
+	status = "okay";
 	channel0 {
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2224,7 +2252,8 @@
 };
 
 &video11{
-	channel0 { 
+	status = "okay";
+	channel0 {
 		channel_id = <0>;
 		status = "okay";
 		sensor0 {
@@ -2250,6 +2279,7 @@
 };
 
 &video12{ // TUNINGTOOL
+	status = "okay";
 	channel0 { // CSI2
 		sensor0 {
 			subdev_name = "vivcam";
@@ -2359,6 +2389,12 @@
 	status = "okay";
 };
 
+&npu_opp_table {
+	opp-792000000 {
+		opp-suspend;
+	};
+};
+
 &fce {
 	memory-region = <&facelib_mem>;
 	status = "okay";
@@ -2461,6 +2497,11 @@
         pinctrl-names = "default";
         pinctrl-0 = <&pinctrl_audiopa1>,
                     <&pinctrl_audio_i2s_8ch_sd3>;
+};
+
+&light_regdump {
+	memory-region = <&regdump_mem>;
+	status = "okay";
 };
 
 &cpus {

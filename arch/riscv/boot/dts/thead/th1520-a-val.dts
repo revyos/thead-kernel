@@ -5,13 +5,7 @@
 
 /dts-v1/;
 
-#include "th1520-a-val-audio.dts"
-
-/ {
-	display-subsystem {
-		status = "okay";
-	};
-};
+#include "th1520-a-val.dtsi"
 
 &dpu_enc1 {
 	ports {
@@ -23,24 +17,13 @@
 	remote-endpoint = <&hdmi_tx_in>;
 };
 
-&dpu {
-	status = "okay";
-};
-
 &hdmi_tx {
 	status = "okay";
-
-	port@0 {
-		/* input */
-		hdmi_tx_in: endpoint {
-			remote-endpoint = <&disp1_out>;
-		};
-	};
 };
 
 &lightsound {
 	status = "okay";
-	
+
 	simple-audio-card,dai-link@2 {          /* I2S - HDMI */
 		reg = <2>;
 		format = "i2s";
@@ -54,5 +37,25 @@
 };
 
 &light_i2s {
+        status = "okay";
+};
+
+&i2s0 {
+        status = "okay";
+};
+
+&i2s_8ch_sd2 {
+        status = "okay";
+};
+
+&es8156_audio_codec {
+        status = "okay";
+};
+
+&es7210_audio_codec_adc0 {
+        status = "okay";
+};
+
+&audio_aw87519_pa {
         status = "okay";
 };

@@ -75,6 +75,8 @@ struct light_pinctrl_soc_info {
 #define LIGHT_PADCTRL0_MUX_REG_NUMS	7
 #define LIGHT_PADCTRL1_CFG_REG_NUMS	32
 #define LIGHT_PADCTRL1_MUX_REG_NUMS	8
+#define LIGHT_AON_CFG_REG_NUMS		24
+#define LIGHT_AON_MUX_REG_NUMS		6
 #define LIGHT_AUDIO_CFG_REG_NUMS	16
 #define LIGHT_AUDIO_MUX_REG_NUMS	2
 #define LIGHT_AUDIO_IO_SEL_IDX		2
@@ -687,6 +689,7 @@ static int light_pinctrl_suspend(struct device *dev)
 			clk_disable_unprepare(priv->clk);
 			break;
 		case LIGHT_FM_AON:
+			ret = light_pinctrl_backup_regs(priv, LIGHT_AON_CFG_REG_NUMS, LIGHT_AON_MUX_REG_NUMS);
 			break;
 		case LIGHT_FM_AUDIO:
 			ret = light_pinctrl_backup_regs(priv, LIGHT_AUDIO_CFG_REG_NUMS, LIGHT_AUDIO_MUX_REG_NUMS);
@@ -723,6 +726,7 @@ static int light_pinctrl_resume(struct device *dev)
 			ret = light_pinctrl_restore_regs(priv, LIGHT_PADCTRL1_CFG_REG_NUMS, LIGHT_PADCTRL1_MUX_REG_NUMS);
 			break;
 		case LIGHT_FM_AON:
+			ret = light_pinctrl_restore_regs(priv, LIGHT_AON_CFG_REG_NUMS, LIGHT_AON_MUX_REG_NUMS);
 			break;
 		case LIGHT_FM_AUDIO:
 			ret = light_pinctrl_restore_regs(priv, LIGHT_AUDIO_CFG_REG_NUMS, LIGHT_AUDIO_MUX_REG_NUMS);

@@ -58,6 +58,7 @@
 #include "gc_hal_security_interface.h"
 #include "gc_hal_ta.h"
 #include "gc_hal.h"
+#include <linux/printk.h>
 
 #define _GC_OBJ_ZONE 2
 /*******************************************************************************
@@ -560,11 +561,11 @@ gctaMMU_DumpPagetableEntry(
 
     stlb = stlbs[mtlb];
 
-    gcmkPRINT("    MTLB entry = %d\n", mtlb);
+    pr_warn("    MTLB entry = %d\n", mtlb);
 
-    gcmkPRINT("    STLB entry = %d\n", stlbOffset);
+    pr_warn("    STLB entry = %d\n", stlbOffset);
 
-    gcmkPRINT("    Offset = 0x%08X (%d)\n", offsetInPage, offsetInPage);
+    pr_warn("    Offset = 0x%08X (%d)\n", offsetInPage, offsetInPage);
 
 
     if (stlb == gcvNULL)
@@ -572,13 +573,13 @@ gctaMMU_DumpPagetableEntry(
         /* Dmp mtlb entry. */
         entry = mtlbLogical[mtlb];
 
-        gcmkPRINT("   mtlb entry [%d] = %x", mtlb, entry);
+        pr_warn("   mtlb entry [%d] = %x", mtlb, entry);
     }
     else
     {
         stlbLogical = stlb->logical;
 
-        gcmkPRINT("    stlb entry = 0x%08X", stlbLogical[stlbOffset]);
+        pr_warn("    stlb entry = 0x%08X", stlbLogical[stlbOffset]);
     }
 }
 

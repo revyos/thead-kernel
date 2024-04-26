@@ -136,10 +136,10 @@ static int jadard_prepare(struct drm_panel *panel)
 		dev_err(pinfo->base.dev, "Failed to enable vspn3v3 supply: %d\n", ret);
 		goto fail;
 	}
-	usleep_range(5000, 6000);
+	usleep_range(1000, 2000);
 
 	gpiod_set_value(pinfo->reset, 1);
-	msleep(180);
+	msleep(10);
 
 	pinfo->prepared = true;
 
@@ -165,7 +165,7 @@ static int jadard_enable(struct drm_panel *panel)
 		return ret;
 	}
 
-	msleep(120);
+	msleep(10);
 
 	ret = mipi_dsi_dcs_set_display_on(pinfo->link);
 	if (ret < 0) {
@@ -225,7 +225,7 @@ static const struct drm_display_mode jadard_default_mode = {
 
 	.width_mm	= 62,
 	.height_mm	= 110,
-	.flags          = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	.flags      = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 };
 
 

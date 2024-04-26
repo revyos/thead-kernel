@@ -12,7 +12,12 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_platform.h>
+#include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/proc_fs.h>
+#include <linux/light_proc_debug.h>
+#include <linux/firmware/thead/ipc.h>
 
 /* wait for response for 3000ms instead of 300ms (fix me pls)*/
 #define MAX_RX_TIMEOUT		(msecs_to_jiffies(3000))
@@ -24,6 +29,12 @@ struct light_aon_chan {
 	struct mbox_client cl;
 	struct mbox_chan *ch;
 	struct completion tx_done;
+    /*for log proc*/
+	phys_addr_t log_phy;
+	size_t log_size;
+	void __iomem *log_mem;
+	void *log_ctrl;
+    struct proc_dir_entry *proc_dir;
 };
 
 struct light_aon_ipc {
@@ -101,9 +112,11 @@ static void light_aon_rx_callback(struct mbox_client *c, void *msg)
 {
 	struct light_aon_chan *aon_chan = container_of(c, struct light_aon_chan, cl);
 	struct light_aon_ipc *aon_ipc = aon_chan->aon_ipc;
+	struct light_aon_rpc_msg_hdr* hdr = (struct light_aon_rpc_msg_hdr*)msg;
+	uint8_t recv_size  = sizeof(struct light_aon_rpc_msg_hdr) + hdr->size;
 
-	memcpy(aon_ipc->msg, msg, LIGHT_AON_RPC_MSG_NUM * sizeof(u32));
-	dev_dbg(aon_ipc->dev, "msg head: 0x%x\n", *((u32 *)msg));
+	memcpy(aon_ipc->msg, msg, recv_size);
+	dev_dbg(aon_ipc->dev, "msg head: 0x%x, size:%d\n", *((u32 *)msg), recv_size);
 	complete(&aon_ipc->done);
 }
 
@@ -140,19 +153,29 @@ static int light_aon_ipc_write(struct light_aon_ipc *aon_ipc, void *msg)
 /*
  * RPC command/response
  */
-int light_aon_call_rpc(struct light_aon_ipc *aon_ipc, void *msg, bool have_resp)
+int light_aon_call_rpc(struct light_aon_ipc *aon_ipc, void *msg, void *ack_msg, bool have_resp)
 {
-	struct light_aon_rpc_msg_hdr *hdr;
-	int ret;
+	struct light_aon_rpc_msg_hdr *hdr = msg;
+	int ret = 0;
 
 	if (WARN_ON(!aon_ipc || !msg))
 		return -EINVAL;
-
+	if(have_resp && WARN_ON(!ack_msg))
+	    return -EINVAL;
 	mutex_lock(&aon_ipc->lock);
 	reinit_completion(&aon_ipc->done);
 
-	if (have_resp)
-		aon_ipc->msg = msg;
+	RPC_SET_VER(hdr, LIGHT_AON_RPC_VERSION);
+	/*svc id use 6bit for version 2*/
+    RPC_SET_SVC_ID(hdr, hdr->svc);
+	RPC_SET_SVC_FLAG_MSG_TYPE(hdr, RPC_SVC_MSG_TYPE_DATA);
+
+	if (have_resp){
+        aon_ipc->msg = ack_msg;
+		RPC_SET_SVC_FLAG_ACK_TYPE(hdr, RPC_SVC_MSG_NEED_ACK);
+	} else {
+		RPC_SET_SVC_FLAG_ACK_TYPE(hdr, RPC_SVC_MSG_NO_NEED_ACK);
+	}
 
 	ret = light_aon_ipc_write(aon_ipc, msg);
 	if (ret < 0) {
@@ -168,9 +191,9 @@ int light_aon_call_rpc(struct light_aon_ipc *aon_ipc, void *msg, bool have_resp)
 			return -ETIMEDOUT;
 		}
 
-		/* response status is stored in hdr->func field */
-		hdr = msg;
-		ret = hdr->func;
+		/* response status is stored in msg data[0] field */
+		struct light_aon_rpc_ack_common* ack = ack_msg;
+		ret = ack->err_code;
 	}
 
 out:
@@ -182,12 +205,41 @@ out:
 }
 EXPORT_SYMBOL(light_aon_call_rpc);
 
+int  get_aon_log_mem(struct device *dev, phys_addr_t* mem, size_t* mem_size)
+{
+    struct resource r;
+	ssize_t fw_size;
+	void *mem_va;
+	struct device_node *node;
+	int ret;
+
+	*mem = 0;
+	*mem_size = 0;
+
+	node = of_parse_phandle(dev->of_node, "log-memory-region", 0);
+	if (!node) {
+		dev_err(dev, "no memory-region specified\n");
+		return -EINVAL;
+	}
+
+	ret = of_address_to_resource(node, 0, &r);
+	if (ret) {
+	    dev_err(dev, "memory-region get resource faild\n");
+		return -EINVAL;
+	}
+
+	*mem = r.start;
+	*mem_size = resource_size(&r);
+    return 0;
+}
+
 static int light_aon_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct light_aon_ipc *aon_ipc;
 	struct light_aon_chan *aon_chan;
 	struct mbox_client *cl;
+	char dir_name[32] = {0x0};
 	int ret;
 
 	aon_ipc = devm_kzalloc(dev, sizeof(*aon_ipc), GFP_KERNEL);
@@ -220,7 +272,33 @@ static int light_aon_probe(struct platform_device *pdev)
 	aon_ipc->dev = dev;
 	mutex_init(&aon_ipc->lock);
 	init_completion(&aon_ipc->done);
+    aon_chan->log_ctrl = NULL;
 
+    ret = get_aon_log_mem(dev, &aon_chan->log_phy, &aon_chan->log_size);
+	if(ret) {
+      return ret;
+	}
+    aon_chan->log_mem = ioremap(aon_chan->log_phy, aon_chan->log_size);
+	if (!IS_ERR(aon_chan->log_mem)) {
+		printk("%s:virtual_log_mem=0x%p, phy base=0x%llx,size:%d\n",
+			__func__, aon_chan->log_mem, aon_chan->log_phy,
+			aon_chan->log_size);
+	} else {
+		aon_chan->log_mem = NULL;
+		dev_err(dev, "%s:get aon log region fail\n",
+				__func__);
+		return -1;
+	}
+
+	sprintf(dir_name, "aon_proc");
+    aon_chan->proc_dir = proc_mkdir(dir_name, NULL);
+    if (NULL != aon_chan->proc_dir) {
+		aon_chan->log_ctrl = light_create_panic_log_proc(aon_chan->log_phy,
+			aon_chan->proc_dir, aon_chan->log_mem, aon_chan->log_size);
+	} else {
+		dev_err(dev, "create %s fail\n", dir_name);
+		return ret;
+	}
 	light_aon_ipc_handle = aon_ipc;
 
 	return devm_of_platform_populate(dev);

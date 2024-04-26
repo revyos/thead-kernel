@@ -5,6 +5,16 @@
 
 #include "th1520-crash.dtsi"
 
+/ {
+	model = "T-HEAD Light Lichee Pi 4A board";
+	compatible = "thead,light-val", "thead,light-lpi4a", "thead,light";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x200000 0x1 0xffe00000>;
+	};
+};
+
 &aon {
 	aon_reg_dialog: light-dialog-reg {
 		compatible = "thead,light-dialog-pmic-ant";

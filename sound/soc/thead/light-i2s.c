@@ -119,7 +119,8 @@ static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
 {
 	u32 dma_en = 0;
 	u32 i2s_en = 0;
-	u32 i2s_imr = 0;
+	u32 i2s_status = 0;
+	unsigned long flags;
 
 	/* get current dma status, save rx configuration */
 	dma_en = readl(chip->regs + I2S_DMACR);
@@ -130,12 +131,12 @@ static inline void light_snd_txctrl(struct light_i2s_priv *chip, bool on)
 		writel(i2s_en, chip->regs + I2S_IISEN);
 	} else {
 		dma_en &= ~DMACR_TDMAE_EN;
-		i2s_imr  = readl(chip->regs + I2S_IMR);
-		i2s_imr &= ~(IMR_TXUIRM_INTR_MSK);
-		i2s_imr &= ~(IMR_TXEIM_INTR_MSK);
-		writel(i2s_imr, chip->regs + I2S_IMR);
+		local_irq_save(flags);
+		do {
+			i2s_status  = readl(chip->regs + I2S_SR);
+		} while ((i2s_status & SR_TXBUSY_STATUS) || !(i2s_status & SR_TFNF_TX_FIFO_NOT_FULL));
 		writel(dma_en, chip->regs + I2S_DMACR);
-
+		local_irq_restore(flags);
 		if (!chip->mclk_keepon) {
 			/*
 			* The enablement of I2S can onlybe truned off when
@@ -180,7 +181,7 @@ static inline void light_snd_rxctrl(struct light_i2s_priv *chip, bool on)
 static int light_i2s_dai_startup(struct snd_pcm_substream *substream,
 			   struct snd_soc_dai *dai)
 {
-	//printk("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
+	pr_debug("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
 	return 0;
 }
 
@@ -189,7 +190,7 @@ static void light_i2s_dai_shutdown(struct snd_pcm_substream *substream,
 {
 	struct light_i2s_priv *i2s_private = snd_soc_dai_get_drvdata(dai);
 
-	//printk("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
+	pr_debug("%s: %s %s\n", __func__, substream->pcm->name, dai->name);
 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		light_snd_rxctrl(i2s_private, 0);
@@ -209,7 +210,7 @@ static int light_i2s_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct light_i2s_priv *priv = snd_soc_dai_get_drvdata(dai);
         bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 
-	//printk("%s: %s %s cmd=%d tx=%d\n", __func__, substream->pcm->name, dai->name, cmd, tx);
+	pr_debug("%s: %s %s cmd=%d tx=%d\n", __func__, substream->pcm->name, dai->name, cmd, tx);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -226,7 +227,6 @@ static int light_i2s_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		if (tx) {
-			dmaengine_terminate_async(snd_dmaengine_pcm_get_chan(substream));  // work around for DMAC stop issue
 			light_snd_txctrl(priv, 0);
 			priv->state &= ~I2S_STATE_TX_RUNNING;
 		} else {
@@ -374,7 +374,7 @@ static int light_i2s_dai_hw_params(struct snd_pcm_substream *substream, struct s
 
 	writel(funcmode, i2s_private->regs + I2S_FUNCMODE);
 
-	//printk("%s: %s %s channels=%d rate=%d fm=%x\n", __func__, substream->pcm->name, dai->name, channels, rate, funcmode);
+	pr_debug("%s: %s %s channels=%d rate=%d fm=%x\n", __func__, substream->pcm->name, dai->name, channels, rate, funcmode);
 
 	if (channels == MONO_SOURCE) {
 		iiscnf_out |= IISCNFOUT_TX_VOICE_EN_MONO;
@@ -470,7 +470,7 @@ static int light_i2s_dai_probe(struct snd_soc_dai *dai)
 {
 	struct light_i2s_priv *i2s = snd_soc_dai_get_drvdata(dai);
 
-	//printk("%s: %p %p\n", __func__, i2s->base, i2s->regs);
+	pr_debug("%s: %p %p\n", __func__, i2s->base, i2s->regs);
 
 	if(i2s)
 		snd_soc_dai_init_dma_data(dai, &i2s->dma_params_tx,
@@ -615,7 +615,7 @@ static int light_i2s_runtime_suspend(struct device *dev)
 {
 	struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
 
-	//printk("%s: %s\n", __func__, i2s_priv->name);
+	pr_debug("%s: %s\n", __func__, i2s_priv->name);
 
 	if (!i2s_priv->mclk_keepon) {
 		regcache_cache_only(i2s_priv->regmap, true);
@@ -630,7 +630,7 @@ static int light_i2s_runtime_resume(struct device *dev)
 	struct light_i2s_priv *i2s_priv = dev_get_drvdata(dev);
 	int ret;
 
-	//printk("%s: %s\n", __func__, i2s_priv->name);
+	pr_debug("%s: %s\n", __func__, i2s_priv->name);
 
 	if (!i2s_priv->mclk_keepon) {
 		ret = clk_prepare_enable(i2s_priv->clk);
@@ -723,6 +723,42 @@ static const struct of_device_id light_i2s_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, light_i2s_of_match);
 
+static ssize_t light_i2s_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+        return 0;
+}
+
+static ssize_t light_i2s_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+        u32 value, i;
+        struct light_i2s_priv *priv = dev_get_drvdata(dev);
+
+        for (i = I2S_IISEN; i <= I2S_DR4; i+=0x4) {
+			value = readl(priv->regs + i);
+			printk("i2s reg[0x%x]=0x%x\n", i, value);
+        }
+
+        for (i = 0; i <= 0xfc ; i+=0x4) {
+			regmap_read(priv->audio_cpr_regmap,  i, &value);
+			printk("cpr reg[0x%x]=0x%x\n", i, value);
+        }
+
+        return 0;
+}
+
+static DEVICE_ATTR(registers, 0644, light_i2s_show, light_i2s_store);
+
+static struct attribute *light_i2s_debug_attrs[] = {
+        &dev_attr_registers.attr,
+        NULL,
+};
+
+static struct attribute_group light_i2s_debug_attr_group = {
+        .name   = "light_i2s_debug",
+        .attrs  = light_i2s_debug_attrs,
+};
+
+
 static int light_audio_i2s_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -773,8 +809,6 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	i2s_priv->regs = devm_ioremap_resource(dev, res);
-
-	//printk("%s: %p %p\n", __func__, i2s_priv->base, i2s_priv->regs);
 
 	if (IS_ERR(i2s_priv->regs))
 		return PTR_ERR(i2s_priv->regs);
@@ -846,6 +880,11 @@ static int light_audio_i2s_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "cannot snd component register\n");
 		goto err_pm_disable;
+	}
+
+	ret = sysfs_create_group(&dev->kobj, &light_i2s_debug_attr_group);
+	if (ret) {
+			pr_err("failed to create attr group\n");
 	}
 
 	return ret;

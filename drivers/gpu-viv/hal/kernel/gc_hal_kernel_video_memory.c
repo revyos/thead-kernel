@@ -4552,7 +4552,7 @@ gckVIDMEM_NODE_WrapUserMemory(
 
             if (IS_ERR(gcmUINT64_TO_PTR(Desc->dmabuf)))
             {
-                gcmkPRINT("Wrap memory: invalid dmabuf from kernel.\n");
+                pr_err("Wrap memory: invalid dmabuf from kernel.\n");
 
                 gcmkFOOTER();
                 return gcvSTATUS_INVALID_ARGUMENT;
@@ -4562,7 +4562,7 @@ gckVIDMEM_NODE_WrapUserMemory(
         }
         else
         {
-            gcmkPRINT("Wrap memory: invalid dmabuf fd.\n");
+            pr_err("Wrap memory: invalid dmabuf fd.\n");
 
             gcmkFOOTER();
             return gcvSTATUS_INVALID_ARGUMENT;

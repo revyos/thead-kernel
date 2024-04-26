@@ -644,7 +644,7 @@ gckOS_DumpParam(
 {
     gctINT i;
 
-    printk("Galcore options:\n");
+    gcmkPRINT("Galcore options:\n");
 
 #if USE_LINUX_PCIE
     if (bar != -1)
@@ -821,8 +821,10 @@ static int drv_open(
     filp->private_data = data;
 
     /* Success. */
+#ifdef CONFIG_PM_DEVFREQ
     atomic_inc_return(&galDevice->openNum);
     devfreq_resume_device(galDevice->g2d_devfreq);
+#endif
     gcmkFOOTER_NO();
     return 0;
 }
@@ -888,10 +890,12 @@ static int drv_release(
 
     kfree(data);
     filp->private_data = NULL;
-
+#ifdef CONFIG_PM_DEVFREQ
     if(atomic_dec_return(&galDevice->openNum) == 0) {
         devfreq_suspend_device(galDevice->g2d_devfreq);
     }
+#endif
+
     /* Success. */
     ret = 0;
 
@@ -1159,7 +1163,7 @@ static int drv_init(void)
 
     gcmkHEADER();
 
-    printk(KERN_INFO "Galcore version %s\n", gcvVERSION_STRING);
+    pr_info("Galcore version %s\n", gcvVERSION_STRING);
 
     if (showArgs)
     {
@@ -1384,11 +1388,11 @@ static int __devinit gpu_probe(struct platform_device *pdev)
     contiguousBaseCap = platform->params.contiguousBase;
     contiguousSizeCap = platform->params.contiguousSize;
 
-    gcmkPRINT("Capture only mode is enabled in Hal Kernel.");
+    pr_warn("Capture only mode is enabled in Hal Kernel.");
 
     if ((contiguousBaseCap + contiguousSizeCap) > 0x80000000)
     {
-        gcmkPRINT("Capture only mode: contiguousBase + contiguousSize > 2G, there is error in CModel and old MMU version RTL simulation.");
+        pr_err("Capture only mode: contiguousBase + contiguousSize > 2G, there is error in CModel and old MMU version RTL simulation.");
     }
 
     for (i = 0; i < gcvCORE_COUNT; i++)
@@ -1437,7 +1441,7 @@ static int __devinit gpu_probe(struct platform_device *pdev)
 
     if (powerManagement == 0)
     {
-        gcmkPRINT("[galcore warning]: power saveing is disabled.");
+        pr_err("[galcore warning]: power saveing is disabled.");
     }
 
     ret = drv_init();
@@ -1461,14 +1465,14 @@ static int __devinit gpu_probe(struct platform_device *pdev)
             }
         }
 
-        gcmkFOOTER_ARG(KERN_INFO "Failed to register gpu driver: %d\n", ret);
+        pr_info("Failed to register gpu driver: %d\n", ret);
     }
     else
     {
         gcmkFOOTER_NO();
     }
 
-    gcmkFOOTER_ARG(KERN_INFO "Success ret=%d", ret);
+    pr_info("Success ret=%d", ret);
     return ret;
 }
 
@@ -1649,7 +1653,7 @@ static int __init gpu_init(void)
 
     if (ret || !platform)
     {
-        printk(KERN_ERR "galcore: Soc platform init failed.\n");
+        pr_err("galcore: Soc platform init failed.\n");
         return -ENODEV;
     }
 
@@ -1657,7 +1661,7 @@ static int __init gpu_init(void)
 
     if (ret)
     {
-        printk(KERN_ERR "galcore: gpu_init() failed to register driver!\n");
+        pr_err("galcore: gpu_init() failed to register driver!\n");
         gckPLATFORM_Terminate(platform);
         platform = NULL;
         return -ENODEV;

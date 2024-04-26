@@ -11,6 +11,8 @@
 
 #include "vs_type.h"
 
+extern int vs_crtc_reset_count;
+
 struct vs_crtc_funcs {
     void (*enable)(struct device *dev, struct drm_crtc *crtc);
     void (*disable)(struct device *dev, struct drm_crtc *crtc);

@@ -101,7 +101,7 @@ static void dwc3_thead_deassert(struct dwc3_thead *thead)
 	regmap_update_bits(thead->misc_sysreg, USB3_DRD_SWRST,
 				USB3_DRD_MASK, USB3_DRD_PRST);
 
-	/* 
+	/*
 	 *	2. Common Block Power-Down Control.
 	 *	Controls the power-down signals in the PLL block
 	 *	when the USB 3.0 femtoPHY is in Suspend or Sleep mode.
@@ -111,7 +111,7 @@ static void dwc3_thead_deassert(struct dwc3_thead *thead)
 
 	/*
 	 *	3. Reference Clock Enable for SS function.
-	 *	Enables the reference clock to the prescaler. 
+	 *	Enables the reference clock to the prescaler.
 	 *	The ref_ssp_en signal must remain de-asserted until
 	 *	the reference clock is running at the appropriate frequency,
 	 *	at which point ref_ssp_en can be asserted.
@@ -225,6 +225,8 @@ static int dwc3_thead_probe(struct platform_device *pdev)
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
 
+	device_enable_async_suspend(dev);
+
 	dev_info(dev, "light dwc3 probe ok!\n");
 
 	return 0;
@@ -257,8 +259,23 @@ static int dwc3_thead_remove(struct platform_device *pdev)
 static int dwc3_thead_pm_suspend(struct device *dev)
 {
 	struct dwc3_thead *thead = dev_get_drvdata(dev);
-    int ret;
+	int ret;
+
 	dwc3_thead_assert(thead);
+
+	if (!IS_ERR(thead->hubswitch)) {
+		ret = regulator_disable(thead->hub1v2);
+		if (ret) {
+			dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
+		}
+	}
+
+	if (!IS_ERR(thead->hub5v)) {
+		ret = regulator_disable(thead->hub5v);
+		if (ret) {
+			dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
+		}
+	}
 
 	clk_bulk_disable(thead->num_clocks, thead->clks);
     ret = regulator_disable(thead->vbus);
@@ -275,7 +292,7 @@ static int dwc3_thead_pm_suspend(struct device *dev)
         dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
     }
 
-	return 0;
+	return ret;
 }
 
 
@@ -297,6 +314,21 @@ static int dwc3_thead_pm_resume(struct device *dev)
     if (ret) {
         dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
     }
+
+	/* enable regulator here for some extend regulator does not have pm func */
+	if (!IS_ERR(thead->hub1v2)) {
+		ret = regulator_enable(thead->hub1v2);
+		if (ret) {
+			dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
+		}
+	}
+
+	if (!IS_ERR(thead->hub5v)) {
+		ret = regulator_enable(thead->hub5v);
+		if (ret) {
+		dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
+		}
+	}
 
 	ret = clk_bulk_prepare_enable(thead->num_clocks, thead->clks);
 	if (ret) {

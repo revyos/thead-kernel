@@ -430,7 +430,7 @@ static int light_clocks_probe(struct platform_device *pdev)
 	clks[VISYS_AHB_HCLK] = thead_clk_light_divider("visys_ahb_hclk", "video_pll_foutvco", ap_base + 0x1d0, 0, 4, 4, MUX_TYPE_DIV, 6, 15);
 	clks[VPSYS_APB_PCLK] = thead_clk_light_divider("vpsys_apb_pclk", "gmac_pll_fout1ph0", ap_base + 0x1e0, 0, 3, 4, MUX_TYPE_DIV, 2, 7);
 	clks[VPSYS_AXI_ACLK] = thead_clk_light_divider("vpsys_axi_aclk", "video_pll_foutvco", ap_base + 0x1e0, 8, 4, 12, MUX_TYPE_DIV, 3, 15);
-	clks[VENC_CCLK] = thead_clk_light_divider("venc_cclk", "gmac_pll_foutpostdiv", ap_base + 0x1e4, 0, 3, 4, MUX_TYPE_DIV, 2, 7);
+	clks[VENC_CCLK] = thead_clk_light_divider_closest("venc_cclk", "gmac_pll_foutpostdiv", ap_base + 0x1e4, 0, 3, 4, MUX_TYPE_DIV, 2, 7);
 	clks[DPU0_PLL_DIV_CLK] = thead_clk_light_divider("dpu0_pll_div_clk", "dpu0_pll_foutpostdiv", ap_base + 0x1e8, 0, 8, 8, MUX_TYPE_DIV, 2, 214);
 	clks[DPU1_PLL_DIV_CLK] = thead_clk_light_divider("dpu1_pll_div_clk", "dpu1_pll_foutpostdiv", ap_base + 0x1ec, 0, 8, 8, MUX_TYPE_DIV, 2, 214);
 

@@ -1,13 +1,32 @@
-/* SPDX-License-Identifier: GPL-2.0 */	
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2021 Alibaba Group Holding Limited.
  */
 
 /dts-v1/;
 
-#include "th1520-lpi4a-dsi0.dts"
+#include "th1520-lpi4a.dtsi"
 
+&i2c3 {
+        touch@14 {
+			touchscreen-size-x = <800>;
+			touchscreen-size-y = <1200>;
+        };
+};
 
+&dsi0 {
+        status = "okay";
+};
+
+&dpu_enc0 {
+	status = "okay";
+};
+
+&dhost_0 {
+        panel0@0 {
+			compatible = "chongzhou,cz101b4001", "jadard,jd9365da-h3";
+        };
+};
 
 &video10{ // TUNINGTOOL
 	status = "okay";

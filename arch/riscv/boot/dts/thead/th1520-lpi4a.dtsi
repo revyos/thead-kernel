@@ -10,6 +10,14 @@
 #include <dt-bindings/gpio/gpio.h>
 #include "th1520-vi-devices.dtsi"
 / {
+	model = "T-HEAD Light Lichee Pi 4A board";
+	compatible = "thead,light-val", "thead,light-lpi4a", "thead,light";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x200000 0x1 0xffe00000>;
+	};
+
 	chosen {
 		bootargs = "console=ttyS0,115200 crashkernel=256M-:128M earlycon clk_ignore_unused sram=0xffe0000000,0x180000";
 		stdout-path = "serial0:115200n8";
@@ -41,10 +49,8 @@
 
 		/* config#1: multiple valid regions */
 		iopmp_emmc: IOPMP_EMMC {
-			regions = <0x000000 0x100000>,
-				  <0x100000 0x200000>;
 			attr = <0xFFFFFFFF>;
-			dummy_slave= <0x800000>;
+			is_default_region;
 		};
 
 		/* config#2: iopmp bypass */
@@ -204,6 +210,7 @@
 			vdev-nums = <1>;
             reg = <0x0 0x1E000000 0 0x10000>;
 			compatible = "light,light-rpmsg";
+			log-memory-region = <&audio_log_mem>;
 			status = "okay";
 		};
 	};
@@ -223,22 +230,22 @@
 	};
 
 	reg_vref_1v8: regulator-adc-verf {
-			compatible = "regulator-fixed";
-			regulator-name = "vref-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "vref-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		status = "okay";
 	};
 
-        reg_tp_pwr_en: regulator-pwr-en {
-                compatible = "regulator-fixed";
-                regulator-name = "regulator-pwr-en";
-                regulator-min-microvolt = <2800000>;
-                regulator-max-microvolt = <2800000>;
-                gpio = <&pcal6408ahk_d 4 1>;
-                enable-active-high;
-                regulator-always-on;
-        };
+	reg_tp_pwr_en: regulator-pwr-en {
+		compatible = "regulator-fixed";
+		regulator-name = "regulator-pwr-en";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&pcal6408ahk_d 4 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
 	reg_usb_hub_vdd1v2: regulator-hub-vdd12-en {
 		compatible = "regulator-fixed";
@@ -247,7 +254,6 @@
 		regulator-max-microvolt = <1200000>;
 		gpio = <&pcal6408ahk_d 2 1>;
 		enable-active-high;
-
 	};
 
 	reg_usb_hub_vcc5v: regulator-hub-vcc5v-en {
@@ -257,7 +263,6 @@
 		regulator-max-microvolt = <5000000>;
 		gpio = <&pcal6408ahk_d 3 1>;
 		enable-active-high;
-
 	};
 
 	wcn_wifi: wireless-wlan {
@@ -296,6 +301,7 @@
 			debounce-interval = <1>;
 			gpios = <&gpio2_porta 25 0x1>;
 		};
+
 		key-wake {
 			label = "Wake Key";
 			wakeup-source;
@@ -309,6 +315,7 @@
 		compatible = "thead,light-aon";
 		mbox-names = "aon";
 		mboxes = <&mbox_910t 1 0>;
+		log-memory-region = <&aon_log_mem>;
 		status = "okay";
 
 		pd: light-aon-pd {
@@ -474,123 +481,155 @@
 			enable-active-high;
 		};
 
-		aon_reg_dialog: light-dialog-reg {
-			compatible = "thead,light-dialog-pmic-ant";
-			status = "okay";
-
 			dvdd_cpu_reg: appcpu_dvdd {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvdd";
 				regulator-min-microvolt = <300000>;
 				regulator-max-microvolt = <1570000>;
+				regulator-type = "dvdd";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			dvddm_cpu_reg: appcpu_dvddm {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvddm";
 				regulator-min-microvolt = <300000>;
 				regulator-max-microvolt = <1570000>;
+				regulator-type = "dvddm";
+				regulator-dual-rail;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd18_aon_reg: soc_dvdd18_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd33_usb3_reg: soc_avdd33_usb3 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd33_usb3";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_aon_reg: soc_dvdd08_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ddr_reg: soc_dvdd08_ddr {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ddr";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v8_reg: soc_vdd_ddr_1v8 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v8";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v1_reg: soc_vdd_ddr_1v1 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v1";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_0v6_reg: soc_vdd_ddr_0v6 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_0v6";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd18_ap_reg: soc_dvdd18_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_ap";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ap_reg: soc_dvdd08_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ap";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd08_mipi_hdmi_reg: soc_avdd08_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd08_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd18_mipi_hdmi_reg: soc_avdd18_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd18_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd33_emmc_reg: soc_vdd33_emmc {
-				regulator-name = "soc_vdd33_emmc";
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd33_emmc";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd18_emmc_reg: soc_vdd18_emmc {
-				regulator-name = "soc_vdd18_emmc";
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd18_emmc";
+				regulator-type = "gpio";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dovdd18_scan_reg: soc_dovdd18_scan {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dovdd18_scan";
+				regulator-type = "common";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <3600000>;
 			};
 
 			soc_dvdd12_scan_reg: soc_dvdd12_scan {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd12_scan";
+				regulator-type = "common";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <3600000>;
 			};
 
 			soc_avdd28_scan_en_reg: soc_avdd28_scan_en {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd28_scan_en";
+				regulator-type = "common";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <3600000>;
 			};
 
-		};
 
 		c910_cpufreq {
 			compatible = "thead,light-mpw-cpufreq";
@@ -652,6 +691,16 @@
 
 };
 
+&aon_suspend_ctrl {
+	audio-text-memory-region = <&audio_text_mem>;
+	status = "okay";
+};
+
+&cmamem {
+	size = <0 0x20000000>; // 512MB on lpi4a (SOM)
+	alloc-ranges = <0 0xd8000000 0 0x20000000>; // [0x0D800_0000 ~ 0x0F800_0000]
+};
+
 &resmem {
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -683,9 +732,24 @@
 	facelib_mem: memory@17000000 {
 		reg = <0x0 0x17000000 0 0x02000000>;
 	};
-    audio_mem: memory@32000000 {
-		reg = <0x0 0x32000000 0x0 0x6400000>;
+    audio_text_mem: memory@32000000 {
+		reg = <0x0 0x32000000 0x0 0xE00000>;
+		//no-map;
     };
+    audio_data_mem: memory@32E00000 {
+		reg = <0x0 0x32E00000 0x0 0x600000>;
+		//no-map;
+    };
+	audio_log_mem: memory@33400000 {
+        reg = <0x0 0x33400000 0x0 0x200000>;
+	};
+	aon_log_mem: memory@33600000 {
+        reg = <0x0 0x33600000 0x0 0x200000>;
+	};
+	regdump_mem: memory@38400000 {
+		reg = <0x0 0x38400000 0x0 0x1E00000>;
+		no-map;
+	};
 	rpmsgmem: memory@1E000000 {
 		reg = <0x0 0x1E000000 0x0 0x10000>;
 	};
@@ -780,6 +844,9 @@
 	num-cs = <1>;
 	cs-gpios = <&gpio2_porta 15 0>; // GPIO_ACTIVE_HIGH: 0
 	rx-sample-delay-ns = <10>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_spi0>;
+	status = "okay";
 
 	spi_norflash@0 {
 		status = "okay";
@@ -848,6 +915,8 @@
 	compatible = "snps,dw-apb-ssi";
 	num-cs = <1>;
 	cs-gpios = <&gpio0_porta 1 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_qspi1>;
 	status = "okay";
 
 	spidev@0 {
@@ -1199,10 +1268,8 @@
 			pinctrl_audiopa30: audiopa30 {
 				thead,pins = < FM_AUDIO_PA30 LIGHT_PIN_FUNC_0 0x000 >;
 			};
-            pinctrl_sleep: sleep_grp {
-				thead,pins = <
-                    FM_CPU_JTG_TCLK 0x3   0x238
-				>;
+			pinctrl_sleep: sleep_grp {
+				thead,pins = <FM_CPU_JTG_TCLK 0x3   0x238 >;
 			};
 
 	};
@@ -1247,6 +1314,11 @@
 			>;
 		};
 	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm>;
 };
 
 &i2c0 {
@@ -1295,6 +1367,19 @@
 		reg = <0x18>;
 		gpio-controller;
 		#gpio-cells = <2>;
+	};
+
+	touch@14 {
+		#gpio-cells = <2>;
+		compatible = "goodix,gt9271";
+		reg = <0x14>;
+		interrupt-parent = <&ao_gpio_porta>;
+		interrupts = <3 0>;
+		irq-gpios = <&ao_gpio_porta 3 0>;
+		reset-gpios = <&pcal6408ahk_d 0 0>;
+		AVDD28-supply = <&reg_tp_pwr_en>;
+		tp-size = <9271>;
+		status = "disable";
 	};
 };
 
@@ -1642,13 +1727,18 @@
 	status = "okay";
 };
 
+&npu_opp_table {
+	opp-1000000000 {
+		opp-suspend;
+	};
+};
+
 &fce {
 	memory-region = <&facelib_mem>;
 	status = "okay";
 };
 
 &dpu_enc0 {
-	status = "okay";
 
 	ports {
 		/* output */
@@ -1691,6 +1781,20 @@
 			dsi0_out: endpoint {
 				remote-endpoint = <&panel0_in>;
 			};
+		};
+	};
+
+	panel0@0 {
+		reg = <0>;
+		backlight = <&lcd0_backlight>;
+		reset-gpio = <&pcal6408ahk_d 7 0>; /* active low */
+		hsvcc-supply = <&soc_vdd18_lcd0_en_reg>;
+		vspn3v3-supply = <&soc_vdd33_lcd0_en_reg>;
+
+		port {
+				panel0_in: endpoint {
+						remote-endpoint = <&dsi0_out>;
+				};
 		};
 	};
 };
@@ -1780,6 +1884,11 @@
 	vbus-supply = <&soc_vbus_en_reg>;
 	hub1v2-supply = <&reg_usb_hub_vdd1v2>;
 	hub5v-supply = <&reg_usb_hub_vcc5v>;
+};
+
+&light_regdump {
+	memory-region = <&regdump_mem>;
+	status = "okay";
 };
 
 &cpus {

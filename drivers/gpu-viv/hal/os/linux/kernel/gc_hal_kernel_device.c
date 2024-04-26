@@ -72,12 +72,23 @@
 #include <linux/export.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
+#include <linux/utsname.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
 
 #define _GC_OBJ_ZONE    gcvZONE_DEVICE
+
+#define MAX_TIMESTAMPS 10
+#define MAX_HW_PROCESS_TIME 90000000
+
+static struct timer_list my_timer;
+static struct workqueue_struct *my_workqueue;
+static struct work_struct my_work;
 
 static gckGALDEVICE galDevice;
 
 extern gcTA globalTA[gcdMAX_GPU_COUNT];
+
 
 #ifdef CONFIG_DEBUG_FS
 #if defined(CONFIG_CPU_CSKYV2) && LINUX_VERSION_CODE <= KERNEL_VERSION(3,0,8)
@@ -323,9 +334,9 @@ int gc_load_show(void* m, void* data)
 {
     int len = 0;
     gctUINT32 i = 0;
-    
+
     gckGALDEVICE device = galDevice;
-    
+
 #ifdef CONFIG_DEBUG_FS
     void* ptr = m;
 #else
@@ -335,8 +346,8 @@ int gc_load_show(void* m, void* data)
     if (!device) {
         return -ENXIO;
     }
-        
-    
+
+
 
         for (i = 0; i <= gcvCORE_2D_MAX; i++)
         {
@@ -1251,7 +1262,7 @@ static int set_clk(const char* buf)
         }
         else
         {
-            printk("Error: command format must be this: echo \"0 32 32\" > /sys/kernel/debug/gc/clk\n");
+            pr_err("Error: command format must be this: echo \"0 32 32\" > /sys/kernel/debug/gc/clk\n");
             return 0;
         }
 
@@ -1264,10 +1275,10 @@ static int set_clk(const char* buf)
     }
 
     if (3 == sscanf(data, "%d %d %d", &dumpCore, &clkScale[0], &clkScale[1])) {
-        printk("Change core:%d MC scale:%d SH scale:%d\n",
+        pr_err("Change core:%d MC scale:%d SH scale:%d\n",
                 dumpCore, clkScale[0], clkScale[1]);
     } else {
-        printk("usage: echo \"0 32 32\" > clk\n");
+        pr_err("usage: echo \"0 32 32\" > clk\n");
         return 0;
     }
 
@@ -1279,7 +1290,7 @@ static int set_clk(const char* buf)
     }
     else
     {
-        printk("Error: invalid core\n");
+        pr_err("Error: invalid core\n");
     }
 
     return 0;
@@ -1354,7 +1365,7 @@ static int debugfs_copy_from_user(char *k_buf, const char __user *buf, size_t co
     ret = copy_from_user(k_buf, buf, count);
     if (ret != 0)
     {
-        printk("Error: lost data: %d\n", (int)ret);
+        pr_err("Error: lost data: %d\n", (int)ret);
         return -1;
     }
 
@@ -1844,7 +1855,7 @@ _SetupContiguousVidMem(
 
     if (Args->showArgs)
     {
-        gcmkPRINT("Galcore Info: ContiguousBase=0x%llx ContiguousSize=0x%zx\n", device->contiguousBase, device->contiguousSize);
+        pr_warn("Galcore Info: ContiguousBase=0x%llx ContiguousSize=0x%zx\n", device->contiguousBase, device->contiguousSize);
     }
 
 OnError:
@@ -2068,7 +2079,7 @@ _SetupIsr(
                 gcmkONERROR(gcvSTATUS_GENERIC_IO);
             }
 
-            gcmkPRINT("galcore: polling core%d int state\n", Core);
+            pr_err("galcore: polling core%d int state\n", Core);
 
             Device->isrThread[Core] = task;
             Device->isrInitializeds[Core] = gcvTRUE;
@@ -2332,7 +2343,7 @@ _StopPreemptThread(
 /******************************************************************************\
 ******************************* G2D Devfreq support START***********************
 \******************************************************************************/
-
+#ifdef CONFIG_PM_DEVFREQ
 static int gc_df_target(struct device * dev, unsigned long *freq, u32 flags) {
 
     int i = 0;
@@ -2369,7 +2380,7 @@ static int gc_df_target(struct device * dev, unsigned long *freq, u32 flags) {
     for(i = 0; i < gcvCORE_2D_MAX; i++) {
         if(device->kernels[i]) {
             hardware = device->kernels[i]->hardware;
-            if(hardware->clockState) {
+            if(hardware->os->clockStates[i]) {
                 gckHARDWARE_SetClock(hardware, i, _freq, _freq);
                 device->kernels[i]->cur_freq = *freq;
             }
@@ -2425,7 +2436,7 @@ static int gc_df_get_cur_freq(struct device *dev, unsigned long *freq) {
 struct devfreq_simple_ondemand_data galcore_gov_data;
 
 static struct devfreq_dev_profile gc_df_profile = {
-    .polling_ms = 500,
+    .polling_ms = 50,
     .target = gc_df_target,
     .get_dev_status = gc_df_status,
     .get_cur_freq = gc_df_get_cur_freq,
@@ -2441,7 +2452,7 @@ g2d_EnableDevfreq(void) {
 
     ret = dev_pm_opp_of_add_table(galcore_device);
     if(ret) {
-        gcmkPRINT("add table failed \n");
+        pr_err("add table failed \n");
     }
 
     new_clk = devm_clk_get(galcore_device, "cclk");
@@ -2465,17 +2476,255 @@ g2d_EnableDevfreq(void) {
     galDevice->g2d_devfreq = devm_devfreq_add_device(galcore_device, &gc_df_profile, DEVFREQ_GOV_SIMPLE_ONDEMAND, &galcore_gov_data);
 
     if(IS_ERR(galDevice->g2d_devfreq)) {
-        gcmkPRINT("Errot: init devgreq %lx\n", (unsigned long)galcore_device);
+        pr_err("Errot: init devgreq %lx\n", (unsigned long)galcore_device);
         status = gcvSTATUS_NOT_SUPPORTED;
     }
 
     return status;
 }
+#endif
 
 /******************************************************************************\
-******************************* G2D Devfreq support END ************************
+******************************* Driver status query ****************************
 \******************************************************************************/
 
+gctUINT64 cur_on = 0, cur_idle = 0, cur_suspend = 0, cur_off = 0,
+          busy_time = 0, total_time = 0, freq = 396000000;
+gctUINT64 on = 0;
+gctUINT64 off = 0;
+gctUINT64 idle = 0;
+gctUINT64 suspend = 0;
+int dev_loading_percent;
+int dev_loading_max_percent;
+int updatePeriod_ms = 50;
+
+static ssize_t log_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    ssize_t len = 0;
+    gctINT i, j,ct, pid, id = 0;
+    gctINT devIncenum = 0;
+    char name[24];
+    gceSTATUS status;
+    gckVIDMEM memory;
+    gctUINT32 free = 0, used = 0, total = 0, minFree = 0, maxUsed = 0;
+    gckGALDEVICE device = galDevice;
+    gcsDATABASE_PTR database;
+    gcsDATABASE_COUNTERS virtualCounter = {0, 0, 0};
+    gckKERNEL kernel = _GetValidKernel(device);
+    ktime_t result;
+
+    status = gckKERNEL_GetVideoMemoryPool(kernel, gcvPOOL_SYSTEM, &memory);
+
+    if (gcmIS_SUCCESS(status))
+    {
+        gcmkVERIFY_OK(
+            gckOS_AcquireMutex(memory->os, memory->mutex, gcvINFINITE));
+
+        free    = memory->freeBytes;
+        minFree = memory->minFreeBytes;
+        used    = memory->bytes - memory->freeBytes;
+        maxUsed = memory->bytes - memory->minFreeBytes;
+        total   = memory->bytes;
+
+        gcmkVERIFY_OK(gckOS_ReleaseMutex(memory->os, memory->mutex));
+    }
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "[G2D] Version: %s\n"
+        "Build Time【%s,%s,%s,%s】\n"
+        "-------------------------------------------MODULE PARAM----------------------------------\n"
+        "updatePeriod_ms\n"
+        "       %d\n",
+        gcvVERSION_STRING, utsname()->sysname, utsname()->release, utsname()->version, utsname()->machine,
+        updatePeriod_ms
+        );
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "-------------------------------------------INSTANCE INFO---------------------------------\n");
+
+    if (!kernel)
+    return -ENXIO;
+
+    gcmkVERIFY_OK(gckOS_AcquireMutex(kernel->os, kernel->db->dbMutex, gcvINFINITE));
+    if (kernel->db->idleTime)
+    {
+        /* Record idle time if DB upated. */
+        kernel->db->idleTime = 0;
+    }
+
+    for (i = 0; i < gcmCOUNTOF(kernel->db->db); ++i)
+    {
+        for (database = kernel->db->db[i];
+            database != gcvNULL;
+            database = database->next)
+        {
+            static const char * otherCounterNames[] = {
+                "AllocContiguous",
+                "MapMemory",
+            };
+            gcsDATABASE_COUNTERS * otherCounters[] = {
+                &database->contiguous,
+                &database->mapMemory,
+            };
+            gcsDATABASE_COUNTERS * counter;
+            pid = database->processID;
+
+
+            for(j = 0; j < MAX_TIMESTAMPS; j++) {
+                if(database->start_times[j] == 0) continue;
+                if(database->end_times[j] - database->start_times[j] > result &&
+                database->end_times[j] - database->start_times[j] < MAX_HW_PROCESS_TIME) {
+                    result = database->end_times[j] - database->start_times[j];
+                    if(result > database->max_hw_time) {
+                        database->max_hw_time = result;
+                    }
+                }
+            }
+
+            gcmkVERIFY_OK(gckOS_GetProcessNameByPid(pid, gcmSIZEOF(name), name));
+
+            len += scnprintf(buf + len, PAGE_SIZE - len,
+            "ID: %d            ProId: %-8d              NAME: %s\n"
+            "\n",
+            id, pid, name
+            );
+            id++;
+            devIncenum++;
+
+
+            len += scnprintf(buf + len, PAGE_SIZE - len,
+            "                             Current               Maximum              Total\n");
+            for (ct = 0; ct < gcmCOUNTOF(otherCounterNames); ct++)
+            {
+                len += scnprintf(buf + len, PAGE_SIZE - len,
+                "%-16s     %16lld      %16lld      %16lld\n",
+                otherCounterNames[ct],
+                otherCounters[ct]->bytes,
+                otherCounters[ct]->maxBytes,
+                otherCounters[ct]->totalBytes);
+
+            }
+            counter = &database->vidMemPool[gcvPOOL_VIRTUAL];
+            virtualCounter.bytes += counter->bytes;
+            virtualCounter.maxBytes += counter->maxBytes;
+
+            len += scnprintf(buf + len, PAGE_SIZE - len,
+            "HwProcNs                    %lld                %lld \n",
+                result,database->max_hw_time);
+            result = 0;
+            len += scnprintf(buf + len, PAGE_SIZE - len,
+            "\n");
+
+            memset(database->start_times, 0, sizeof(database->start_times));
+            memset(database->end_times, 0, sizeof(database->end_times));
+            database->st = 0;
+
+        }
+    }
+    gcmkVERIFY_OK(gckOS_ReleaseMutex(kernel->os, kernel->db->dbMutex));
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+    "-------------------------------------------MODULE STATUS---------------------------------\n"
+    "DevInstanceNum          DevLoading_%%          DevLoadingMax_%%\n"
+    "%d                          %d                      %d\n",
+    devIncenum, dev_loading_percent, dev_loading_max_percent
+    );
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+    "-----------------------------------------VIDEO MEMORY INFO-------------------------------\n"
+    "   POOL SYSTEM:\n"
+    "      Free             Minfree              Used                   MaxUsed             Total\n"
+    "%10u B        %10u B        %10u B         %10u B         %10u B\n"
+    "\n"
+    "   POOL VIRTUAL:\n"
+    "      Used              MaxUsed\n"
+    "%10llu B       %10llu B\n",
+    free, minFree, used, maxUsed,total,
+    virtualCounter.bytes, virtualCounter.maxBytes);
+
+    gckHARDWARE_QueryStateTimer(kernel->hardware, &on, &off, &idle, &suspend);
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+    "--------------------------------------------IDLE INFO------------------------------------\n"
+    " On                     Off                   Suspend\n"
+    "%lld ns       %lld ns          %lld ns",
+    on, off, suspend);
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+    "\n\n");
+
+    return len;
+}
+
+static ssize_t log_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    dev_loading_max_percent = 0;
+    return count;
+}
+
+static ssize_t updatePeriod_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf,"%u\n",updatePeriod_ms);
+}
+
+static void timer_callback(struct timer_list *t) {
+    queue_work(my_workqueue, &my_work);
+    mod_timer(t, jiffies + msecs_to_jiffies(updatePeriod_ms));
+}
+
+static void my_work_func(struct work_struct *work)
+{
+    gckGALDEVICE device = galDevice;
+    gckKERNEL kernel = _GetValidKernel(device);
+    int i;
+
+    gckHARDWARE_QueryStateTimer(kernel->hardware, &on, &off, &idle, &suspend);
+
+    for(i = 0; i < gcvCORE_2D_MAX; i++) {
+        if(device->kernels[i]) {
+            freq = device->kernels[i]->cur_freq;
+        }
+    }
+
+    busy_time = on - cur_on;
+    total_time = on - cur_on + idle - cur_idle + suspend - cur_suspend + off - cur_off;
+    dev_loading_percent = busy_time * 100 / total_time / (396000000 / freq);
+    if(dev_loading_max_percent < dev_loading_percent) {
+        dev_loading_max_percent = dev_loading_percent;
+    }
+    cur_on = on;
+    cur_idle = idle;
+    cur_suspend = suspend;
+    cur_off = off;
+}
+
+static ssize_t updatePeriod_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+      char *start = (char *)buf;
+      updatePeriod_ms = simple_strtoul(start, &start, 0);
+      if(updatePeriod_ms <= 0) {
+        del_timer(&my_timer);
+        if (my_workqueue)
+        destroy_workqueue(my_workqueue);
+      } else {
+        my_workqueue = create_workqueue("my_workqueue");
+        INIT_WORK(&my_work, my_work_func);
+        timer_setup(&my_timer, timer_callback, 0);
+        mod_timer(&my_timer, jiffies + msecs_to_jiffies(updatePeriod_ms));
+      }
+      return count;
+}
+
+static struct kobj_attribute log_attr = __ATTR(log, 0664, log_show, log_store);
+
+static struct kobj_attribute updatePeriod_attr = __ATTR(updatePeriod_ms, 0664, updatePeriod_show, updatePeriod_store);
+
+static struct attribute *attrs[] = {
+    &log_attr.attr,
+    &updatePeriod_attr.attr,
+    NULL,
+};
+
+static struct attribute_group xrp_dev_attr_group = {
+    .name = "info",
+    .attrs = attrs,
+};
 
 /*******************************************************************************
 **
@@ -2502,7 +2751,7 @@ gckGALDEVICE_Construct(
     gckGALDEVICE device;
     gceSTATUS status = gcvSTATUS_OK;
     gctUINT64 isrPolling = -1;
-    gctINT32 i;
+    gctINT32 i, ret;
 
     gcmkHEADER_ARG("Platform=%p Args=%p", Platform, Args);
 
@@ -2553,7 +2802,7 @@ gckGALDEVICE_Construct(
             else
             {
 #if USE_LINUX_PCIE
-                gcmkPRINT("register should be mapped in platform layer");
+                pr_warn("register should be mapped in platform layer");
 #endif
                 if (!request_mem_region(physical,
                         device->requestedRegisterMemSizes[i],
@@ -2846,8 +3095,21 @@ gckGALDEVICE_Construct(
 
     /* Return pointer to the device. */
     *Device = galDevice = device;
+#ifdef CONFIG_PM_DEVFREQ
     g2d_EnableDevfreq();
     devfreq_suspend_device(galDevice->g2d_devfreq);
+#endif
+    ret = sysfs_create_group(&galcore_device->kobj, &xrp_dev_attr_group);
+	if (ret) {
+		dev_err(galcore_device, "Failed to create xrp dev  sysfs.\n");
+		goto OnError;
+	}
+    my_workqueue = create_workqueue("my_workqueue");
+
+    INIT_WORK(&my_work, my_work_func);
+    timer_setup(&my_timer, timer_callback, 0);
+
+    mod_timer(&my_timer, jiffies + msecs_to_jiffies(100));
 
 OnError:
     if (gcmIS_ERROR(status))
@@ -2886,7 +3148,12 @@ gckGALDEVICE_Destroy(
     gckKERNEL kernel = gcvNULL;
 
     gcmkHEADER_ARG("Device=%p", Device);
-
+    
+    sysfs_remove_group(&galcore_device->kobj, &xrp_dev_attr_group);
+    del_timer(&my_timer);
+    if (my_workqueue) {
+        destroy_workqueue(my_workqueue);
+    }
     if (Device != gcvNULL)
     {
         /* Grab the first available kernel */

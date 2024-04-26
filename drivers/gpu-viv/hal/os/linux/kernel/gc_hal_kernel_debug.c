@@ -1288,7 +1288,7 @@ gckOS_DumpBuffer(
     /* memory dump below. */
     if (Type >= gcvDUMP_BUFFER_TYPE_COUNT)
     {
-        gcmkPRINT("#[ERROR: invalid buffer type]\n");
+        pr_err("#[ERROR: invalid buffer type]\n");
         return;
     }
 

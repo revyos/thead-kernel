@@ -195,7 +195,7 @@ reserved_mem_attach(
 
             if (!region)
             {
-                printk("request mem %s(0x%lx - 0x%lx) failed\n",
+                pr_debug("request mem %s(0x%lx - 0x%lx) failed\n",
                     res->name, res->start, res->start + res->size - 1);
 
                 kfree(res);
@@ -314,13 +314,13 @@ reserved_mem_unmap_user(
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
     if (vm_munmap((unsigned long)MdlMap->vmaAddr - res->offset_in_page, res->size) < 0)
     {
-        printk("%s: vm_munmap failed\n", __func__);
+        pr_debug("%s: vm_munmap failed\n", __func__);
     }
 #else
     down_write(&current_mm_mmap_sem);
     if (do_munmap(current->mm, (unsigned long)MdlMap->vmaAddr - res->offset_in_page, res->size) < 0)
     {
-        printk("%s: do_munmap failed\n", __func__);
+        pr_debug("%s: do_munmap failed\n", __func__);
     }
     up_write(&current_mm_mmap_sem);
 #endif

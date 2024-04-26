@@ -8,52 +8,26 @@
 / {
 	model = "T-HEAD Light Lichee Pi 4A configuration for 8GB DDR board";
 	compatible = "thead,light-val", "thead,light-lpi4a", "thead,light";
-
-	memory@0 {
-		device_type = "memory";
-		reg = <0x0 0x200000 0x1 0xffe00000>;
-	};
-};
-
-&cmamem {
-	size = <0 0x20000000>; // 512MB on lpi4a (SOM)
-	alloc-ranges = <0 0xd8000000 0 0x20000000>; // [0x0D800_0000 ~ 0x0F800_0000]
 };
 
 &i2c3 {
-        touch@14 {
-                #gpio-cells = <2>;
-                compatible = "goodix,gt9271";
-                reg = <0x14>;
-                interrupt-parent = <&ao_gpio_porta>;
-                interrupts = <3 0>;
-                irq-gpios = <&ao_gpio_porta 3 0>;
-                reset-gpios = <&pcal6408ahk_d 0 0>;
-                AVDD28-supply = <&reg_tp_pwr_en>;
-                touchscreen-size-x = <800>;
-                touchscreen-size-y = <1200>;
-                tp-size = <9271>;
-                status = "okay";
-        };
+	touch@14 {
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <1200>;
+		status = "okay";
+	};
 };
 
 &dsi0 {
         status = "okay";
 };
 
-&dhost_0 {
-        panel0@0 {
-		compatible = "chongzhou,cz101b4001", "jadard,jd9365da-h3";
-                reg = <0>;
-                backlight = <&lcd0_backlight>;
-                reset-gpio = <&pcal6408ahk_d 7 0>; /* active low */
-                hsvcc-supply = <&soc_vdd18_lcd0_en_reg>;
-                vspn3v3-supply = <&soc_vdd33_lcd0_en_reg>;
+&dpu_enc0 {
+	status = "okay";
+};
 
-                port {
-                        panel0_in: endpoint {
-                                remote-endpoint = <&dsi0_out>;
-                        };
-                };
-        };
+&dhost_0 {
+	panel0@0 {
+		compatible = "chongzhou,cz101b4001", "jadard,jd9365da-h3";
+	};
 };

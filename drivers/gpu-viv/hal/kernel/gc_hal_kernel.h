@@ -62,6 +62,7 @@
 #include "gc_hal_driver.h"
 #include "gc_hal_kernel_mutex.h"
 #include "gc_hal_metadata.h"
+#include <linux/ktime.h>
 
 #if gcdENABLE_SW_PREEMPTION
 #include "gc_hal_kernel_preemption.h"
@@ -290,6 +291,13 @@ typedef struct _gcsDATABASE
 
     /* Process ID. */
     gctUINT32                           processID;
+
+    /* Process time. */
+    ktime_t                             start_times[10];
+    ktime_t                             end_times[10];
+    gctUINT32                           st;
+    ktime_t                             max_hw_time;
+
 
     /* Open-Close ref count */
     gctPOINTER                          refs;

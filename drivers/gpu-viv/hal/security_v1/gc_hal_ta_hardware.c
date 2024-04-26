@@ -60,6 +60,7 @@
 #include "gc_hal_ta_hardware.h"
 #include "gc_hal.h"
 #include "gc_feature_database.h"
+#include <linux/printk.h>
 
 
 #define _GC_OBJ_ZONE     1
@@ -187,7 +188,7 @@ _IdentifyHardwareByDatabase(
 
     if (database == gcvNULL)
     {
-        gcmkPRINT("[galcore]: Feature database is not found,"
+        pr_warn("[galcore]: Feature database is not found,"
                   "chipModel=0x%0x, chipRevision=0x%x, productID=0x%x, ecoID=0x%x, customerID=0x%x",
                   Hardware->chipModel,
                   Hardware->chipRevision,

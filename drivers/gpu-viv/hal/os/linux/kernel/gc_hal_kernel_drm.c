@@ -905,7 +905,7 @@ OnError:
         {
             drm_dev_unref(drm);
         }
-        printk(KERN_ERR "galcore: Failed to setup drm device.\n");
+        pr_err("galcore: Failed to setup drm device.\n");
     }
     return ret;
 }

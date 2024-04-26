@@ -148,7 +148,7 @@ gckOS_ImportAllocators(
 
             if (gcmIS_ERROR(status))
             {
-                gcmkPRINT("["DEVICE_NAME"]: Can't construct allocator(%s)",
+                pr_err("["DEVICE_NAME"]: Can't construct allocator(%s)",
                           allocatorArray[i].name);
 
                 continue;

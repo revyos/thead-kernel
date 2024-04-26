@@ -175,12 +175,12 @@
 #endif
 */
 
-#ifdef CONFIG_RESUME_IN_WORKQUEUE /* this can be removed, because there is no case for this... */
-	#if !defined(CONFIG_WAKELOCK) && !defined(CONFIG_ANDROID_POWER)
-		#error "enable CONFIG_RESUME_IN_WORKQUEUE without CONFIG_WAKELOCK or CONFIG_ANDROID_POWER will suffer from the danger of wifi's unfunctionality..."
-		#error "If you still want to enable CONFIG_RESUME_IN_WORKQUEUE in this case, mask this preprossor checking and GOOD LUCK..."
-	#endif
-#endif
+// #ifdef CONFIG_RESUME_IN_WORKQUEUE /* this can be removed, because there is no case for this... */
+// 	#if !defined(CONFIG_WAKELOCK) && !defined(CONFIG_ANDROID_POWER)
+// 		#error "enable CONFIG_RESUME_IN_WORKQUEUE without CONFIG_WAKELOCK or CONFIG_ANDROID_POWER will suffer from the danger of wifi's unfunctionality..."
+// 		#error "If you still want to enable CONFIG_RESUME_IN_WORKQUEUE in this case, mask this preprossor checking and GOOD LUCK..."
+// 	#endif
+// #endif
 
 /* About USB VENDOR REQ */
 #if defined(CONFIG_USB_VENDOR_REQ_BUFFER_PREALLOC) && !defined(CONFIG_USB_VENDOR_REQ_MUTEX)

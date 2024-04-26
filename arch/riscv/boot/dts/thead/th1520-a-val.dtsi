@@ -9,10 +9,16 @@
 #include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/gpio/gpio.h>
 #include "th1520-vi-devices.dtsi"
+#include "th1520-a-val-audio.dtsi"
 
 / {
 	model = "T-HEAD Light val board";
 	compatible = "thead,light-val", "thead,light";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x200000 0x0 0xffe00000>;
+	};
 
 	chosen {
 		bootargs = "console=ttyS0,115200 crashkernel=256M-:128M earlycon clk_ignore_unused sram=0xffe0000000,0x180000";
@@ -27,6 +33,10 @@
 			gpios = <&gpio1_porta 15 0>;	/* GPIO_ACTIVE_HIGH: 0 */
 			default-state = "off";
 		};
+	};
+
+	display-subsystem {
+		status = "okay";
 	};
 
 	lcd0_backlight: pwm-backlight@0 {
@@ -48,10 +58,8 @@
 
 		/* config#1: multiple valid regions */
 		iopmp_emmc: IOPMP_EMMC {
-			regions = <0x000000 0x100000>,
-				  <0x100000 0x200000>;
 			attr = <0xFFFFFFFF>;
-			dummy_slave= <0x800000>;
+			is_default_region;
 		};
 
 		/* config#2: iopmp bypass */
@@ -191,16 +199,6 @@
 		status = "okay";
 	};
 
-	lightsound: lightsound@1 {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "Light-Sound-Card";
-
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		status = "disabled";
-	};
-
 	light_rpmsg: light_rpmsg {
 		compatible = "light,rpmsg-bus", "simple-bus";
 		memory-region = <&rpmsgmem>;
@@ -211,6 +209,7 @@
 			vdev-nums = <1>;
             reg = <0x0 0x1E000000 0 0x10000>;
 			compatible = "light,light-rpmsg";
+			log-memory-region = <&audio_log_mem>;
 			status = "okay";
 		};
 	};
@@ -223,32 +222,32 @@
 	};
 
 	reg_vref_1v8: regulator-adc-verf {
-			compatible = "regulator-fixed";
-			regulator-name = "vref-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-	status = "okay";
+		compatible = "regulator-fixed";
+		regulator-name = "vref-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		status = "okay";
 	};
 
-		reg_tp_pwr_en: regulator-pwr-en {
-                compatible = "regulator-fixed";
-                regulator-name = "PWR_EN";
-                regulator-min-microvolt = <2800000>;
-                regulator-max-microvolt = <2800000>;
-                gpio = <&pcal6408ahk_a 3 1>;
-                enable-active-high;
-                regulator-always-on;
-        };
+	reg_tp_pwr_en: regulator-pwr-en {
+		compatible = "regulator-fixed";
+		regulator-name = "PWR_EN";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&pcal6408ahk_a 3 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
-        reg_tp1_pwr_en: regulator-tp1-pwr-en {
-                compatible = "regulator-fixed";
-                regulator-name = "PWR_EN";
-                regulator-min-microvolt = <2800000>;
-                regulator-max-microvolt = <2800000>;
-                gpio = <&pcal6408ahk_a 6 1>;
-                enable-active-high;
-                regulator-always-on;
-        };
+	reg_tp1_pwr_en: regulator-tp1-pwr-en {
+		compatible = "regulator-fixed";
+		regulator-name = "PWR_EN";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&pcal6408ahk_a 6 1>;
+		enable-active-high;
+		regulator-always-on;
+	};
 
 	lcd0_1v8: regulator-lcd0-vdd18 {
 		compatible = "regulator-fixed";
@@ -348,6 +347,7 @@
 		compatible = "thead,light-aon";
 		mbox-names = "aon";
 		mboxes = <&mbox_910t 1 0>;
+		log-memory-region = <&aon_log_mem>;
 		status = "okay";
 
 		pd: light-aon-pd {
@@ -356,163 +356,211 @@
 		};
 
 		aon_reg_dialog: light-dialog-reg {
-			compatible = "thead,light-dialog-pmic";
 			status = "okay";
-
+	    };
 			dvdd_cpu_reg: appcpu_dvdd {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvdd";
 				regulator-min-microvolt = <300000>;
 				regulator-max-microvolt = <1570000>;
+				regulator-type = "dvdd";
 				regulator-boot-on;
 				regulator-always-on;
+				status = "okay";
 			};
 
 			dvddm_cpu_reg: appcpu_dvddm {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "appcpu_dvddm";
 				regulator-min-microvolt = <300000>;
 				regulator-max-microvolt = <1570000>;
+				regulator-type = "dvddm";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dvdd18_aon_reg: soc_dvdd18_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd33_usb3_reg: soc_avdd33_usb3 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd33_usb3";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
-
+			soc_avdd28_scan_en_reg: soc_avdd28_scan_en {
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_avdd28_scan_en";
+				regulator-type = "gpio";
+			};
 			soc_dvdd08_aon_reg: soc_dvdd08_aon {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_aon";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ddr_reg: soc_dvdd08_ddr {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ddr";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v8_reg: soc_vdd_ddr_1v8 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v8";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_1v1_reg: soc_vdd_ddr_1v1 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_1v1";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd_ddr_0v6_reg: soc_vdd_ddr_0v6 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vdd_ddr_0v6";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd18_ap_reg: soc_dvdd18_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd18_ap";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_dvdd08_ap_reg: soc_dvdd08_ap {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd08_ap";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd08_mipi_hdmi_reg: soc_avdd08_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd08_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_avdd18_mipi_hdmi_reg: soc_avdd18_mipi_hdmi {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd18_mipi_hdmi";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd33_emmc_reg: soc_vdd33_emmc {
-				regulator-name = "soc_vdd33_emmc";
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd33_emmc";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
 			soc_vdd18_emmc_reg: soc_vdd18_emmc {
-				regulator-name = "soc_vdd18_emmc";
+				compatible = "thead,light-dialog-pmic";
+				regulator-name = "soc_dvdd18_emmc";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dovdd18_scan_reg: soc_dovdd18_scan {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dovdd18_scan";
+				regulator-type = "common";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <3600000>;
 			};
 			soc_vext_2v8_reg: soc_vext_2v8 {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_vext_2v8";
+				regulator-type = "common";
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dvdd12_scan_reg: soc_dvdd12_scan {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd12_scan";
+				regulator-type = "common";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <3600000>;
 			};
-			soc_avdd28_scan_en_reg: soc_avdd28_scan_en {
-				regulator-name = "soc_avdd28_scan_en";
-			};
+
 			soc_avdd28_rgb_reg: soc_avdd28_rgb {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd28_rgb";
+				regulator-type = "common";
 				regulator-min-microvolt = <2200000>;
 				regulator-max-microvolt = <3475000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dovdd18_rgb_reg: soc_dovdd18_rgb {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dovdd18_rgb";
+				regulator-type = "common";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <3600000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dvdd12_rgb_reg: soc_dvdd12_rgb {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd12_rgb";
+				regulator-type = "common";
 				regulator-min-microvolt = <400000>;
 				regulator-max-microvolt = <1675000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_avdd25_ir_reg: soc_avdd25_ir {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_avdd25_ir";
+				regulator-type = "common";
 				regulator-min-microvolt = <2200000>;
 				regulator-max-microvolt = <3475000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dovdd18_ir_reg: soc_dovdd18_ir {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dovdd18_ir";
+				regulator-type = "common";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <3600000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 			soc_dvdd12_ir_reg: soc_dvdd12_ir {
+				compatible = "thead,light-dialog-pmic";
 				regulator-name = "soc_dvdd12_ir";
+				regulator-type = "common";
 				regulator-min-microvolt = <400000>;
 				regulator-max-microvolt = <1675000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
-
-		};
 
 		c910_cpufreq {
 			compatible = "thead,light-mpw-cpufreq";
@@ -523,6 +571,11 @@
 			compatible = "thead,light-aon-test";
 		};
 	};
+};
+
+&aon_suspend_ctrl {
+	audio-text-memory-region = <&audio_text_mem>;
+	status = "okay";
 };
 
 &cmamem {
@@ -562,10 +615,24 @@
 		reg = <0x0 0x22000000 0x0 0x10000000>;
 		//no-map;
 	};
-    audio_mem: memory@32000000 {
-		reg = <0x0 0x32000000 0x0 0x6400000>;
+    audio_text_mem: memory@32000000 {
+		reg = <0x0 0x32000000 0x0 0xE00000>;
 		//no-map;
     };
+    audio_data_mem: memory@32E00000 {
+		reg = <0x0 0x32E00000 0x0 0x600000>;
+		//no-map;
+    };
+	audio_log_mem: memory@33400000 {
+        reg = <0x0 0x33400000 0x0 0x200000>;
+	};
+	aon_log_mem: memory@33600000 {
+        reg = <0x0 0x33600000 0x0 0x200000>;
+	};
+	regdump_mem: memory@38400000 {
+		reg = <0x0 0x38400000 0x0 0x1E00000>;
+		no-map;
+	};
 	rpmsgmem: memory@1E000000 {
 		reg = <0x0 0x1E000000 0x0 0x10000>;
 		//no-map;
@@ -588,76 +655,25 @@
 		pagesize = <32>;
 	};
 
-       touch@5d {
-               #gpio-cells = <2>;
-               compatible = "goodix,gt911";
-               reg = <0x5d>;
-               interrupt-parent = <&gpio1_porta>;
-               interrupts = <8 0>;
-               irq-gpios = <&gpio1_porta 8 0>;
-               reset-gpios = <&gpio1_porta 7 0>;
-               AVDD28-supply = <&reg_tp_pwr_en>;
-               touchscreen-size-x = <800>;
-               touchscreen-size-y = <1280>;
-       };
+	touch@5d {
+			#gpio-cells = <2>;
+			reg = <0x5d>;
+			interrupt-parent = <&gpio1_porta>;
+			interrupts = <8 0>;
+			irq-gpios = <&gpio1_porta 8 0>;
+			reset-gpios = <&gpio1_porta 7 0>;
+			AVDD28-supply = <&reg_tp_pwr_en>;
+			status = "disbale";
+	};
 };
 
 &audio_i2c0 {
-        clock-frequency = <100000>;
-        status = "okay";
+		clock-frequency = <100000>;
+		status = "okay";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_audiopa6>,
 					<&pinctrl_audiopa7>,
 					<&pinctrl_audio_i2c0>;
-
-        es8156_audio_codec: es8156@8 {
-                #sound-dai-cells = <0>;
-                compatible = "everest,es8156";
-                reg = <0x08>;
-                sound-name-prefix = "ES8156";
-                AVDD-supply = <&soc_aud_dac_3v3_en_reg>;
-                DVDD-supply = <&soc_dvdd18_aon_reg>;
-                PVDD-supply = <&soc_dvdd18_aon_reg>;
-				mclk-sclk-ratio = <4>;
-        };
-
-        es7210_audio_codec_adc0: es7210@40 {
-                #sound-dai-cells = <0>;
-                compatible = "MicArray_0";
-                reg = <0x40>;
-                status = "disabled";
-                work-mode = "ES7210_NORMAL_I2S";
-                channels-max = <2>;
-                mclk-sclk-ratio = <4>;
-                sound-name-prefix = "ES7210_ADC0";
-                MVDD-supply = <&soc_aud_adc_3v3_en_reg>;
-                AVDD-supply = <&soc_aud_adc_3v3_en_reg>;
-                DVDD-supply = <&soc_dvdd18_aon_reg>;
-                PVDD-supply = <&soc_dvdd18_aon_reg>;
-        };
-
-        es7210_audio_codec_adc1: es7210@41 {
-                #sound-dai-cells = <0>;
-                compatible = "MicArray_1";
-                reg = <0x41>;
-                status = "disabled";
-                work-mode = "ES7210_NORMAL_I2S";
-                channels-max = <2>;
-                mclk-sclk-ratio = <4>;
-                sound-name-prefix = "ES7210_ADC1";
-                MVDD-supply = <&soc_aud_adc_3v3_en_reg>;
-                AVDD-supply = <&soc_aud_adc_3v3_en_reg>;
-                DVDD-supply = <&soc_dvdd18_aon_reg>;
-                PVDD-supply = <&soc_dvdd18_aon_reg>;
-        };
-
-        audio_aw87519_pa: amp@58 {
-                compatible = "awinic,aw87519_pa";
-                reg = <0x58>;
-                reset-gpio = <&pcal6408ahk_b 3 0x1>;
-                sound-name-prefix = "AW87519";
-                status = "okay";
-        };
 };
 
 &audio_i2c1 {
@@ -683,15 +699,13 @@
 		pinctrl-0 = <&pinctrl_i2c1>;
         touch1@5d {
                 #gpio-cells = <2>;
-                compatible = "goodix,gt911";
                 reg = <0x5d>;
                 interrupt-parent = <&gpio1_porta>;
                 interrupts = <12 0>;
                 irq-gpios = <&gpio1_porta 12 0>;
                 reset-gpios = <&gpio1_porta 11 0>;
                 AVDD28-supply = <&reg_tp1_pwr_en>;
-                touchscreen-size-x = <800>;
-                touchscreen-size-y = <1280>;
+				status = "disbale";
         };
 };
 
@@ -699,6 +713,9 @@
 	num-cs = <1>;
 	cs-gpios = <&gpio2_porta 15 0>; // GPIO_ACTIVE_HIGH: 0
 	rx-sample-delay-ns = <10>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_spi0>;
+	status = "okay";
 
 	spi_norflash@0 {
 		status = "okay";
@@ -774,6 +791,8 @@
 	num-cs = <1>;
 	cs-gpios = <&gpio0_porta 1 0>;
 	rx-sample-dly = <5>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_qspi1>;
 	status = "okay";
 
 	spi-flash@0 {
@@ -1322,6 +1341,112 @@
 &xtensa_dsp1{
     status = "okay";
     memory-region = <&dsp1_mem>;
+};
+
+&dpu {
+        status = "okay";
+};
+
+&dpu_enc0 {
+
+	ports {
+		/* output */
+		port@1 {
+			reg = <1>;
+
+			enc0_out: endpoint {
+				remote-endpoint = <&dsi0_in>;
+			};
+		};
+	};
+};
+
+&dpu_enc1 {
+
+	ports {
+		/* output */
+		port@1 {
+			reg = <1>;
+
+			enc1_out: endpoint {
+				remote-endpoint = <&dsi1_in>;
+			};
+		};
+	};
+};
+
+&dhost_0 {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			dsi0_in: endpoint {
+				remote-endpoint = <&enc0_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+
+			dsi0_out: endpoint {
+				remote-endpoint = <&panel0_in>;
+			};
+		};
+	};
+
+	panel0@0 {
+		reg = <0>;
+		backlight = <&lcd0_backlight>;
+		reset-gpio = <&gpio1_porta 5 1>; /* active low */
+		vdd1v8-supply = <&lcd0_1v8>;
+		vspn5v7-supply = <&lcd0_5v7>;
+
+		port {
+			panel0_in: endpoint {
+				remote-endpoint = <&dsi0_out>;
+			};
+		};
+	};
+};
+
+&dhost_1 {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			dsi1_in: endpoint {
+				remote-endpoint = <&enc1_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+
+			dsi1_out: endpoint {
+				remote-endpoint = <&panel1_in>;
+			};
+		};
+	};
+
+	panel1@0 {
+		reg = <0>;
+		backlight = <&lcd1_backlight>;
+		reset-gpio = <&gpio1_porta 9 1>;		/* active low */
+		vdd1v8-supply = <&lcd1_1v8>;
+		vspn5v7-supply = <&lcd1_5v7>;
+
+		port {
+			panel1_in: endpoint {
+				remote-endpoint = <&dsi1_out>;
+			};
+		};
+	};
 };
 
 &vvcam_flash_led0{
@@ -2585,6 +2710,12 @@
 	status = "okay";
 };
 
+&npu_opp_table {
+	opp-1000000000 {
+		opp-suspend;
+	};
+};
+
 &fce {
 	memory-region = <&facelib_mem>;
 	status = "okay";
@@ -2597,6 +2728,21 @@
                     <&pinctrl_audiopa11>,
                     <&pinctrl_audiopa12>,
                     <&pinctrl_audio_i2s0>;
+};
+
+&tdm_slot1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audio_tdm>;
+};
+
+&spdif0 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audio_spdif0>;
+};
+
+&spdif1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_audio_spdif1>;
 };
 
 &i2s_8ch_sd0 {
@@ -2630,74 +2776,189 @@
 
 &cpus {
 	c910_0: cpu@0 {
+
 		operating-points = <
 			/* kHz    uV */
-			300000	650000
+			300000	600000
+			400000  700000
+			500000  700000
+			600000  700000
+			702000  700000
 			800000	700000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
+			400000  800000
+			500000  800000
+			600000  800000
+			702000  800000
 			800000	800000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_1: cpu@1 {
+
 		operating-points = <
 			/* kHz    uV */
-			300000	650000
+			300000	600000
+			400000  700000
+			500000  700000
+			600000  700000
+			702000  700000
 			800000	700000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
+			400000  800000
+			500000  800000
+			600000  800000
+			702000  800000
 			800000	800000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_2: cpu@2 {
 
 		operating-points = <
 			/* kHz    uV */
-			300000	650000
+			300000	600000
+			400000  700000
+			500000  700000
+			600000  700000
+			702000  700000
 			800000	700000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
+			400000  800000
+			500000  800000
+			600000  800000
+			702000  800000
 			800000	800000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 	};
 	c910_3: cpu@3 {
 
 		operating-points = <
 			/* kHz    uV */
-			300000	650000
+			300000	600000
+			400000  700000
+			500000  700000
+			600000  700000
+			702000  700000
 			800000	700000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 		light,dvddm-operating-points = <
 			/* kHz   uV */
 			300000	800000
+			400000  800000
+			500000  800000
+			600000  800000
+			702000  800000
 			800000	800000
+			900000	800000
+			1000000	800000
+			1104000	800000
+			1200000	800000
+			1296000 800000
+			1404000 800000
 			1500000	800000
-			1848000	1000000
+			1608000 1000000
+			1704000	1000000
+			1848000 1000000
 		>;
 	};
 };
 
 &hdmi_tx {
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_hdmi>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hdmi>;
+
+	port@0 {
+		/* input */
+		hdmi_tx_in: endpoint {
+			remote-endpoint = <&disp1_out>;
+		};
+	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm>;
+};
+
+&light_regdump {
+	memory-region = <&regdump_mem>;
+	status = "okay";
 };

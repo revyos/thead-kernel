@@ -1664,7 +1664,7 @@ gckOS_RequestReservedMemory(
     allocator = _FindAllocator(Os, gcvALLOC_FLAG_LINUX_RESERVED_MEM);
     if (!allocator)
     {
-        gcmkPRINT("reserved-mem allocator not integrated!");
+        pr_err("reserved-mem allocator not integrated!");
         gcmkONERROR(gcvSTATUS_GENERIC_IO);
     }
 
@@ -1913,7 +1913,7 @@ gckOS_ReadRegisterEx(
              * 2. In non-irq context, register access should not be called,
              *    otherwise it's driver bug.
              */
-            printk(KERN_ERR "[galcore]: %s(%d) GPU[%d] external clock off",
+            pr_err("[galcore]: %s(%d) GPU[%d] external clock off",
                    __func__, __LINE__, Core);
             gcmkBUG_ON(1);
             return gcvSTATUS_GENERIC_IO;
@@ -1924,7 +1924,7 @@ gckOS_ReadRegisterEx(
 
 #if gcdDUMP_AHB_ACCESS
         /* Dangerous to print in interrupt context, skip. */
-        gcmkPRINT("@[RD %d] %08x %08x", Core, Address, *Data);
+        pr_warn("@[RD %d] %08x %08x", Core, Address, *Data);
 #endif
     }
 
@@ -1954,7 +1954,7 @@ _WriteRegisterEx(
         {
             spin_unlock(&Os->registerAccessLock);
 
-            printk(KERN_ERR "[galcore]: %s(%d) GPU[%d] external clock off",
+            pr_err("[galcore]: %s(%d) GPU[%d] external clock off",
                    __func__, __LINE__, Core);
 
             /* Driver bug: register write when clock off. */
@@ -1980,7 +1980,7 @@ _WriteRegisterEx(
         {
             spin_unlock_irqrestore(&Os->registerAccessLock, flags);
 
-            printk(KERN_ERR "[galcore]: %s(%d) GPU[%d] external clock off",
+            pr_err("[galcore]: %s(%d) GPU[%d] external clock off",
                       __func__, __LINE__, Core);
 
             /* Driver bug: register write when clock off. */
@@ -1993,7 +1993,7 @@ _WriteRegisterEx(
 
 #if gcdDUMP_AHB_ACCESS
         /* Dangerous to print in interrupt context, skip. */
-        gcmkPRINT("@[WR %d] %08x %08x", Core, Address, Data);
+        pr_warn("@[WR %d] %08x %08x", Core, Address, Data);
 #endif
     }
 
@@ -4462,7 +4462,7 @@ _CacheOperation(
 
     if (!mdl || !mdl->allocator)
     {
-        gcmkPRINT("[galcore]: %s: Logical=%p no mdl", __FUNCTION__, Logical);
+        pr_err("[galcore]: %s: Logical=%p no mdl", __FUNCTION__, Logical);
         return gcvSTATUS_INVALID_ARGUMENT;
     }
 
@@ -7600,7 +7600,7 @@ gckOS_WrapMemory(
         {
             /* Won't enter here currently, the caller confirms the dmabuf is valid. */
 
-            gcmkPRINT("Wrap memory: invalid dmabuf.\n");
+            pr_err("Wrap memory: invalid dmabuf.\n");
             gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
         }
 

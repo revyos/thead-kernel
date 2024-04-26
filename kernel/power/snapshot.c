@@ -2644,7 +2644,7 @@ static int prepare_image(struct memory_bitmap *new_bm, struct memory_bitmap *bm)
 	/* Preallocate memory for the image */
 	nr_pages = nr_copy_pages - nr_highmem - allocated_unsafe_pages;
 	while (nr_pages > 0) {
-		lp = (struct linked_page *)get_zeroed_page(GFP_ATOMIC);
+		lp = (struct linked_page *)__get_free_pages(GFP_ATOMIC,0);
 		if (!lp) {
 			error = -ENOMEM;
 			goto Free;
@@ -2729,7 +2729,7 @@ int snapshot_write_next(struct snapshot_handle *handle)
 {
 	static struct chain_allocator ca;
 	int error = 0;
-
+	ktime_t start;
 	/* Check if we have already loaded the entire image */
 	if (handle->cur > 1 && handle->cur > nr_meta_pages + nr_copy_pages)
 		return 0;
@@ -2763,10 +2763,12 @@ int snapshot_write_next(struct snapshot_handle *handle)
 			return error;
 
 		if (handle->cur == nr_meta_pages + 1) {
+			start = ktime_get();
 			error = prepare_image(&orig_bm, &copy_bm);
 			if (error)
 				return error;
 
+			pr_info("prepare image took %lldms\n",ktime_to_ms( ktime_sub(ktime_get(),start)) );
 			chain_init(&ca, GFP_ATOMIC, PG_SAFE);
 			memory_bm_position_reset(&orig_bm);
 			restore_pblist = NULL;

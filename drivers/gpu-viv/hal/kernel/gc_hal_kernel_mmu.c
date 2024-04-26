@@ -568,7 +568,7 @@ _CollectFreeSpace(
 #if gcdMMU_TABLE_DUMP
     for (i = 0; i < size; i++)
     {
-        gckOS_Print("%s(%d): [%d]: start=%d, entries=%d.\n",
+        gcmkPRINT("%s(%d): [%d]: start=%d, entries=%d.\n",
                 __FUNCTION__, __LINE__,
                 i,
                 array[i].start,
@@ -775,7 +775,7 @@ gckMMU_FillFlatMappingWithPage16M(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
 
@@ -807,7 +807,7 @@ gckMMU_FillFlatMappingWithPage16M(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
         }
@@ -915,12 +915,12 @@ gckMMU_FillFlatMappingWithPage16M(
             _WritePageEntry(Mmu->mtlbLogical + mCursor, mtlbEntry);
 
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert MTLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert MTLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 mStart,
                 _ReadPageEntry(Mmu->mtlbLogical + mCursor));
 
-            gckOS_Print("%s(%d): STLB: logical:%08x -> physical:%08x\n",
+            pr_warn("%s(%d): STLB: logical:%08x -> physical:%08x\n",
                     __FUNCTION__, __LINE__,
                     stlbLogical,
                     stlbPhyBase);
@@ -952,7 +952,7 @@ gckMMU_FillFlatMappingWithPage16M(
                     _WritePageEntry(stlbLogical + sStart, _SetPage(start, physBaseExt, gcvTRUE));
                 }
 #if gcdMMU_TABLE_DUMP
-                gckOS_Print("%s(%d): insert STLB[%d]: %08x\n",
+                pr_warn("%s(%d): insert STLB[%d]: %08x\n",
                     __FUNCTION__, __LINE__,
                     sStart,
                     _ReadPageEntry(stlbLogical + sStart));
@@ -1123,7 +1123,7 @@ gckMMU_FillFlatMappingWithPage1M(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
 
@@ -1144,7 +1144,7 @@ gckMMU_FillFlatMappingWithPage1M(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
         }
@@ -1241,12 +1241,12 @@ gckMMU_FillFlatMappingWithPage1M(
             _WritePageEntry(Mmu->mtlbLogical + mStart, mtlbEntry);
 
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert MTLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert MTLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 mStart,
                 _ReadPageEntry(Mmu->mtlbLogical + mStart));
 
-            gckOS_Print("%s(%d): STLB: logical:%08x -> physical:%08x\n",
+            pr_warn("%s(%d): STLB: logical:%08x -> physical:%08x\n",
                     __FUNCTION__, __LINE__,
                     stlbLogical,
                     stlbPhyBase);
@@ -1298,7 +1298,7 @@ gckMMU_FillFlatMappingWithPage1M(
                 _WritePageEntry(stlbLogical + sStart, _SetPage(start, physBaseExt, gcvTRUE));
             }
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert STLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert STLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 sStart,
                 _ReadPageEntry(stlbLogical + sStart));
@@ -1481,7 +1481,7 @@ gckMMU_FillFlatMappingWithPage64K(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
 
@@ -1502,7 +1502,7 @@ gckMMU_FillFlatMappingWithPage64K(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
         }
@@ -1599,12 +1599,12 @@ gckMMU_FillFlatMappingWithPage64K(
             _WritePageEntry(Mmu->mtlbLogical + mStart, mtlbEntry);
 
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert MTLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert MTLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 mStart,
                 _ReadPageEntry(Mmu->mtlbLogical + mStart));
 
-            gckOS_Print("%s(%d): STLB: logical:%08x -> physical:%08x\n",
+            pr_warn("%s(%d): STLB: logical:%08x -> physical:%08x\n",
                     __FUNCTION__, __LINE__,
                     stlbLogical,
                     stlbPhyBase);
@@ -1656,7 +1656,7 @@ gckMMU_FillFlatMappingWithPage64K(
                 _WritePageEntry(stlbLogical + sStart, _SetPage(start, physBaseExt, gcvTRUE));
             }
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert STLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert STLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 sStart,
                 _ReadPageEntry(stlbLogical + sStart));
@@ -1839,7 +1839,7 @@ gckMMU_FillFlatMappingWithPage4K(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_err("There is a hole in new flat mapping range, which is not correct");
                 }
             }
 
@@ -1860,7 +1860,7 @@ gckMMU_FillFlatMappingWithPage4K(
                 }
                 else
                 {
-                    gcmkPRINT("There is a hole in new flat mapping range, which is not correct");
+                    pr_warn("There is a hole in new flat mapping range, which is not correct");
                 }
             }
         }
@@ -1957,12 +1957,12 @@ gckMMU_FillFlatMappingWithPage4K(
             _WritePageEntry(Mmu->mtlbLogical + mStart, mtlbEntry);
 
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert MTLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert MTLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 mStart,
                 _ReadPageEntry(Mmu->mtlbLogical + mStart));
 
-            gckOS_Print("%s(%d): STLB: logical:%08x -> physical:%08x\n",
+            pr_warn("%s(%d): STLB: logical:%08x -> physical:%08x\n",
                     __FUNCTION__, __LINE__,
                     stlbLogical,
                     stlbPhyBase);
@@ -2016,7 +2016,7 @@ gckMMU_FillFlatMappingWithPage4K(
                 _WritePageEntry(stlbLogical + sStart, _SetPage(start, physBaseExt, gcvTRUE));
             }
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert STLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert STLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 sStart,
                 _ReadPageEntry(stlbLogical + sStart));
@@ -2262,7 +2262,7 @@ _ConstructDynamicStlb(
         _WritePageEntry(Mmu->mtlbLogical + i, mtlbEntry);
 
 #if gcdMMU_TABLE_DUMP
-        gckOS_Print("%s(%d): insert MTLB[%d]: %08x\n",
+        pr_warn("%s(%d): insert MTLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 i,
                 _ReadPageEntry(Mmu->mtlbLogical + i));
@@ -2726,7 +2726,7 @@ _Construct(
                 gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
             }
 
-            gcmkPRINT("Galcore warning: pre-flat mapping base address can't be lower than 0x1000000, adjust it to 0x1000000. ");
+            pr_warn("Galcore warning: pre-flat mapping base address can't be lower than 0x1000000, adjust it to 0x1000000. ");
 
             physSize = gpuAddress + physSize - gcdMTLB_RESERVED_SIZE;
 
@@ -3049,7 +3049,7 @@ _Destroy(
             {
                 _WritePageEntry(Mmu->mtlbLogical + pre->mtlbIndex + i, 0);
 #if gcdMMU_TABLE_DUMP
-                gckOS_Print("%s(%d): clean MTLB[%d]\n",
+                pr_warn("%s(%d): clean MTLB[%d]\n",
                     __FUNCTION__, __LINE__,
                     pre->mtlbIndex + i);
 #endif
@@ -3697,7 +3697,7 @@ gckMMU_AllocatePagesEx(
     )
 {
 #if gcdDISABLE_GPU_VIRTUAL_ADDRESS
-    gcmkPRINT("GPU virtual address is disabled.");
+    pr_warn("GPU virtual address is disabled.");
     return gcvSTATUS_NOT_SUPPORTED;
 #else
     return _AllocatePages(Mmu, PageCount, Type, PageType, Secure, PageTable, Address);
@@ -3883,7 +3883,7 @@ gckMMU_DumpPageTableEntry(
               * stlbEntryNum
               + stlb;
 
-        gcmkPRINT("    Page table entry = 0x%08X", _ReadPageEntry(pageTable + index));
+        pr_warn("    Page table entry = 0x%08X", _ReadPageEntry(pageTable + index));
     }
     else
     {
@@ -3905,7 +3905,7 @@ gckMMU_DumpPageTableEntry(
                     (gctUINT32_PTR)((gctUINT8_PTR)stlbChunkObj->logical + (i * gcdMMU_STLB_1M_SIZE));
                 if (entry == stlbPhysBase)
                 {
-                    gcmkPRINT("    Page table entry = 0x%08X", stlbLogical[stlb]);
+                    pr_warn("    Page table entry = 0x%08X", stlbLogical[stlb]);
                     found = gcvTRUE;
                     break;
                 }
@@ -3941,7 +3941,7 @@ gckMMU_CheckSaftPage(
     {
         if (safeLogical[offsets[i]] != 0)
         {
-            gcmkPRINT("%s(%d) safe page is over written [%d] = %x",
+            pr_warn("%s(%d) safe page is over written [%d] = %x",
                       __FUNCTION__, __LINE__, i, safeLogical[offsets[i]]);
         }
     }
@@ -3992,7 +3992,7 @@ gckMMU_DumpAddressSpace(
 
         if (!used)
         {
-            gcmkPRINT("Available Range [%d - %d)", i, i + numPages);
+            pr_warn("Available Range [%d - %d)", i, i + numPages);
         }
     }
 
@@ -4012,13 +4012,13 @@ gckMMU_DumpRecentFreedAddress(
 
     if (queue->count)
     {
-        gcmkPRINT("    Recent %d freed GPU address ranges:", queue->count);
+        pr_warn("    Recent %d freed GPU address ranges:", queue->count);
 
         for (i = 0; i < queue->count; i++)
         {
             gckQUEUE_GetData(queue, i, &data);
 
-            gcmkPRINT("      [%08X - %08X]", data->addressData.start, data->addressData.end);
+            pr_warn("      [%08X - %08X]", data->addressData.start, data->addressData.end);
         }
     }
 }
@@ -4190,7 +4190,7 @@ gckMMU_FillFlatMapping(
             /* Flat mapping in page table. */
             _WritePageEntry(stlbEntry, _SetPage(physBase + i * gcdMMU_PAGE_4K_SIZE, 0, gcvTRUE));
 #if gcdMMU_TABLE_DUMP
-            gckOS_Print("%s(%d): insert MTLB[%d] STLB[%d]: %08x\n",
+            pr_warn("%s(%d): insert MTLB[%d] STLB[%d]: %08x\n",
                 __FUNCTION__, __LINE__,
                 (physBase & gcdMMU_MTLB_MASK) >> gcdMMU_MTLB_SHIFT,
                 ((physBase & gcdMMU_STLB_4K_MASK) >> gcdMMU_STLB_4K_SHIFT) + i,
@@ -4407,7 +4407,7 @@ gckMMU_SetupSRAM(
                 {
                     if (Device->showSRAMMapInfo)
                     {
-                        gcmkPRINT("Galcore Info: MMU mapped core%d SRAM base=0x%llx size=0x%x",
+                        pr_warn("Galcore Info: MMU mapped core%d SRAM base=0x%llx size=0x%x",
                             i,
                             reservedBase,
                             reservedSize
@@ -4547,7 +4547,7 @@ gckMMU_SetupSRAM(
 
             if (Device->showSRAMMapInfo)
             {
-                gcmkPRINT("Galcore Info: MMU mapped core %d SRAM[%d] hardware virtual address=0x%x size=0x%x",
+                pr_warn("Galcore Info: MMU mapped core %d SRAM[%d] hardware virtual address=0x%x size=0x%x",
                     Hardware->core,
                     i,
                     kernel->sRAMBaseAddresses[i],
@@ -4577,7 +4577,7 @@ gckMMU_SetupSRAM(
 
             if (Device->showSRAMMapInfo)
             {
-                gcmkPRINT("Galcore Info: MMU mapped external shared SRAM[%d] CPU view base=0x%llx GPU view base=0x%llx GPU virtual address=0x%x size=0x%x",
+                pr_warn("Galcore Info: MMU mapped external shared SRAM[%d] CPU view base=0x%llx GPU view base=0x%llx GPU virtual address=0x%x size=0x%x",
                     i,
                     Device->extSRAMBases[i],
                     Device->extSRAMGPUBases[i],

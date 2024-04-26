@@ -4532,7 +4532,7 @@ gckCOMMAND_DumpExecutingBuffer(
         }
         else
         {
-            gcmkPRINT("Can not find command buffer around 0x%08X.\n", gpuAddress);
+            pr_err("Can not find command buffer around 0x%08X.\n", gpuAddress);
         }
     }
 
@@ -4616,7 +4616,7 @@ gckCOMMAND_DumpExecutingBuffer(
         }
         else
         {
-            gcmkPRINT("Not found");
+            pr_err("Not found");
         }
 
         /* new line. */
@@ -4662,7 +4662,7 @@ gckCOMMAND_DumpExecutingBuffer(
         }
         else
         {
-            gcmkPRINT("%08X sub command not found", node->address);
+            pr_err("%08X sub command not found", node->address);
         }
 
         /* new line */
@@ -4842,7 +4842,7 @@ gckCOMMAND_PreemptCommit(
         }
         else
         {
-            gcmkPRINT("Don't enable SW preemption for aysnc FE.\n");
+            pr_err("Don't enable SW preemption for aysnc FE.\n");
 
             gcmkONERROR(gcvSTATUS_NOT_SUPPORTED);
         }

@@ -27,6 +27,7 @@
 #include <linux/virtio_config.h>
 #include <linux/virtio_ids.h>
 #include <linux/virtio_ring.h>
+#include <linux/proc_fs.h>
 
 /* Category define */
 #define LIGHT_RMPSG_LIFECYCLE	1
@@ -77,6 +78,12 @@ struct light_rpmsg_vproc {
         struct semaphore pm_sem;
         int sleep_flag;
 #endif
+        /*for log proc*/
+	phys_addr_t log_phy;
+	size_t log_size;
+	void __iomem *log_mem;
+	void *log_ctrl;
+        struct proc_dir_entry *proc_dir;
 };
 
 struct light_rpmsg_head {

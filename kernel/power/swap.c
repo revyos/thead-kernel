@@ -512,7 +512,12 @@ static int swap_writer_finish(struct swap_map_handle *handle,
 }
 
 /* We need to remember how much compressed data we need to read. */
-#define LZO_HEADER	sizeof(size_t)
+struct hib_lzo_header {
+	size_t cmp_len;
+	u32 unc_crc32;
+}__packed;
+
+#define LZO_HEADER	(8*DIV_ROUND_UP((sizeof(struct hib_lzo_header)),8))
 
 /* Number of pages/bytes we'll compress at one time. */
 #define LZO_UNC_PAGES	32
@@ -524,12 +529,16 @@ static int swap_writer_finish(struct swap_map_handle *handle,
 #define LZO_CMP_SIZE	(LZO_CMP_PAGES * PAGE_SIZE)
 
 /* Maximum number of threads for compression/decompression. */
-#define LZO_THREADS	3
+#define LZO_THREADS	4
 
 /* Minimum/maximum number of pages for read buffering. */
 #define LZO_MIN_RD_PAGES	1024
 #define LZO_MAX_RD_PAGES	8192
 
+static inline u32 get_header_crc32(struct hib_lzo_header *h)
+{
+	return h->unc_crc32;
+}
 
 /**
  *	save_image - save the suspend image data
@@ -580,48 +589,6 @@ static int save_image(struct swap_map_handle *handle,
 }
 
 /**
- * Structure used for CRC32.
- */
-struct crc_data {
-	struct task_struct *thr;                  /* thread */
-	atomic_t ready;                           /* ready to start flag */
-	atomic_t stop;                            /* ready to stop flag */
-	unsigned run_threads;                     /* nr current threads */
-	wait_queue_head_t go;                     /* start crc update */
-	wait_queue_head_t done;                   /* crc update done */
-	u32 *crc32;                               /* points to handle's crc32 */
-	size_t *unc_len[LZO_THREADS];             /* uncompressed lengths */
-	unsigned char *unc[LZO_THREADS];          /* uncompressed data */
-};
-
-/**
- * CRC32 update function that runs in its own thread.
- */
-static int crc32_threadfn(void *data)
-{
-	struct crc_data *d = data;
-	unsigned i;
-
-	while (1) {
-		wait_event(d->go, atomic_read(&d->ready) ||
-		                  kthread_should_stop());
-		if (kthread_should_stop()) {
-			d->thr = NULL;
-			atomic_set(&d->stop, 1);
-			wake_up(&d->done);
-			break;
-		}
-		atomic_set(&d->ready, 0);
-
-		for (i = 0; i < d->run_threads; i++)
-			*d->crc32 = crc32_le(*d->crc32,
-			                     d->unc[i], *d->unc_len[i]);
-		atomic_set(&d->stop, 1);
-		wake_up(&d->done);
-	}
-	return 0;
-}
-/**
  * Structure used for LZO data compression.
  */
 struct cmp_data {
@@ -639,12 +606,17 @@ struct cmp_data {
 };
 
 /**
- * Compression function that runs in its own thread.
+ * Compression & crc32 compute function that runs in its own thread.
+ * In this method,crc32 compute cost is much less by multi-cores in
+ * multi-threads.
+ * The value of crc32 stored in the header of LZO,which descripted with
+ * ' struct hib_lzo_header '.
  */
 static int lzo_compress_threadfn(void *data)
 {
 	struct cmp_data *d = data;
-
+	struct hib_lzo_header *lzo_head;
+	pr_info("compress thread on core %d\n",smp_processor_id());
 	while (1) {
 		wait_event(d->go, atomic_read(&d->ready) ||
 		                  kthread_should_stop());
@@ -660,6 +632,9 @@ static int lzo_compress_threadfn(void *data)
 		d->ret = lzo1x_1_compress(d->unc, d->unc_len,
 		                          d->cmp + LZO_HEADER, &d->cmp_len,
 		                          d->wrk);
+		lzo_head = (struct hib_lzo_header *)d->cmp;
+		lzo_head->cmp_len	= d->cmp_len;
+		lzo_head->unc_crc32 = crc32_le(0,d->cmp + LZO_HEADER, d->cmp_len);
 		atomic_set(&d->stop, 1);
 		wake_up(&d->done);
 	}
@@ -687,7 +662,6 @@ static int save_image_lzo(struct swap_map_handle *handle,
 	unsigned thr, run_threads, nr_threads;
 	unsigned char *page = NULL;
 	struct cmp_data *data = NULL;
-	struct crc_data *crc = NULL;
 
 	hib_init_batch(&hb);
 
@@ -714,16 +688,8 @@ static int save_image_lzo(struct swap_map_handle *handle,
 	for (thr = 0; thr < nr_threads; thr++)
 		memset(&data[thr], 0, offsetof(struct cmp_data, go));
 
-	crc = kmalloc(sizeof(*crc), GFP_KERNEL);
-	if (!crc) {
-		pr_err("Failed to allocate crc\n");
-		ret = -ENOMEM;
-		goto out_clean;
-	}
-	memset(crc, 0, offsetof(struct crc_data, go));
-
 	/*
-	 * Start the compression threads.
+	 * Start the compression & crc32 compute threads.
 	 */
 	for (thr = 0; thr < nr_threads; thr++) {
 		init_waitqueue_head(&data[thr].go);
@@ -738,27 +704,6 @@ static int save_image_lzo(struct swap_map_handle *handle,
 			ret = -ENOMEM;
 			goto out_clean;
 		}
-	}
-
-	/*
-	 * Start the CRC32 thread.
-	 */
-	init_waitqueue_head(&crc->go);
-	init_waitqueue_head(&crc->done);
-
-	handle->crc32 = 0;
-	crc->crc32 = &handle->crc32;
-	for (thr = 0; thr < nr_threads; thr++) {
-		crc->unc[thr] = data[thr].unc;
-		crc->unc_len[thr] = &data[thr].unc_len;
-	}
-
-	crc->thr = kthread_run(crc32_threadfn, crc, "image_crc32");
-	if (IS_ERR(crc->thr)) {
-		crc->thr = NULL;
-		pr_err("Cannot start CRC32 thread\n");
-		ret = -ENOMEM;
-		goto out_clean;
 	}
 
 	/*
@@ -805,9 +750,6 @@ static int save_image_lzo(struct swap_map_handle *handle,
 		if (!thr)
 			break;
 
-		crc->run_threads = thr;
-		atomic_set(&crc->ready, 1);
-		wake_up(&crc->go);
 
 		for (run_threads = thr, thr = 0; thr < run_threads; thr++) {
 			wait_event(data[thr].done,
@@ -850,8 +792,6 @@ static int save_image_lzo(struct swap_map_handle *handle,
 			}
 		}
 
-		wait_event(crc->done, atomic_read(&crc->stop));
-		atomic_set(&crc->stop, 0);
 	}
 
 out_finish:
@@ -864,11 +804,7 @@ out_finish:
 	swsusp_show_speed(start, stop, nr_to_write, "Wrote");
 out_clean:
 	hib_finish_batch(&hb);
-	if (crc) {
-		if (crc->thr)
-			kthread_stop(crc->thr);
-		kfree(crc);
-	}
+
 	if (data) {
 		for (thr = 0; thr < nr_threads; thr++)
 			if (data[thr].thr)
@@ -1122,15 +1058,19 @@ struct dec_data {
 	size_t cmp_len;                           /* compressed length */
 	unsigned char unc[LZO_UNC_SIZE];          /* uncompressed buffer */
 	unsigned char cmp[LZO_CMP_SIZE];          /* compressed buffer */
+	int crc32_err;
 };
 
 /**
- * Deompression function that runs in its own thread.
+ * Deompression and crc32 function that runs in its own thread.
  */
 static int lzo_decompress_threadfn(void *data)
 {
 	struct dec_data *d = data;
-
+	ktime_t start = 0;
+	ktime_t total = 0;
+	u32 unc_crc32;
+	pr_info("decompress thread on core %d\n",smp_processor_id());
 	while (1) {
 		wait_event(d->go, atomic_read(&d->ready) ||
 		                  kthread_should_stop());
@@ -1142,10 +1082,16 @@ static int lzo_decompress_threadfn(void *data)
 			break;
 		}
 		atomic_set(&d->ready, 0);
-
+		start = ktime_get();
 		d->unc_len = LZO_UNC_SIZE;
 		d->ret = lzo1x_decompress_safe(d->cmp + LZO_HEADER, d->cmp_len,
 		                               d->unc, &d->unc_len);
+
+		unc_crc32 = crc32_le(0,d->cmp + LZO_HEADER, d->cmp_len);
+		if(unc_crc32 != get_header_crc32((struct hib_lzo_header *)&d->cmp) ) {
+			d->crc32_err++;
+		}
+		total += ktime_sub(ktime_get(), start);
 		if (clean_pages_on_decompress)
 			flush_icache_range((unsigned long)d->unc,
 					   (unsigned long)d->unc + d->unc_len);
@@ -1153,6 +1099,7 @@ static int lzo_decompress_threadfn(void *data)
 		atomic_set(&d->stop, 1);
 		wake_up(&d->done);
 	}
+	pr_info("Deompression and crc32 took %lldms\n",ktime_to_ms(total));
 	return 0;
 }
 
@@ -1172,6 +1119,8 @@ static int load_image_lzo(struct swap_map_handle *handle,
 	struct hib_bio_batch hb;
 	ktime_t start;
 	ktime_t stop;
+	ktime_t disk_start;
+	ktime_t disk_total = 0;
 	unsigned nr_pages;
 	size_t off;
 	unsigned i, thr, run_threads, nr_threads;
@@ -1180,7 +1129,8 @@ static int load_image_lzo(struct swap_map_handle *handle,
 	unsigned long read_pages = 0;
 	unsigned char **page = NULL;
 	struct dec_data *data = NULL;
-	struct crc_data *crc = NULL;
+	volatile u32 crc32_result[LZO_THREADS];
+	int crc_err = 0;
 
 	hib_init_batch(&hb);
 
@@ -1207,13 +1157,6 @@ static int load_image_lzo(struct swap_map_handle *handle,
 	for (thr = 0; thr < nr_threads; thr++)
 		memset(&data[thr], 0, offsetof(struct dec_data, go));
 
-	crc = kmalloc(sizeof(*crc), GFP_KERNEL);
-	if (!crc) {
-		pr_err("Failed to allocate crc\n");
-		ret = -ENOMEM;
-		goto out_clean;
-	}
-	memset(crc, 0, offsetof(struct crc_data, go));
 
 	clean_pages_on_decompress = true;
 
@@ -1223,7 +1166,7 @@ static int load_image_lzo(struct swap_map_handle *handle,
 	for (thr = 0; thr < nr_threads; thr++) {
 		init_waitqueue_head(&data[thr].go);
 		init_waitqueue_head(&data[thr].done);
-
+		data[thr].crc32_err = 0;
 		data[thr].thr = kthread_run(lzo_decompress_threadfn,
 		                            &data[thr],
 		                            "image_decompress/%u", thr);
@@ -1233,27 +1176,6 @@ static int load_image_lzo(struct swap_map_handle *handle,
 			ret = -ENOMEM;
 			goto out_clean;
 		}
-	}
-
-	/*
-	 * Start the CRC32 thread.
-	 */
-	init_waitqueue_head(&crc->go);
-	init_waitqueue_head(&crc->done);
-
-	handle->crc32 = 0;
-	crc->crc32 = &handle->crc32;
-	for (thr = 0; thr < nr_threads; thr++) {
-		crc->unc[thr] = data[thr].unc;
-		crc->unc_len[thr] = &data[thr].unc_len;
-	}
-
-	crc->thr = kthread_run(crc32_threadfn, crc, "image_crc32");
-	if (IS_ERR(crc->thr)) {
-		crc->thr = NULL;
-		pr_err("Cannot start CRC32 thread\n");
-		ret = -ENOMEM;
-		goto out_clean;
 	}
 
 	/*
@@ -1286,7 +1208,7 @@ static int load_image_lzo(struct swap_map_handle *handle,
 	}
 	want = ring_size = i;
 
-	pr_info("Using %u thread(s) for decompression\n", nr_threads);
+	pr_info("Using %u thread(s) for decompression & crc\n", nr_threads);
 	pr_info("Loading and decompressing image data (%u pages)...\n",
 		nr_to_read);
 	m = nr_to_read / 10;
@@ -1300,6 +1222,7 @@ static int load_image_lzo(struct swap_map_handle *handle,
 		goto out_finish;
 
 	for(;;) {
+		disk_start = ktime_get();
 		for (i = 0; !eof && i < want; i++) {
 			ret = swap_read_page(handle, page[ring], &hb);
 			if (ret) {
@@ -1329,18 +1252,15 @@ static int load_image_lzo(struct swap_map_handle *handle,
 				break;
 
 			ret = hib_wait_io(&hb);
+			disk_total += ktime_sub(ktime_get(), disk_start);
+			disk_start = ktime_get();
+			pr_info(" asked %d wait disk io took %lldms\n",asked,ktime_to_ms(disk_total));
 			if (ret)
 				goto out_finish;
 			have += asked;
 			asked = 0;
 			if (eof)
 				eof = 2;
-		}
-
-		if (crc->run_threads) {
-			wait_event(crc->done, atomic_read(&crc->stop));
-			atomic_set(&crc->stop, 0);
-			crc->run_threads = 0;
 		}
 
 		for (thr = 0; have && thr < nr_threads; thr++) {
@@ -1390,7 +1310,7 @@ static int load_image_lzo(struct swap_map_handle *handle,
 			if (eof)
 				eof = 2;
 		}
-
+		disk_total += ktime_sub(ktime_get(), disk_start);
 		for (run_threads = thr, thr = 0; thr < run_threads; thr++) {
 			wait_event(data[thr].done,
 			           atomic_read(&data[thr].stop));
@@ -1423,23 +1343,17 @@ static int load_image_lzo(struct swap_map_handle *handle,
 
 				ret = snapshot_write_next(snapshot);
 				if (ret <= 0) {
-					crc->run_threads = thr + 1;
-					atomic_set(&crc->ready, 1);
-					wake_up(&crc->go);
 					goto out_finish;
 				}
 			}
 		}
 
-		crc->run_threads = thr;
-		atomic_set(&crc->ready, 1);
-		wake_up(&crc->go);
 	}
 
 out_finish:
-	if (crc->run_threads) {
-		wait_event(crc->done, atomic_read(&crc->stop));
-		atomic_set(&crc->stop, 0);
+
+	for (thr = 0;thr < nr_threads; thr++) {
+		crc_err += data[thr].crc32_err;
 	}
 	stop = ktime_get();
 	if (!ret) {
@@ -1449,23 +1363,20 @@ out_finish:
 			ret = -ENODATA;
 		if (!ret) {
 			if (swsusp_header->flags & SF_CRC32_MODE) {
-				if(handle->crc32 != swsusp_header->crc32) {
+				if(crc_err) {
 					pr_err("Invalid image CRC32!\n");
 					ret = -ENODATA;
 				}
 			}
 		}
 	}
+	pr_info("Additonal wait disk io took %lldms\n",ktime_to_ms(disk_total));
 	swsusp_show_speed(start, stop, nr_to_read, "Read");
 out_clean:
 	hib_finish_batch(&hb);
 	for (i = 0; i < ring_size; i++)
 		free_page((unsigned long)page[i]);
-	if (crc) {
-		if (crc->thr)
-			kthread_stop(crc->thr);
-		kfree(crc);
-	}
+
 	if (data) {
 		for (thr = 0; thr < nr_threads; thr++)
 			if (data[thr].thr)
@@ -1562,11 +1473,13 @@ int swsusp_check(void)
 				swsusp_can_retry = true;
 			else
 				swsusp_can_retry = false;
+
 			memcpy(swsusp_header->sig, swsusp_header->orig_sig, 10);
 			/* Reset swap signature now */
 			error = hib_submit_io(REQ_OP_WRITE, REQ_SYNC,
 						swsusp_resume_block,
 						swsusp_header, NULL);
+
 		} else {
 			error = -EINVAL;
 		}

@@ -59,6 +59,10 @@
 
 #include "gc_feature_database.h"
 #include <gc_hal_kernel_debug.h>
+#include <linux/printk.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/g2d.h>
 
 #define _GC_OBJ_ZONE    gcvZONE_HARDWARE
 
@@ -298,7 +302,7 @@ _IdentifyHardwareByDatabase(
 
     if (database == gcvNULL)
     {
-        gcmkPRINT("[galcore]: Feature database is not found,"
+        pr_err("[galcore]: Feature database is not found,"
                   "chipModel=0x%0x, chipRevision=0x%x, productID=0x%x, ecoID=0x%x, customerID=0x%x",
                   Hardware->identity.chipModel,
                   Hardware->identity.chipRevision,
@@ -309,7 +313,7 @@ _IdentifyHardwareByDatabase(
     }
     else if (database->chipVersion != Hardware->identity.chipRevision)
     {
-        gcmkPRINT("[galcore]: Warning: chipRevision mismatch, database chipRevision=0x%x register read chipRevision=0x%x\n",
+        pr_warn("[galcore]: Warning: chipRevision mismatch, database chipRevision=0x%x register read chipRevision=0x%x\n",
                   database->chipVersion, Hardware->identity.chipRevision);
     }
 
@@ -1184,7 +1188,7 @@ _IsGPUPresent(
     ||  (Hardware->signature.chipMinorFeatures2 != signature.chipMinorFeatures2)
     )
     {
-        gcmkPRINT("[galcore]: GPU is not present.");
+        pr_err("[galcore]: GPU is not present.");
         gcmkONERROR(gcvSTATUS_GPU_NOT_RESPONDING);
     }
 
@@ -1747,7 +1751,7 @@ _ConfigurePolicyID(
                 /* Check whether this bit changes. */
                 if (auxBit != ((policyID >> 4) & 0x1))
                 {
-                    gcmkPRINT("[galcore]: AUX_BIT changes");
+                    pr_warn("[galcore]: AUX_BIT changes");
                     return;
                 }
             }
@@ -1830,7 +1834,7 @@ _QueryNNClusters(
             /* We only support maximum 8 clusters by current. */
             if (enableNN > 0x7)
             {
-                gcmkPRINT("[Galcore warning]: Invalid enableNN value is configured.");
+                pr_warn("[Galcore warning]: Invalid enableNN value is configured.");
 
                 gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
             }
@@ -1843,7 +1847,7 @@ _QueryNNClusters(
 
     if (value && Hardware->identity.customerID != 0x85)
     {
-        gcmkPRINT("Galcore warning: Don't set enableNN as this chip not support NN cluster power control!\n");
+        pr_warn("Galcore warning: Don't set enableNN as this chip not support NN cluster power control!\n");
     }
 
     Hardware->options.configNNPowerControl = value;
@@ -1901,7 +1905,7 @@ _SetHardwareOptions(
 
     if (options->enableMMU == gcvFALSE)
     {
-        gcmkPRINT("Galcore warning: MMU is disabled!\n");
+        pr_err("Galcore warning: MMU is disabled!\n");
     }
 
     /* Query enabled NN clusters. */
@@ -1935,7 +1939,7 @@ _SetHardwareOptions(
     }
     else if (options->userClusterMask & (~Hardware->identity.clusterAvailMask))
     {
-        gcmkPRINT("%s(%d): user cluster mask(0x%x) must be a subset of available clusters(0x%x),ignored it!",
+        pr_warn("%s(%d): user cluster mask(0x%x) must be a subset of available clusters(0x%x),ignored it!",
                   __FUNCTION__, __LINE__, options->userClusterMask, Hardware->identity.clusterAvailMask);
         options->userClusterMasks[Hardware->core] = options->userClusterMask = Hardware->identity.clusterAvailMask;
     }
@@ -3064,7 +3068,7 @@ gckHARDWARE_InitializeHardware(
 
         gcmkSAFECASTPHYSADDRT(offset, Hardware->identity.registerAPB);
 
-        gcmkPRINT("Initailize APB1 registers, APB offset is 0x%x.\n", offset);
+        pr_warn("Initailize APB1 registers, APB offset is 0x%x.\n", offset);
 
         /* APB FE ctrl. */
         gcmkONERROR(gckOS_WriteRegisterEx(
@@ -4621,7 +4625,7 @@ OnError:
 }
 
 
-static void
+void
 _ResumeWaitLinkFE(
     gckHARDWARE Hardware
     )
@@ -4632,14 +4636,18 @@ _ResumeWaitLinkFE(
     gctUINT32 idle;
 
     /* Make sure FE is idle. */
-    do
-    {
-        gcmkONERROR(gckOS_ReadRegisterEx(Hardware->os,
+
+    gcmkONERROR(gckOS_ReadRegisterEx(Hardware->os,
                              Hardware->core,
                              0x00004,
                              &idle));
-    }
-    while (idle != 0x7FFFFFFF);
+
+    gcmkONERROR(gckOS_ReadRegisterEx(Hardware->os,
+                             Hardware->core,
+                             0x00004,
+                             &idle));
+    if(idle != 0x7FFFFFFF) 
+        return;
 
     gcmkDUMP(Hardware->os, "@[register.wait 0x%05X 0x%08X 0x%08X]",
              0x00004,
@@ -4712,6 +4720,7 @@ gckHARDWARE_Interrupt(
                                   Hardware->core,
                                   0x00010,
                                   &data);
+    trace_g2d_irq_reg(0x00010,data);
 
     if (gcmIS_ERROR(status))
     {
@@ -4746,7 +4755,7 @@ gckHARDWARE_Interrupt(
         0x000D4,
         &dataEx
         );
-
+    trace_g2d_irq_reg(0x000D4,dataEx);
     if (gcmIS_ERROR(statusEx))
     {
         /*
@@ -4814,13 +4823,6 @@ gckHARDWARE_Notify(
     gcmkHEADER_ARG("Hardware=%p", Hardware);
 
     gckOS_AtomGet(Hardware->os, Hardware->kernel->eventObj->pending, (gctINT32_PTR)&pending);
-
-    if (pending & (1 << 29))
-    {
-        /* Event ID 29 is not a normal event, but for invalidating pipe. */
-        _ResumeWaitLinkFE(Hardware);
-        pending &= ~(1 << 29);
-    }
 
     gckOS_AtomSetMask(Hardware->kernel->eventObj->pending, pending);
 
@@ -7883,7 +7885,7 @@ gckHARDWARE_PowerControlClusters(
 #if gcdGPU_TIMEOUT
             if (timer >= Hardware->kernel->timeOut)
             {
-                gcmkPRINT("%s %d Galcore timeout...\n", __FUNCTION__, __LINE__);
+                pr_err("%s %d Galcore timeout...\n", __FUNCTION__, __LINE__);
 
                 gcmkONERROR(gcvSTATUS_DEVICE);
             }
@@ -9219,7 +9221,7 @@ gckHARDWARE_SetPowerState(
             status = gckOS_TryAcquireSemaphore(os, Hardware->globalSemaphore);
             if (status != gcvSTATUS_TIMEOUT && Hardware->isLastPowerGlobal)
             {
-                gcmkPRINT("%s: global state error", __FUNCTION__);
+                pr_err("%s: global state error", __FUNCTION__);
             }
 
             /* Switched to global ON, now release the global semaphore. */
@@ -12621,14 +12623,14 @@ gckHARDWARE_Reset(
         Hardware, state
         ));
 
-    gcmkPRINT("[galcore]: recovery done");
+    pr_warn("[galcore]: recovery done");
 
     /* Success. */
     gcmkFOOTER_NO();
     return gcvSTATUS_OK;
 
 OnError:
-    gcmkPRINT("[galcore]: Hardware not reset successfully, give up");
+    pr_err("[galcore]: Hardware not reset successfully, give up");
 
     if (globalAcquired)
     {

@@ -871,8 +871,10 @@ static int __maybe_unused thead_dwmac_resume(struct device *dev)
 	if (!netif_running(ndev))
 		return 0;
 
+	pm_runtime_get_sync(dev);
 	if (priv->plat->init)
 		priv->plat->init(pdev, priv->plat->bsp_priv);
+	pm_runtime_put(dev);
 
 	return stmmac_resume(dev);
 }
@@ -901,6 +903,7 @@ static int __maybe_unused thead_dwmac_runtime_resume(struct device *dev)
 	ret = thead_dwmac_clk_enable(pdev, priv->plat->bsp_priv);
 	if(ret)
 		return ret;
+
 	return 0;
 }
 

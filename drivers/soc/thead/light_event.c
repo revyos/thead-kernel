@@ -36,7 +36,7 @@ struct light_aon_msg_event_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
 	u32 reserve_offset;
 	u32 reserved[5];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct light_event {
 	struct device *dev;
@@ -52,8 +52,7 @@ struct light_event *light_event;
 
 static void light_event_msg_hdr_fill(struct light_aon_rpc_msg_hdr *hdr, enum light_aon_misc_func func)
 {
-	hdr->ver = LIGHT_AON_RPC_VERSION;
-	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_MISC;
+	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_SYS;
 	hdr->func = (uint8_t)func;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 }
@@ -61,14 +60,16 @@ static void light_event_msg_hdr_fill(struct light_aon_rpc_msg_hdr *hdr, enum lig
 static int light_event_aon_reservemem(struct light_event *event)
 {
 	struct light_aon_ipc *ipc = event->ipc_handle;
+	struct light_aon_rpc_ack_common ack_msg;
 	int ret = 0;
 
 	dev_dbg(event->dev, "aon reservemem...\n");
 
-	light_event_msg_hdr_fill(&event->msg.hdr, LIGHT_AON_MISC_FUNC_AON_RESERVE_MEM);
-	event->msg.reserve_offset = LIGHT_EVENT_OFFSET;
+	light_event_msg_hdr_fill(&event->msg.hdr, LIGHT_AON_SYS_FUNC_AON_RESERVE_MEM);
 
-	ret = light_aon_call_rpc(ipc, &event->msg, true);
+	RPC_SET_BE32(&event->msg.reserve_offset, 0, LIGHT_EVENT_OFFSET);
+
+	ret = light_aon_call_rpc(ipc, &event->msg, &ack_msg, true);
 	if (ret)
 		dev_err(event->dev, "failed to set aon reservemem\n");
 

@@ -584,7 +584,7 @@ _QueryBarInfo(
         return;
     }
 
-    gcmkPRINT("Bar%d addr=0x%x size=0x%x", BarNum, addr, size);
+    pr_warn("Bar%d addr=0x%x size=0x%x", BarNum, addr, size);
 
     *BarAddr = addr;
     *BarSize = size;
@@ -613,31 +613,31 @@ static int gpu_sub_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
     static u64 dma_mask = DMA_40BIT_MASK;
 #endif
 
-    gcmkPRINT("PCIE DRIVER PROBED");
+    pr_debug("PCIE DRIVER PROBED");
     if (pci_enable_device(pdev)) {
-        printk(KERN_ERR "galcore: pci_enable_device() failed.\n");
+        pr_err("galcore: pci_enable_device() failed.\n");
     }
 
     if (pci_set_dma_mask(pdev, dma_mask)) {
-        printk(KERN_ERR "galcore: Failed to set DMA mask.\n");
+        pr_err("galcore: Failed to set DMA mask.\n");
     }
 
     pci_set_master(pdev);
 
     if (pci_request_regions(pdev, "galcore")) {
-        printk(KERN_ERR "galcore: Failed to get ownership of BAR region.\n");
+        pr_err("galcore: Failed to get ownership of BAR region.\n");
     }
 
 #if USE_MSI
     if (pci_enable_msi(pdev)) {
-        printk(KERN_ERR "galcore: Failed to enable MSI.\n");
+        pr_err("galcore: Failed to enable MSI.\n");
     }
 #endif
 
 #if defined(CONFIG_PPC)
     /* On PPC platform, enable bus master, enable irq. */
     if (pci_write_config_word(pdev, 0x4, 0x0006) < 0) {
-        printk(KERN_ERR "galcore: Failed to enable bus master on PPC.\n");
+        pr_err("galcore: Failed to enable bus master on PPC.\n");
     }
 #endif
 
@@ -824,14 +824,14 @@ int gckPLATFORM_Init(struct platform_driver *pdrv,
     struct platform_device *default_dev = platform_device_alloc(pdrv->driver.name, -1);
 
     if (!default_dev) {
-        printk(KERN_ERR "galcore: platform_device_alloc failed.\n");
+        pr_err("galcore: platform_device_alloc failed.\n");
         return -ENOMEM;
     }
 
     /* Add device */
     ret = platform_device_add(default_dev);
     if (ret) {
-        printk(KERN_ERR "galcore: platform_device_add failed.\n");
+        pr_err("galcore: platform_device_add failed.\n");
         platform_device_put(default_dev);
         return ret;
     }
@@ -848,7 +848,7 @@ int gckPLATFORM_Init(struct platform_driver *pdrv,
     pdrv->driver.of_match_table = gpu_dt_ids;
     ret = gpu_power_domain_init();
     if (ret) {
-        printk(KERN_ERR "galcore: gpu_gpc_init failed.\n");
+        pr_err("galcore: gpu_gpc_init failed.\n");
     }
 #endif
 

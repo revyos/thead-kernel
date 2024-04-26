@@ -22,14 +22,21 @@ struct rpc_msg_cpu_info{
 	u16 cpu_id;
 	u16 status;
 	u32 reserved[5];
-} __packed __aligned(4);
+} __packed __aligned(1);
+
+struct rpc_msg_cpu_info_ack{
+	struct light_aon_rpc_ack_common ack_hdr;
+	u16 cpu_id;
+	u16 status;
+	u32 reserved[5];
+} __packed __aligned(1);
 
 struct light_aon_msg_pm_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
 	union rpc_func_t {
 	struct rpc_msg_cpu_info	cpu_info;
-	} __packed __aligned(4) rpc;
-} __packed __aligned(4);
+	} __packed __aligned(1) rpc;
+} __packed __aligned(1);
 
 struct light_aon_pm_ctrl {
 	struct device			*dev;
@@ -40,18 +47,17 @@ struct light_aon_pm_ctrl {
 
 static struct light_aon_pm_ctrl *aon_pm_ctrl;
 
-static int light_require_state_pm_ctrl(struct light_aon_msg_pm_ctrl *msg, enum light_aon_misc_func func, bool ack)
+static int light_require_state_pm_ctrl(struct light_aon_msg_pm_ctrl *msg, enum light_aon_misc_func func, void* ack_msg, bool ack)
 {
 	pr_debug("notify aon subsys...\n");
 	struct light_aon_ipc *ipc = aon_pm_ctrl->ipc_handle;
 	struct light_aon_rpc_msg_hdr *hdr = &msg->hdr;
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
-	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_MISC;
+	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_LPM;
 	hdr->func = (uint8_t)func;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	return light_aon_call_rpc(ipc, msg, ack);
+	return light_aon_call_rpc(ipc, msg, ack_msg, ack);
 }
 
 static int sbi_suspend_finisher(unsigned long suspend_type,
@@ -90,7 +96,7 @@ static int light_suspend_prepare(void)
 	int ret;
 	aon_pm_ctrl->suspend_flag = true;
 	struct light_aon_msg_pm_ctrl msg = {0};
-	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_REQUIRE_STR, true);
+	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_LPM_FUNC_REQUIRE_STR, NULL, false);
 	if (ret) {
 		pr_err("[%s,%d]failed to initiate Suspend to Ram process to AON subsystem\n",__func__, __LINE__);
 		return ret;
@@ -103,7 +109,8 @@ static void light_resume_finish(void)
 	int ret;
 	aon_pm_ctrl->suspend_flag = false;
 	struct light_aon_msg_pm_ctrl msg = {0};
-	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_RESUME_STR, true);
+	struct light_aon_rpc_ack_common ack_msg = {0};
+	ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_LPM_FUNC_RESUME_STR, &ack_msg, true);
 	if (ret) {
 		pr_err("[%s,%d]failed to clear lowpower state\n",__func__, __LINE__);
 	}
@@ -115,9 +122,11 @@ static int thead_cpuhp_offline(unsigned int cpu)
 	if(!aon_pm_ctrl->suspend_flag)
 	{
 		struct light_aon_msg_pm_ctrl msg = {0};
-		msg.rpc.cpu_info.cpu_id = (u16)cpu;
-		msg.rpc.cpu_info.status = 0;
-		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, true);
+		struct light_aon_rpc_ack_common ack_msg = {0};
+
+		RPC_SET_BE16(&msg.rpc.cpu_info.cpu_id, 0, (u16)cpu);
+		RPC_SET_BE16(&msg.rpc.cpu_info.cpu_id, 2, 0);
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_LPM_FUNC_CPUHP, &ack_msg, true);
 		if (ret) {
 			pr_info("failed to notify aon subsys with cpuhp...%08x\n", ret);
 			return ret;
@@ -132,9 +141,10 @@ static int thead_cpuhp_online(unsigned int cpu)
 	if(!aon_pm_ctrl->suspend_flag)
 	{
 		struct light_aon_msg_pm_ctrl msg = {0};
-		msg.rpc.cpu_info.cpu_id = (u16)cpu;
-		msg.rpc.cpu_info.status = 1;
-		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_MISC_FUNC_CPUHP, true);
+        struct light_aon_rpc_ack_common ack_msg = {0};
+		RPC_SET_BE16(&msg.rpc.cpu_info.cpu_id, 0, (u16)cpu);
+		RPC_SET_BE16(&msg.rpc.cpu_info.cpu_id, 2,  1);
+		ret = light_require_state_pm_ctrl(&msg, LIGHT_AON_LPM_FUNC_CPUHP, &ack_msg, true);
 		if (ret) {
 			pr_info("[%s,%d]failed to bring up aon subsys with cpuhp...%08x\n", __func__, __LINE__, ret);
 			return ret;
@@ -152,7 +162,7 @@ static const struct platform_suspend_ops light_suspend_ops = {
 	.enter = light_suspend_enter,
 	.valid = suspend_valid_only_mem,
 	.prepare_late = light_suspend_prepare,
-	.finish = light_resume_finish,
+	.end    = light_resume_finish,
 };
 
 #define C906_RESET_REG                  0xfffff4403c
@@ -185,6 +195,34 @@ static const struct platform_hibernation_ops light_hibernation_allmode_ops = {
 	.finish = light_hibernation_platform_finish,
 };
 
+int  get_audio_text_mem(struct device *dev, phys_addr_t* mem, size_t* mem_size)
+{
+    struct resource r;
+	ssize_t fw_size;
+	void *mem_va;
+	struct device_node *node;
+	int ret;
+
+	*mem = 0;
+	*mem_size = 0;
+
+	node = of_parse_phandle(dev->of_node, "audio-text-memory-region", 0);
+	if (!node) {
+		dev_err(dev, "no audio-text-memory-region specified\n");
+		return -EINVAL;
+	}
+
+	ret = of_address_to_resource(node, 0, &r);
+	if (ret) {
+	    dev_err(dev, "audio-text-memory-region get resource faild\n");
+		return -EINVAL;
+	}
+
+	*mem = r.start;
+	*mem_size = resource_size(&r);
+    return 0;
+}
+
 static int light_pm_probe(struct platform_device *pdev)
 {
 	struct device			*dev = &pdev->dev;
@@ -203,7 +241,15 @@ static int light_pm_probe(struct platform_device *pdev)
 	suspend_set_ops(&light_suspend_ops);
 
 	/*only save BSS and data section for audio*/
-	hibernate_register_nosave_region(__phys_to_pfn(0x32000000), __phys_to_pfn(0x36600000));
+	phys_addr_t audio_text_mem;
+	size_t audio_text_mem_size;
+	ret = get_audio_text_mem(dev, &audio_text_mem, &audio_text_mem_size);
+	if(ret) {
+       return ret;
+	} else {
+		printk("Get audio text phy mem:0x%011x, size:%d\n", audio_text_mem, audio_text_mem_size);
+	}
+	hibernate_register_nosave_region(__phys_to_pfn(audio_text_mem), __phys_to_pfn(audio_text_mem + audio_text_mem_size));
 	hibernation_set_allmode_ops(&light_hibernation_allmode_ops);
 
 	ret = cpuhp_setup_state_nocalls(CPUHP_BP_PREPARE_DYN, "soc/thead:online",

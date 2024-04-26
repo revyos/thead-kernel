@@ -150,11 +150,12 @@ typedef struct _gckGALDEVICE
     /* gctsOs object for trust application. */
     gctaOS              taos;
 
-    /*Number of devices opened*/           
+    /*Number of devices opened*/
     atomic_t             openNum;
     /*object of devfreq add device*/
+#ifdef CONFIG_PM_DEVFREQ
     struct devfreq *g2d_devfreq;
-
+#endif
 #if gcdENABLE_DRM
     void *              drm;
 #endif

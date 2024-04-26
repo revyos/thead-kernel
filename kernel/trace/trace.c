@@ -184,6 +184,16 @@ static char bootup_tracer_buf[MAX_TRACER_SIZE] __initdata;
 static char *default_bootup_tracer;
 
 static bool allocate_snapshot;
+static bool notrace_init;
+
+/* notrace bootargs: for option not init trace*/
+static int __init notrace_setup(char *str)
+{
+	notrace_init = 1;
+	return 1;
+}
+
+__setup("notrace", notrace_setup);
 
 static int __init set_cmdline_ftrace(char *str)
 {
@@ -9170,6 +9180,8 @@ static __init int tracer_init_tracefs(void)
 {
 	int ret;
 
+	if(notrace_init)
+		return 0;
 	trace_access_lock_init();
 
 	ret = tracing_init_dentry();

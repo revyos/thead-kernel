@@ -281,10 +281,19 @@ int i2c_dw_xfer_dma_init(struct dw_i2c_dev *dev)
     if (dma->dma_chan == NULL) {
         //Alloc i2c dma channel.
         //The function is to configure the handshake number in i2c dts into the channel
-        dma->dma_chan = dma_request_slave_channel(dev->dev, "tx");
-        if (!dma->dma_chan) {
-            dev_err(dev->dev, "Failed to request dma channel");
-            return -EIO;
+		//Try to obtain the dma channel within 10 seconds
+		int i = 2000;
+		while(i--) {
+			dma->dma_chan = dma_request_slave_channel(dev->dev, "tx");
+			if (dma->dma_chan) {
+				break;
+			}
+			msleep(5);
+		}
+
+		if (!dma->dma_chan) {
+			dev_err(dev->dev, "Failed to request dma channel");
+			return -EIO;
         }
 
         __dev_vdgb(dev->dev,"i2c request dma_ch %d\n", dma->dma_chan->chan_id);

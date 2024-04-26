@@ -751,15 +751,50 @@ static int dw_dphy_runtime_resume(struct device *dev)
 
 static int dw_dphy_resume(struct device *dev)
 {
+	int ret;
 	struct dw_dphy *dphy = dev_get_drvdata(dev);
 
-	dw_dphy_init(dphy->phy);
+	clk_disable_unprepare(dphy->refclk);
+	clk_disable_unprepare(dphy->cfgclk);
+	clk_disable_unprepare(dphy->pclk);
+
+	ret = clk_prepare_enable(dphy->pclk);
+	if (ret) {
+		dev_err(dev, "dphy resume failed to prepare/enable pclk\n");
+		return ret;
+	}
+
+	ret = clk_prepare_enable(dphy->cfgclk);
+	if (ret) {
+		dev_err(dev, "dphy resume failed to prepare/enable cfgclk\n");
+		return ret;
+	}
+
+	ret = clk_prepare_enable(dphy->refclk);
+	if (ret) {
+		dev_err(dev, "dphy resume failed to prepare/enable refclk\n");
+		return ret;
+	}
+
+	dw_dphy_config_testclr(dphy, 1);
+	dw_dphy_config_testclr(dphy, 0);
+
+	return 0;
+}
+
+static int dw_dphy_suspend(struct device *dev)
+{
+	struct dw_dphy *dphy = dev_get_drvdata(dev);
+
+	clk_disable_unprepare(dphy->refclk);
+	clk_disable_unprepare(dphy->cfgclk);
+	clk_disable_unprepare(dphy->pclk);
 
 	return 0;
 }
 
 static const struct dev_pm_ops dw_dphy_pm_ops = {
-	SET_LATE_SYSTEM_SLEEP_PM_OPS(NULL,
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(dw_dphy_suspend,
 				 dw_dphy_resume)
 	SET_RUNTIME_PM_OPS(dw_dphy_runtime_suspend, dw_dphy_runtime_resume, NULL)
 };

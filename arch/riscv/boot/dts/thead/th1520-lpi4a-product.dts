@@ -1,11 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0 */	
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2021 Alibaba Group Holding Limited.
  */
 
 /dts-v1/;
 
-#include "th1520-lpi4a-dsi0.dts"
+#include "th1520-lpi4a.dtsi"
 
 &lightsound {
         status = "okay";
@@ -39,12 +39,4 @@
                         sound-dai = <&es8156_audio_codec>;
                 };
         };
-};
-
-&dpu_enc0 {
-        status = "disabled";
-};
-
-&dsi0 {
-        status = "disabled";
 };

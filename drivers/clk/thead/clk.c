@@ -550,7 +550,12 @@ static int clk_lightdiv_set_rate(struct clk_hw *hw, unsigned long rate,
 	unsigned long flags = 0;
 	u32 val;
 
-	divider = parent_rate / rate;
+	/** 
+	 * The clk-divider will calculate the node frequency by rounding up 
+	 * based on the parent frequency and the target divider.
+	 * This calculation is to restore accurate frequency divider. 
+	*/
+	divider = DIV64_U64_ROUND_CLOSEST(parent_rate, rate);
 
 	/* DIV is zero based divider, but CDE is not */
 	if (light_div->div_type == MUX_TYPE_DIV)
@@ -592,10 +597,10 @@ static const struct clk_ops clk_lightdiv_ops = {
 	.set_rate = clk_lightdiv_set_rate,
 };
 
-struct clk *thead_clk_light_divider(const char *name, const char *parent,
+static struct clk *thead_clk_light_divider_internal(const char *name, const char *parent,
 				       void __iomem *reg, u8 shift, u8 width,
 				       u8 sync, enum light_div_type div_type,
-				       u16 min, u16 max)
+				       u16 min, u16 max, bool closest)
 {
 	struct clk_lightdiv *light_div;
 	struct clk_hw *hw;
@@ -622,6 +627,10 @@ struct clk *thead_clk_light_divider(const char *name, const char *parent,
 	light_div->div_type = div_type;
 	if (light_div->div_type == MUX_TYPE_DIV)
 		light_div->divider.flags = CLK_DIVIDER_ONE_BASED;
+
+	if (closest)
+		light_div->divider.flags |= CLK_DIVIDER_ROUND_CLOSEST;
+
 	light_div->min_div = min > ((1 << width) - 1) ?
 			     ((1 << width) - 1) : min;
 	light_div->max_div = max > ((1 << width) - 1) ?
@@ -636,6 +645,24 @@ struct clk *thead_clk_light_divider(const char *name, const char *parent,
 	}
 
 	return hw->clk;
+}
+
+struct clk *thead_clk_light_divider(const char *name, const char *parent,
+				       void __iomem *reg, u8 shift, u8 width,
+				       u8 sync, enum light_div_type div_type,
+				       u16 min, u16 max)
+{
+	return thead_clk_light_divider_internal(name, parent, reg, shift, width,
+											sync, div_type, min, max, false);
+}
+
+struct clk *thead_clk_light_divider_closest(const char *name, const char *parent,
+				       void __iomem *reg, u8 shift, u8 width,
+				       u8 sync, enum light_div_type div_type,
+				       u16 min, u16 max)
+{
+	return thead_clk_light_divider_internal(name, parent, reg, shift, width,
+											sync, div_type, min, max, true);
 }
 
 static inline struct clk_lightgate *to_clk_lightgate(struct clk_hw *hw)

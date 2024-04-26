@@ -680,7 +680,7 @@ static int light_audio_i2s_8ch_probe(struct platform_device *pdev)
 		if (!strcmp(sprop, "i2s-master"))
 			priv->dai_fmt = SND_SOC_DAIFMT_I2S;
 		else
-			printk("mode is not i2s-master");
+			pr_err("mode is not i2s-master");
 	}
 
 	sprop = of_get_property(np, "light,sel", NULL);
@@ -699,12 +699,10 @@ static int light_audio_i2s_8ch_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	if(i2s_8ch_probe_flag) {
-		printk("i2s_8ch already probe\n");
 		priv->regs = NULL;
 		priv->regmap = NULL;
 		priv->audio_cpr_regmap = NULL;
 	} else {
-		printk("i2s_8ch probing\n");
 		i2s_8ch_probe_flag = 1;
 		host_priv = priv;
 

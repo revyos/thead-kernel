@@ -45,7 +45,11 @@
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
 #include <linux/light_rpmsg.h>
-
+#include <linux/light_proc_debug.h>
+#ifdef  CONFIG_PM_SLEEP
+#include <linux/firmware/thead/ipc.h>
+#include <linux/firmware/thead/light_event.h>
+#endif
 #define MBOX_MAX_MSG_LEN	28
 #define WJ_MBOX_SEND_MAX_MESSAGE_LENGTH 28
 #define HEXDUMP_BYTES_PER_LINE	28
@@ -421,12 +425,41 @@ static void rpmsg_work_handler(struct work_struct *work)
 struct light_rpmsg_vproc *pri_rpdev;
 EXPORT_SYMBOL_GPL(pri_rpdev);
 
+int  get_audio_log_mem(struct device *dev, phys_addr_t* mem, size_t* mem_size)
+{
+    struct resource r;
+	ssize_t fw_size;
+	void *mem_va;
+	struct device_node *node;
+	int ret;
+
+	*mem = 0;
+	*mem_size = 0;
+
+	node = of_parse_phandle(dev->of_node, "log-memory-region", 0);
+	if (!node) {
+		dev_err(dev, "no memory-region specified\n");
+		return -EINVAL;
+	}
+
+	ret = of_address_to_resource(node, 0, &r);
+	if (ret) {
+	    dev_err(dev, "memory-region get resource faild\n");
+		return -EINVAL;
+	}
+
+	*mem = r.start;
+	*mem_size = resource_size(&r);
+    return 0;
+}
+
 static int light_rpmsg_probe(struct platform_device *pdev)
 {
 	int core_id, j, ret = 0;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node;
 	struct light_rpmsg_vproc *rpdev;
+	char dir_name[32] = {0x0};
 
 	if (of_property_read_u32(np, "multi-core-id", &core_id))
 		core_id = 0;
@@ -488,9 +521,36 @@ static int light_rpmsg_probe(struct platform_device *pdev)
 		}
 
 	}
-	platform_set_drvdata(pdev, rpdev);
+
+	ret = get_audio_log_mem(dev, &rpdev->log_phy, &rpdev->log_size);
+	if(ret) {
+      return ret;
+	}
+    rpdev->log_mem = ioremap(rpdev->log_phy, rpdev->log_size);
+	if (!IS_ERR(rpdev->log_mem)) {
+		printk("%s:virtual_log_mem=0x%p, phy base=0x%llx,size:%d\n",
+			__func__, rpdev->log_mem, rpdev->log_phy,
+			rpdev->log_size);
+	} else {
+		rpdev->log_mem = NULL;
+		dev_err(dev, "%s:get audio log region fail\n", __func__);
+		return -1;
+	}
+
+	sprintf(dir_name, "audio_proc");
+    rpdev->proc_dir = proc_mkdir(dir_name, NULL);
+    if (NULL != rpdev->proc_dir) {
+		rpdev->log_ctrl = light_create_panic_log_proc(rpdev->log_phy,
+			rpdev->proc_dir, rpdev->log_mem, rpdev->log_size);
+	} else {
+		dev_err(dev, "create %s fail\n", dir_name);
+		return ret;
+	}
+
+    platform_set_drvdata(pdev, rpdev);
 
 	return ret;
+
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -522,6 +582,7 @@ typedef enum {
 
 #define MAX_PM_NOTIFY_TIME 10
 #define MAX_PM_ASK_TIME 10
+
 
 static int light_rpmsg_sleep_notify(struct virtqueue *vq, light_pm_type_en type)
 {
@@ -580,25 +641,44 @@ static int light_rpmsg_suspend(struct device *dev)
   return 0;
 }
 
+#define C906_RESET_REG                  0xfffff4403c
+
+static void reset_audio(void) {
+	uint64_t *v_addr = ioremap(C906_RESET_REG, 4);
+	if(!v_addr) {
+		printk("io remap failed\r\n");
+		return;
+	}
+	writel(0x37, (volatile void *)v_addr);
+	writel(0x3f, (volatile void *)v_addr);
+	iounmap(C906_RESET_REG);
+}
+
 static int light_rpmsg_resume(struct device *dev)
 {
   struct light_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
   int ret;
   int try_num = 0;
-  printk("%s,%d,enter",__func__,__LINE__);
+  int rst_flag = 0;
+
   while(rpdev->sleep_flag) {
     ret = light_rpmsg_sleep_ask(rpdev->ivdev[0].vq[0]);
     down_timeout(&rpdev->pm_sem, msecs_to_jiffies(200));
 	if(try_num++ > MAX_PM_ASK_TIME) {
          pr_err("sleep status check faild after try %d time", MAX_PM_ASK_TIME);
-		 printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
-		 return -1;
+		 if(!rst_flag) {
+             printk("Reset audio directly now");
+			 reset_audio();
+			 rst_flag = 1;
+			 try_num = 0;
+		 } else {
+			 pr_err("sleep states check failed after Reset audio");
+             return -1;
+		 }
 	}
   }
-  printk("%s,%d,try %d times, exist",__func__,__LINE__, try_num);
-  return ret;
+  return 0;
 }
-
 #endif
 
 static SIMPLE_DEV_PM_OPS(light_rpmsg_pm_ops, light_rpmsg_suspend, light_rpmsg_resume);

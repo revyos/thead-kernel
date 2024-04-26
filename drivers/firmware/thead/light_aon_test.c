@@ -25,20 +25,20 @@ struct light_aon_msg_req_misc_set_ctrl {
 	u32 val;
 	u16 resource;
 	u16 reserved[7];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct light_aon_msg_req_misc_get_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
 	u32 ctrl;
 	u16 resource;
 	u16 reserved[9];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct light_aon_msg_resp_misc_get_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
 	u32 val;
 	u32 reserved[5];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 struct light_aon_device {
 	struct device		*dev;

@@ -80,11 +80,6 @@
 		viv_video15 = &video15;
 	};
 
-	memory@0 {
-		device_type = "memory";
-		reg = <0x0 0x200000 0x0 0xffe00000>;
-	};
-
 	resmem: reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -162,7 +157,7 @@
 				};
 
 				dev_crit: trip2 {
-					temperature = <105000>;
+					temperature = <110000>;
 					hysteresis = <2000>;
 					type = "critical";
 				};
@@ -943,8 +938,6 @@
 			clocks = <&clk CLKGEN_PWM_PCLK>,
 			         <&clk CLKGEN_PWM_CCLK>;
 			clock-names = "pclk", "cclk";
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_pwm>;
 		};
 
 		timer0: timer@ffefc32000 {
@@ -1139,8 +1132,6 @@
 		spi0: spi@ffe700c000 {
 			compatible = "snps,dw-apb-ssi";
 			reg = <0xff 0xe700c000 0x0 0x1000>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_spi0>;
 			interrupt-parent = <&intc>;
 			interrupts = <54>;
             clocks = <&clk CLKGEN_SPI_SSI_CLK>,
@@ -1149,6 +1140,7 @@
 			num-cs = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			status = "disabled";
 		};
 
 		qspi0: spi@ffea000000 {
@@ -1163,13 +1155,12 @@
             clock-names = "sclk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			status = "disabled";
 		};
 
 		qspi1: spi@fff8000000 {
 			compatible = "snps,dw-apb-ssi-quad";
 			reg = <0xff 0xf8000000 0x0 0x1000>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_qspi1>;
 			interrupt-parent = <&intc>;
 			interrupts = <53>;
             clocks = <&clk CLKGEN_QSPI1_SSI_CLK>,
@@ -1177,6 +1168,7 @@
             clock-names = "sclk", "pclk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			status = "disabled";
 		};
 
 		g2d_opp_table:g2d-opp-table {
@@ -2389,56 +2381,67 @@
 		};
 
 		bm_csi0: csi@ffe4000000{ //CSI2
-		    compatible = "thead,light-bm-csi";
-		    reg = < 0xff 0xe4000000 0x0 0x10000>;
-		    interrupt-parent = <&intc>;
-		    interrupts = <128>;
-		    dphyglueiftester = <0x180>;
-		    sysreg_mipi_csi_ctrl = <0x140>;
-		    clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_PCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_PIXCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_CFG_CLK>;
-		    clock-names = "pclk", "pixclk", "cfg_clk";
-		    phy_name = "CSI_4LANE";
-		    status = "disabled";
+			compatible = "thead,light-bm-csi";
+			reg = < 0xff 0xe4000000 0x0 0x10000>;
+			interrupt-parent = <&intc>;
+			interrupts = <128>;
+			dphyglueiftester = <0x180>;
+			sysreg_mipi_csi_ctrl = <0x140>;
+			clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_PCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_PIXCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI0_CFG_CLK>;
+			clock-names = "pclk", "pixclk", "cfg_clk";
+			phy_name = "CSI_4LANE";
+			status = "disabled";
 		};
 
 		csia_reg: visys-reg@ffe4020000 {
-		    compatible = "thead,light-visys-reg", "syscon";
-		    reg = < 0xff 0xe4020000 0x0 0x10000>;
-		    status = "okay";
+			compatible = "thead,light-visys-reg", "syscon";
+			reg = < 0xff 0xe4020000 0x0 0x10000>;
+			status = "okay";
+		};
+
+		csib_reg: visys-reg@ffe4010000{
+			compatible = "thead,light-visys-reg", "syscon";
+			reg = < 0xff 0xe4010000 0x0 0x10000>;
+			status = "okay";
 		};
 
 		bm_csi1: csi@ffe4010000{ //CSI2X2_B
-		    compatible = "thead,light-bm-csi";
-		    reg = < 0xff 0xe4010000 0x0 0x10000>;
-		    interrupt-parent = <&intc>;
-		    interrupts = <126>; // 110 + 16 int_mipi_csi2x2_int0
-		    dphyglueiftester = <0x182>; // for FPGA PHY only. ASIC not needed.
-		    sysreg_mipi_csi_ctrl = <0x148>;
-		    visys-regmap = <&visys_reg>;
-		    csia-regmap = <&csia_reg>;
-		    clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PIXCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_CFG_CLK>;
-		    clock-names = "pclk", "pixclk", "cfg_clk";
-		    phy_name = "CSI_B";
-		    status = "disabled";
+			compatible = "thead,light-bm-csi";
+			reg = < 0xff 0xe4010000 0x0 0x10000>;
+			interrupt-parent = <&intc>;
+			interrupts = <126>; // 110 + 16 int_mipi_csi2x2_int0
+			dphyglueiftester = <0x182>; // for FPGA PHY only. ASIC not needed.
+			sysreg_mipi_csi_ctrl = <0x148>;
+			visys-regmap = <&visys_reg>;
+			csia-regmap = <&csia_reg>;
+			clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PIXCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_CFG_CLK>;
+			clock-names = "pclk", "pixclk", "cfg_clk";
+			phy_name = "CSI_B";
+			status = "disabled";
 		};
 
 		bm_csi2: csi@ffe4020000{ //CSI2X2_A
-		    compatible = "thead,light-bm-csi";
-		    reg = < 0xff 0xe4020000 0x0 0x10000>;
-		    interrupt-parent = <&intc>;
-		    interrupts = <127>;
-		    dphyglueiftester = <0x184>;
-		    sysreg_mipi_csi_ctrl = <0x144>;
-		    clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_PCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_PIXCLK>,
-		             <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_CFG_CLK>;
-		    clock-names = "pclk", "pixclk", "cfg_clk";
-		    phy_name = "CSI_A";
-		    status = "disabled";
+			compatible = "thead,light-bm-csi";
+			reg = < 0xff 0xe4020000 0x0 0x10000>;
+			interrupt-parent = <&intc>;
+			interrupts = <127>;
+			dphyglueiftester = <0x184>;
+			sysreg_mipi_csi_ctrl = <0x144>;
+			sysreg_mipi_csi_fifo_ctrl = <0x14c>;
+			csib-regmap = <&csib_reg>;
+			clocks = <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_PCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_PIXCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI2_CFG_CLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_PIXCLK>,
+			         <&visys_clk_gate LIGHT_CLKGEN_MIPI_CSI1_CFG_CLK>;
+			clock-names = "pclk", "pixclk", "cfg_clk", "pclk1", "pixclk1", "cfg_clk1";
+			phy_name = "CSI_A";
+			status = "disabled";
 		};
 
 		bm_isp0: bm_isp@ffe4100000 {
@@ -2621,6 +2624,7 @@
 			interrupts = <156>;
 			#cooling-cells = <2>;
 			firmware-name = "xrp0.elf";
+			power-domains = <&pd LIGHT_AON_DSP0_PD>;
 			clocks = <&dspsys_clk_gate CLKGEN_DSP0_PCLK>,
 			<&dspsys_clk_gate CLKGEN_DSP0_CCLK>;
 			clock-names = "pclk", "cclk";
@@ -2662,6 +2666,7 @@
 			interrupts = <157>;
 			firmware-name = "xrp1.elf";
 			#cooling-cells = <2>;
+			power-domains = <&pd LIGHT_AON_DSP1_PD>;
 			clocks = <&dspsys_clk_gate CLKGEN_DSP1_PCLK>,
 			<&dspsys_clk_gate CLKGEN_DSP1_CCLK>;
 			clock-names = "pclk", "cclk";
@@ -2833,7 +2838,10 @@
 			#clock-cells = <1>;
 			status = "okay";
 		};
-
+		light_regdump: light-regdump {
+			compatible = "thead,light-regdump";
+			status = "disabled";
+		};
 	};
 
 };

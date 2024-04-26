@@ -135,17 +135,17 @@ static int hx8279_panel_enable(struct drm_panel *panel)
 	if (pinfo->enabled)
 		return 0;
 
-	ret = mipi_dsi_dcs_exit_sleep_mode(pinfo->link);
+	ret = mipi_dsi_dcs_set_display_on(pinfo->link);
 	if (ret < 0) {
-		dev_err(panel->dev, "failed to exit sleep mode: %d\n", ret);
+		dev_err(panel->dev, "failed to set display on: %d\n", ret);
 		return ret;
 	}
 
 	msleep(120);
 
-	ret = mipi_dsi_dcs_set_display_on(pinfo->link);
+	ret = mipi_dsi_dcs_exit_sleep_mode(pinfo->link);
 	if (ret < 0) {
-		dev_err(panel->dev, "failed to set display on: %d\n", ret);
+		dev_err(panel->dev, "failed to exit sleep mode: %d\n", ret);
 		return ret;
 	}
 

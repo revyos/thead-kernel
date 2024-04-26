@@ -34,11 +34,21 @@
 #include "dw_mipi_dsi.h"
 #include "dw_hdmi_light.h"
 
+/* debug sysfs */
+#include <drm/drm_auth.h>
+#include "../drm_crtc_internal.h"
+
+
+
 #define DRV_NAME    "vs-drm"
 #define DRV_DESC    "VeriSilicon DRM driver"
 #define DRV_DATE    "20191101"
 #define DRV_MAJOR   1
 #define DRV_MINOR   0
+
+/* extern exception info */
+int vs_crtc_reset_count = 0;
+int TotalFailures = 0;
 
 static bool has_iommu = true;
 static struct platform_driver vs_drm_platform_driver;
@@ -53,6 +63,225 @@ static const struct file_operations fops = {
     .read           = drm_read,
     .mmap           = vs_gem_mmap,
 };
+
+static ssize_t log_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+
+    // struct device *dev = kobj_to_dev(kobj);
+	// struct drm_device *drm_dev = dev_get_drvdata(dev);
+
+    struct device *dev = kobj_to_dev(kobj);
+    struct drm_minor *dminor = dev_get_drvdata(dev);
+    struct drm_device *drm_dev = dminor -> dev;
+
+
+    struct drm_framebuffer *fb;
+    struct drm_plane *plane;
+    struct drm_crtc * drm_crtc;
+
+    ssize_t len = 0;
+
+    /* module version */
+    const char *module_version = "1.0.0";
+    const char *build_time = "20230101";
+
+    /* module info */
+    int crtc_count = 0;
+
+    unsigned int plane_count = 0;
+    unsigned int plane_used = 0;
+    unsigned int plane_free = 0;
+
+    unsigned int fb_count = 0;
+
+    list_for_each_entry(drm_crtc, &drm_dev->mode_config.crtc_list, head) {
+        crtc_count++;
+    }
+
+    list_for_each_entry(plane, &drm_dev->mode_config.plane_list, head) {
+        plane_count++;
+        if (plane->state && plane->state->fb) {
+            plane_used++;
+        }
+    }
+    plane_free = plane_count - plane_used;
+
+    list_for_each_entry(fb, &drm_dev->mode_config.fb_list, head) {
+        fb_count++;
+    }
+
+    struct drm_connector *connector;
+    enum drm_connector_status status;
+    bool hdmi_on = false;
+    bool dsi_on = false;
+
+    list_for_each_entry(connector, &drm_dev->mode_config.connector_list, head) {
+        status = connector->status;
+        if (connector->connector_type == DRM_MODE_CONNECTOR_HDMIA) {
+            hdmi_on = (status == connector_status_connected);
+        } else if (connector->connector_type == DRM_MODE_CONNECTOR_DSI) {
+            dsi_on = (status == connector_status_connected);
+        }
+    }
+
+    struct drm_file *priv;
+	kuid_t uid;
+    int client_count = 0;
+    list_for_each_entry_reverse(priv, &drm_dev->filelist, lhead) {
+        client_count++;
+	}
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "----------------------------------------MODULE VERSION----------------------------------------\n"
+        "[Video Sub System] Version: %s, Build Time【%s】\n"
+        "----------------------------------------MODULE STATUS-----------------------------------------\n"
+        "CrtcCount  PlaneCount  PlaneUsed  PlaneFree  FrameBufferCount  ClientCount  HDMI  DSI\n"
+        "   %d          %u           %u           %u             %u              %u         %s   %s\n"
+        "----------------------------------------EXCEPTION INFO----------------------------------------\n"
+        "TotalFailures    Reset\n"
+        "     %d             %d\n",
+
+        module_version, build_time,
+        crtc_count, plane_count, plane_used, plane_count - plane_used , fb_count, client_count, hdmi_on?"on":"off", dsi_on?"on":"off",
+        TotalFailures, vs_crtc_reset_count
+    );
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "-----------------------------------------Client Info-----------------------------------------\n"
+        "%20s %5s %3s master a %5s %10s\n",
+        "command","pid","dev","uid","magic");
+    list_for_each_entry_reverse(priv, &drm_dev->filelist, lhead) {
+		struct task_struct *task;
+		bool is_current_master = drm_is_current_master(priv);
+
+		rcu_read_lock(); /* locks pid_task()->comm */
+		task = pid_task(priv->pid, PIDTYPE_PID);
+		uid = task ? __task_cred(task)->euid : GLOBAL_ROOT_UID;
+		len += scnprintf(buf + len, PAGE_SIZE - len, "%20s %5d %3d   %c    %c %5u %10u\n",
+			   task ? task->comm : "<unknown>",
+			   pid_vnr(priv->pid),
+			   priv->minor->index,
+			   is_current_master ? 'y' : 'n',
+			   priv->authenticated ? 'y' : 'n',
+               // from_kuid_munged(seq_user_ns(m), uid)
+			   uid,
+			   priv->magic);
+		rcu_read_unlock();
+	}
+
+    if (drm_dev) {
+        len += scnprintf(buf + len, PAGE_SIZE - len,
+        "-----------------------------------------MODULE INFO-----------------------------------------\n");
+        list_for_each_entry(fb, &drm_dev->mode_config.fb_list, head) {
+            struct drm_format_name_buf format_name;
+	        unsigned int i;
+            len += scnprintf(buf + len, PAGE_SIZE - len,
+            "framebuffer[%u]:\n"
+            "\tallocated by = %s\n"
+            "\tformat=%s\n"
+            "\tsize=%ux%u\n",
+            fb->base.id,
+            fb->comm,
+            drm_get_format_name(fb->format->format, &format_name),
+            fb->width, fb->height
+            );
+            for (i = 0; i < fb->format->num_planes; i++) {
+                len+= scnprintf(buf + len, PAGE_SIZE - len,"\t\tpitch[%u]=%u\n",i, fb->pitches[i]);
+            }
+        }
+    }
+
+	list_for_each_entry(drm_crtc, &drm_dev->mode_config.crtc_list, head) {
+        // struct vs_crtc *crtc = to_vs_crtc(drm_crtc);
+        struct drm_crtc *crtc = drm_crtc->state->crtc;
+        struct vs_crtc_state *crtc_state = to_vs_crtc_state(drm_crtc->state);
+        len += scnprintf(buf + len, PAGE_SIZE - len,
+        "crtc[%u]: %s\n"
+        "\tenable= %d\n"
+        "\tplane_mask=%x\n"
+        "\tconnector_mask=%x\n"
+        "\tencoder_mask=%x\n"
+        "\tmode: " DRM_MODE_FMT "\n",
+        crtc->base.id, crtc->name,
+        drm_crtc->state->enable,
+        drm_crtc->state->plane_mask,
+        drm_crtc->state->connector_mask,
+        drm_crtc->state->encoder_mask,
+        DRM_MODE_ARG(&(drm_crtc->state->mode))
+        );
+    }
+
+    list_for_each_entry(plane, &drm_dev->mode_config.plane_list, head) {
+        struct drm_plane_state *state = plane->state;
+        struct vs_plane_state *plane_state = to_vs_plane_state(state);
+        struct drm_rect src  = drm_plane_state_src(state);
+        struct drm_rect dest = drm_plane_state_dest(state);
+
+        len += scnprintf(buf + len, PAGE_SIZE - len,
+            "plane[%u]: %s\n"
+            "\tcrtc=%s\n"
+            "\tcrtc-pos=" DRM_RECT_FMT "\n"
+            "\tsrc-pos=" DRM_RECT_FP_FMT "\n"
+            "\trotation=%x\n"
+            "\tcolor-encoding=%s\n"
+            "\tcolor-range=%s\n",
+            plane->base.id, plane->name,
+            state->crtc ? state->crtc->name : "(null)",
+            DRM_RECT_ARG(&dest),
+            DRM_RECT_FP_ARG(&src),
+            state->rotation,
+            drm_get_color_encoding_name(state->color_encoding),
+            drm_get_color_range_name(state->color_range)
+            );
+    }
+     return len;
+}
+
+static ssize_t log_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    TotalFailures = 0;
+    vs_crtc_reset_count = 0;
+
+    return count;
+}
+
+static int period_ms =0;
+
+static ssize_t updatePeriod_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf,"%u\n",period_ms);
+}
+
+static ssize_t updatePeriod_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+      char *start = (char *)buf;
+      period_ms = simple_strtoul(start, &start, 0);
+      return count;
+}
+
+static struct kobj_attribute log_attr = __ATTR(log, 0664, log_show, log_store);
+
+static struct kobj_attribute updatePeriod_attr = __ATTR(updatePeriod_ms, 0664, updatePeriod_show, updatePeriod_store);
+
+
+static struct attribute *attrs[] = {
+    &log_attr.attr,
+    &updatePeriod_attr.attr,
+    NULL,
+};
+
+static umode_t always_visible(struct kobject *kobj, struct attribute *attr, int index)
+{
+    return 0644;
+}
+
+
+static struct attribute_group vs_dev_attr_group = {
+    .name = "info",
+    .is_visible = always_visible,
+    .attrs = attrs,
+};
+
 
 #ifdef CONFIG_DEBUG_FS
 static int vs_debugfs_planes_show(struct seq_file *s, void *data)
@@ -239,10 +468,19 @@ static int vs_drm_bind(struct device *dev)
     if (ret)
         goto err_helper;
 
+
+    ret = sysfs_create_group(&drm_dev->primary->kdev->kobj, &vs_dev_attr_group);
+    if (ret) {
+        dev_err(drm_dev->dev, "Failed to create drm dev sysfs.\n");
+        goto err_drm_dev_register;
+    }
+
     drm_fbdev_generic_setup(drm_dev, 32);
 
     return 0;
 
+err_drm_dev_register:
+    drm_dev_unregister(drm_dev);
 err_helper:
     drm_kms_helper_poll_fini(drm_dev);
 err_bind:
@@ -264,6 +502,8 @@ static void vs_drm_unbind(struct device *dev)
     struct vs_drm_private *priv = drm_dev->dev_private;
 
     drm_dev_unregister(drm_dev);
+
+    sysfs_remove_group(&drm_dev->primary->kdev->kobj, &vs_dev_attr_group);
 
     drm_kms_helper_poll_fini(drm_dev);
 

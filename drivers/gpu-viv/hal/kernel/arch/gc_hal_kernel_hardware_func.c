@@ -2436,39 +2436,39 @@ _FuncExecute_FLOPRESET(IN gcsFUNCTION_EXECUTION_PTR Execution)
 #if gcdENABLE_FLOP_RESET_DEBUG
     for (i  = 0; i < Execution->funcCmdCount - minus_flag; i++)
     {
-        gcmkPRINT("outSizeBytes is : %d", Execution->funcCmd[i].outSize);
-        gcmkPRINT("outAddress is %x", Execution->funcCmd[i].data[2].address);
+        pr_warn("outSizeBytes is : %d", Execution->funcCmd[i].outSize);
+        pr_warn("outAddress is %x", Execution->funcCmd[i].data[2].address);
         for(j = 0; j < Execution->funcCmd[i].outSize; j++ )
         {
             if(((gctUINT8_PTR)(Execution->funcCmd[i].golden))[j] != ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[j])
             {
                 if(i == 0)
                 {
-                    gcmkPRINT("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
-                    gcmkPRINT("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
-                    gcmkPRINT("NN workaround verify failed!");
+                    pr_warn("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
+                    pr_warn("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
+                    pr_warn("NN workaround verify failed!");
                     return status;
                 }
                 else if(i == 1)
                 {
-                    gcmkPRINT("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
-                    gcmkPRINT("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
-                    gcmkPRINT("TP workaround verify failed!");
+                    pr_warn("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
+                    pr_warn("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
+                    pr_warn("TP workaround verify failed!");
                     return status;
                 }
             }
         }
         if(i == 0)
         {
-            gcmkPRINT("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
-            gcmkPRINT("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
-            gcmkPRINT("NN workaround verify success!");
+            pr_warn("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
+            pr_warn("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
+            pr_warn("NN workaround verify success!");
         }
         else
         {
-            gcmkPRINT("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
-            gcmkPRINT("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
-            gcmkPRINT("TP workaround verify success!");
+            pr_warn("top 2 outputBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].outlogical))[1]);
+            pr_warn("top 2 goldenBytes: %x, %x",((gctUINT8_PTR)(Execution->funcCmd[i].golden))[0], ((gctUINT8_PTR)(Execution->funcCmd[i].golden))[1]);
+            pr_warn("TP workaround verify success!");
         }
     }
 #endif
@@ -2576,7 +2576,7 @@ _ProgramMMUStates(
     case gcvSECURE_IN_TA:
     default:
         gcmkASSERT(gcvFALSE);
-        gcmkPRINT("%s(%d): secureMode is wrong", __FUNCTION__, __LINE__);
+        pr_err("%s(%d): secureMode is wrong", __FUNCTION__, __LINE__);
         break;
     }
 
@@ -3467,7 +3467,7 @@ _ProgramMMUStatesMCFE(
     case gcvSECURE_IN_TA:
     default:
         gcmkASSERT(gcvFALSE);
-        gcmkPRINT("%s(%d): secureMode is wrong", __FUNCTION__, __LINE__);
+        pr_err("%s(%d): secureMode is wrong", __FUNCTION__, __LINE__);
         break;
     }
 
@@ -4792,10 +4792,10 @@ _FuncRelease_PPU(IN gcsFUNCTION_EXECUTION_PTR Execution)
             if (((gctUINT32_PTR)(Execution->funcCmd[0].data[OUTPUT_PPU_IDX].logical))[i] != 0x02020202)
             {
                 pass = gcvFALSE;
-                gcmkPRINT("Incorrect Result:[%d] 0x%08x\n", i, ((gctUINT32_PTR)(Execution->funcCmd[0].data[OUTPUT_PPU_IDX].logical))[i]);
+                pr_warn("Incorrect Result:[%d] 0x%08x\n", i, ((gctUINT32_PTR)(Execution->funcCmd[0].data[OUTPUT_PPU_IDX].logical))[i]);
             }
         }
-        gcmkPRINT("PPU %s!\n", pass?"PASS":"FAIL");
+        pr_warn("PPU %s!\n", pass?"PASS":"FAIL");
 
 #endif
 
@@ -9831,7 +9831,7 @@ _FuncRelease_USC(IN gcsFUNCTION_EXECUTION_PTR Execution)
                 || *((gctUINT32_PTR)(Execution->funcCmd[0].data[3].logical)) == 0x44004400 /*FP16*/
                 )
             {
-                gcmkPRINT("USC PASS! ");
+                pr_warn("USC PASS! ");
             }
         }
 #endif

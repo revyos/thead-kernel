@@ -39,8 +39,15 @@ struct light_aon_msg_wdg_ctrl {
 	struct light_aon_rpc_msg_hdr hdr;
 	u32 timeout;
 	u32 running_state;
-	u32 reserved[4];
-}_packed __aligned(4);
+	u32 reserved[1];
+} __packed __aligned(1);
+
+struct light_aon_msg_wdg_ctrl_ack {
+	struct light_aon_rpc_ack_common ack_hdr;
+	u32 timeout;
+	u32 running_state;
+	u32 reserved[1];
+} __packed __aligned(1);
 
 struct light_wdt_device {
 	struct device *dev;
@@ -65,8 +72,7 @@ static unsigned int light_wdt_timeout_to_sel(unsigned secs)
 
 static void light_wdt_msg_hdr_fill(struct light_aon_rpc_msg_hdr *hdr, enum light_aon_misc_func func)
 {
-	hdr->ver = LIGHT_AON_RPC_VERSION;
-	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_MISC;
+	hdr->svc = (uint8_t)LIGHT_AON_RPC_SVC_WDG;
 	hdr->func = (uint8_t)func;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 }
@@ -74,14 +80,18 @@ static void light_wdt_msg_hdr_fill(struct light_aon_rpc_msg_hdr *hdr, enum light
 static int light_wdt_is_running(struct light_wdt_device *wdt_dev)
 {
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_msg_wdg_ctrl_ack ack_msg= {0};
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_GET_STATE);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_GET_STATE);
 	wdt_dev->msg.running_state = -1;
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret)
 		return ret;
+
+	//RPC_GET_BE32(&ack_msg.timeout, 0, &wdt_dev->msg.timeout);
+	RPC_GET_BE32(&ack_msg.timeout, 4, &wdt_dev->msg.running_state);
 
 	pr_debug("ret = %d, timeout = %d, running_state = %d\n", ret, wdt_dev->msg.timeout,
 			wdt_dev->msg.running_state);
@@ -100,12 +110,14 @@ static int light_wdt_update_timeout(struct light_wdt_device *wdt_dev, unsigned i
 	 * new timeout value which enables the watchdog again.
 	 */
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_msg_wdg_ctrl_ack ack_msg= {0};
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_TIMEOUTSET);
-	wdt_dev->msg.timeout = timeout;
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_TIMEOUTSET);
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+    RPC_SET_BE32(&wdt_dev->msg.timeout, 0 , timeout);
+
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret)
 		return ret;
 
@@ -139,11 +151,12 @@ static int light_wdt_start(struct watchdog_device *wdd)
 {
 	struct light_wdt_device *wdt_dev = watchdog_get_drvdata(wdd);
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_rpc_ack_common ack_msg = {0};
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_START);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_START);
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret)
 		return ret;
 
@@ -154,11 +167,12 @@ static int light_wdt_stop(struct watchdog_device *wdd)
 {
 	struct light_wdt_device *wdt_dev = watchdog_get_drvdata(wdd);
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_rpc_ack_common ack_msg = {0};
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_STOP);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_STOP);
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret)
 		return ret;
 
@@ -169,11 +183,12 @@ static int light_wdt_ping(struct watchdog_device *wdd)
 {
 	struct light_wdt_device *wdt_dev = watchdog_get_drvdata(wdd);
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_rpc_ack_common ack_msg = {0};
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_PING);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_PING);
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret)
 		return ret;
 
@@ -186,12 +201,12 @@ static int light_wdt_restart(struct watchdog_device *wdd, unsigned long action, 
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
 	int ret;
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_RESTART);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_RESTART);
 
 	pr_debug("[%s,%d]: Inform aon to restart the whole system....\n", __func__, __LINE__);
 
 	light_event_set_rebootmode(LIGHT_EVENT_SW_REBOOT);
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, false);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, NULL, false);
 	if (ret)
 		return ret;
 	pr_debug("[%s,%d]: Finish to inform aon to restart the whole system....\n", __func__, __LINE__);
@@ -228,6 +243,7 @@ static ssize_t aon_sys_wdt_store(struct device *dev,
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct light_wdt_device *wdt_dev = platform_get_drvdata(pdev);
+	struct light_aon_rpc_ack_common ack_msg = {0};
 	struct light_aon_ipc *ipc;
 	int ret;
 	char *start = (char *)buf;
@@ -237,10 +253,10 @@ static ssize_t aon_sys_wdt_store(struct device *dev,
 	val = simple_strtoul(start, &start, 0);
 	wdt_dev->is_aon_wdt_ena = val;
 	if (val)
-		light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_AON_WDT_ON);
+		light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_AON_WDT_ON);
 	else
-		light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_AON_WDT_OFF);
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+		light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_AON_WDT_OFF);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 	if (ret){
 		pr_err("%s: err:%d \n",__func__,ret);
 		return -EINVAL;
@@ -252,13 +268,14 @@ void light_pm_power_off(void)
 {
 	struct light_wdt_device *wdt_dev = light_power_off_wdt;
 	struct light_aon_ipc *ipc = wdt_dev->ipc_handle;
+	struct light_aon_rpc_ack_common ack_msg = {0};
 	int ret;
 
 	pr_info("[%s,%d]poweroff system...\n", __func__, __LINE__);
 
-	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_MISC_FUNC_WDG_POWER_OFF);
+	light_wdt_msg_hdr_fill(&wdt_dev->msg.hdr, LIGHT_AON_WDG_FUNC_POWER_OFF);
 
-	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, true);
+	ret = light_aon_call_rpc(ipc, &wdt_dev->msg, &ack_msg, true);
 
 	if (ret)
 		pr_err("failed to power off the system\n");

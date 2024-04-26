@@ -176,7 +176,7 @@ _AllocateDescRingBuf(
 
     if (Channel->physical > 0xffffffffull)
     {
-        gcmkPRINT("%s(%d): MCFE ring buffer physical over 4G: 0x%llx",
+        pr_err("%s(%d): MCFE ring buffer physical over 4G: 0x%llx",
             __FUNCTION__, __LINE__, (unsigned long long)Channel->physical);
     }
 
@@ -807,7 +807,7 @@ gckMCFE_Execute(
 
         if (_NextPtr(ringBuf->writePtr) == ringBuf->readPtr)
         {
-            gcmkPRINT("%s: MCFE channel %s-%d ringBuf is full!",
+            pr_warn("%s: MCFE channel %s-%d ringBuf is full!",
                       __FUNCTION__,
                       Priority ? "Pri" : "Std",
                       ChannelId);

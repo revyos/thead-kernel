@@ -158,7 +158,7 @@ gckIOMMU_Construct(
 
     *Iommu = iommu;
 
-    gcmkPRINT("[galcore]: Enable IOMMU\n");
+    pr_debug("[galcore]: Enable IOMMU\n");
 OnError:
     if (gcmIS_ERROR(status))
     {

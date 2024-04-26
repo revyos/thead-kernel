@@ -5,7 +5,20 @@
 
 /dts-v1/;
 
-#include "th1520-a-val-dsi0.dts"
+#include "th1520-a-val.dtsi"
+
+&i2c0 {
+	touch@5d {
+		compatible = "goodix,gt911";
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <1280>;
+		status = "okay";
+	};
+};
+
+&dpu_enc0 {
+	status = "okay";
+};
 
 &dpu_enc1 {
         ports {
@@ -19,11 +32,16 @@
 
 &hdmi_tx {
 	status = "okay";
+};
 
-	port@0 {
-		/* input */
-		hdmi_tx_in: endpoint {
-			remote-endpoint = <&disp1_out>;
-		};
+&dsi0 {
+        status = "okay";
+};
+
+&dhost_0 {
+	status = "okay";
+
+	panel0@0 {
+		compatible = "txd,dy800qwxpab";
 	};
 };

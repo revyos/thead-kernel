@@ -23,7 +23,7 @@ struct light_aon_msg_req_set_resource_power_mode {
 	u16 resource;
 	u16 mode;
 	u16 reserved[10];
-} __packed __aligned(4);
+} __packed __aligned(1);
 
 #define LIGHT_AONU_PD_NAME_SIZE 20
 #define LIGHT_AONU_PD_STATE_NAME_SIZE 10
@@ -79,21 +79,21 @@ static inline struct light_aon_pm_domain *to_light_aon_pd(struct generic_pm_doma
 static int light_aon_pd_power(struct generic_pm_domain *domain, bool power_on)
 {
 	struct light_aon_msg_req_set_resource_power_mode msg;
+	struct light_aon_rpc_ack_common  ack_msg;
 	struct light_aon_rpc_msg_hdr *hdr = &msg.hdr;
 	struct light_aon_pm_domain *pd;
 	int ret;
 
 	pd = to_light_aon_pd(domain);
 
-	hdr->ver = LIGHT_AON_RPC_VERSION;
 	hdr->svc = LIGHT_AON_RPC_SVC_PM;
 	hdr->func = LIGHT_AON_PM_FUNC_SET_RESOURCE_POWER_MODE;
 	hdr->size = LIGHT_AON_RPC_MSG_NUM;
 
-	msg.resource = pd->rsrc;
-	msg.mode = power_on ? LIGHT_AON_PM_PW_MODE_ON : LIGHT_AON_PM_PW_MODE_OFF;
+	RPC_SET_BE16(&msg.resource, 0, pd->rsrc);
+	RPC_SET_BE16(&msg.resource, 2, (power_on ? LIGHT_AON_PM_PW_MODE_ON : LIGHT_AON_PM_PW_MODE_OFF));
 
-	ret = light_aon_call_rpc(pm_ipc_handle, &msg, true);
+	ret = light_aon_call_rpc(pm_ipc_handle, &msg, &ack_msg, true);
 	if (ret)
 		dev_err(&domain->dev, "failed to power %s resource %d ret %d\n",
 			power_on ? "up" : "off", pd->rsrc, ret);

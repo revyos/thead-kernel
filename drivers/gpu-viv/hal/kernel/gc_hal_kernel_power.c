@@ -189,10 +189,10 @@ _Policy(
 
     if (Dvfs->totalConfig % 100 == 0)
     {
-        gcmkPRINT("=======================================================");
-        gcmkPRINT("GPU Load:       %-8d %-8d %-8d %-8d %-8d %-8d %-8d %-8d",
+        pr_warn("=======================================================");
+        pr_warn("GPU Load:       %-8d %-8d %-8d %-8d %-8d %-8d %-8d %-8d",
                                    8, 16, 24, 32, 40, 48, 56, 64);
-        gcmkPRINT("                %-8d %-8d %-8d %-8d %-8d %-8d %-8d %-8d",
+        pr_warn("                %-8d %-8d %-8d %-8d %-8d %-8d %-8d %-8d",
                   _GetLoadHistory(Dvfs,2, 0),
                   _GetLoadHistory(Dvfs,2, 1),
                   _GetLoadHistory(Dvfs,2, 2),
@@ -203,9 +203,9 @@ _Policy(
                   _GetLoadHistory(Dvfs,2, 7)
                   );
 
-        gcmkPRINT("Frequency(MHz)  %-8d %-8d %-8d %-8d %-8d",
+        pr_warn("Frequency(MHz)  %-8d %-8d %-8d %-8d %-8d",
                   58, 120, 240, 360, 480);
-        gcmkPRINT("                %-8d %-8d %-8d %-8d %-8d",
+        pr_warn("                %-8d %-8d %-8d %-8d %-8d",
                   _GetFrequencyHistory(Dvfs, 58),
                   _GetFrequencyHistory(Dvfs,120),
                   _GetFrequencyHistory(Dvfs,240),

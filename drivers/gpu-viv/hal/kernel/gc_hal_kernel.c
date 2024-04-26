@@ -54,6 +54,8 @@
 
 
 #include "gc_hal_kernel_precomp.h"
+#include <linux/module.h>
+#include <linux/ktime.h>
 
 #if gcdDEC_ENABLE_AHB
 #include "viv_dec300_main.h"
@@ -65,9 +67,11 @@
 
 #define _GC_OBJ_ZONE    gcvZONE_KERNEL
 
+
 /*******************************************************************************
 ***** Version Signature *******************************************************/
-
+#define MAX_THREADS 10
+#define MAX_TIMESTAMPS 10
 #define _gcmTXT2STR(t) #t
 #define gcmTXT2STR(t) _gcmTXT2STR(t)
 const char * _VERSION = "\n\0$VERSION$"
@@ -79,6 +83,7 @@ const char * _VERSION = "\n\0$VERSION$"
 /******************************************************************************\
 ******************************* gckKERNEL API Code ******************************
 \******************************************************************************/
+
 
 #if gcmIS_DEBUG(gcdDEBUG_TRACE)
 #define gcmDEFINE2TEXT(d) #d
@@ -1251,7 +1256,7 @@ AllocateMemory:
 #if gcdCAPTURE_ONLY_MODE
                 else
                 {
-                    gcmkPRINT("Capture only mode: Out of Memory");
+                    pr_err("Capture only mode: Out of Memory");
                 }
 #endif
 
@@ -2337,7 +2342,7 @@ gckKERNEL_CacheOperation(
         if (!printed)
         {
             printed = gcvTRUE;
-            gcmkPRINT("[galcore]: %s: Flush Video Memory", __FUNCTION__);
+            pr_warn("[galcore]: %s: Flush Video Memory", __FUNCTION__);
         }
 
         gcmkFOOTER_NO();
@@ -2907,6 +2912,8 @@ gckKERNEL_Dispatch(
     gckCONTEXT context = gcvNULL;
     gckKERNEL kernel = Kernel;
     gctUINT32 processID;
+    gcsDATABASE_PTR database;
+    gctUINT i;
 #if !USE_NEW_LINUX_SIGNAL
     gctSIGNAL   signal;
 #endif
@@ -3232,9 +3239,35 @@ gckKERNEL_Dispatch(
 
         case gcvUSER_SIGNAL_WAIT:
             /* Wait on the signal. */
+            gcmkVERIFY_OK(gckOS_AcquireMutex(kernel->os, kernel->db->dbMutex, gcvINFINITE));
+            for (i = 0; i < gcmCOUNTOF(kernel->db->db); ++i)
+            {
+                for (database = kernel->db->db[i];
+                    database != gcvNULL;
+                    database = database->next)
+                {
+                    database->st = database->st % 10;
+                    database->start_times[database->st] = ktime_get();
+                }
+            }
+            gcmkVERIFY_OK(gckOS_ReleaseMutex(kernel->os, kernel->db->dbMutex));
+
             status = gckOS_WaitUserSignal(Kernel->os,
                                           Interface->u.UserSignal.id,
                                           Interface->u.UserSignal.wait);
+            gcmkVERIFY_OK(gckOS_AcquireMutex(kernel->os, kernel->db->dbMutex, gcvINFINITE));
+            for (i = 0; i < gcmCOUNTOF(kernel->db->db); ++i)
+            {
+                for (database = kernel->db->db[i];
+                    database != gcvNULL;
+                    database = database->next)
+                {
+                    database->st = database->st % 9;
+                    database->end_times[database->st++] = ktime_get();
+                }
+            }
+            gcmkVERIFY_OK(gckOS_ReleaseMutex(kernel->os, kernel->db->dbMutex));
+
             break;
 
         case gcvUSER_SIGNAL_MAP:
@@ -3472,7 +3505,7 @@ gckKERNEL_Dispatch(
                 Interface->u.ReadRegisterData.data = 0;
                 status = gcvSTATUS_CHIP_NOT_READY;
 
-                gcmkPRINT("[galcore]: Can't dump state if GPU isn't POWER ON.");
+                pr_err("[galcore]: Can't dump state if GPU isn't POWER ON.");
             }
         }
         break;
@@ -4199,7 +4232,7 @@ gckKERNEL_Recovery(
 
     if (Kernel->stuckDump == gcvSTUCK_DUMP_NONE)
     {
-        gcmkPRINT("[galcore]: GPU[%d] hang, automatic recovery.", Kernel->core);
+        pr_err("[galcore]: GPU[%d] hang, automatic recovery.", Kernel->core);
     }
     else if (Kernel->stuckDump == gcvSTUCK_DUMP_ALL_CORE)
     {
@@ -4233,7 +4266,7 @@ gckKERNEL_Recovery(
 
     if (Kernel->recovery == gcvFALSE)
     {
-        gcmkPRINT("[galcore]: Stop driver to keep scene.");
+        pr_err("[galcore]: Stop driver to keep scene.");
 
         /* Stop monitor timer. */
         Kernel->monitorTimerStop = gcvTRUE;
@@ -6013,7 +6046,7 @@ gckDEVICE_Profiler_Dispatch(
             }
             else
             {
-                gcmkPRINT("unknown profileMode argument");
+                pr_err("unknown profileMode argument");
                 gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
             }
         }

@@ -868,17 +868,17 @@ gckHEAP_ProfileEnd(
     gcmkVERIFY_OBJECT(Heap, gcvOBJ_HEAP);
     gcmkVERIFY_ARGUMENT(Title != gcvNULL);
 
-    gcmkPRINT("\n");
-    gcmkPRINT("=====[ HEAP - %s ]=====", Title);
-    gcmkPRINT("Number of allocations           : %12u",   Heap->allocCount);
-    gcmkPRINT("Number of bytes allocated       : %12llu", Heap->allocBytes);
-    gcmkPRINT("Maximum allocation size         : %12llu", Heap->allocBytesMax);
-    gcmkPRINT("Total number of bytes allocated : %12llu", Heap->allocBytesTotal);
-    gcmkPRINT("Number of heaps                 : %12u",   Heap->heapCount);
-    gcmkPRINT("Heap memory in bytes            : %12llu", Heap->heapMemory);
-    gcmkPRINT("Maximum number of heaps         : %12u",   Heap->heapCountMax);
-    gcmkPRINT("Maximum heap memory in bytes    : %12llu", Heap->heapMemoryMax);
-    gcmkPRINT("==============================================");
+    pr_debug("\n");
+    pr_debug("=====[ HEAP - %s ]=====", Title);
+    pr_debug("Number of allocations           : %12u",   Heap->allocCount);
+    pr_debug("Number of bytes allocated       : %12llu", Heap->allocBytes);
+    pr_debug("Maximum allocation size         : %12llu", Heap->allocBytesMax);
+    pr_debug("Total number of bytes allocated : %12llu", Heap->allocBytesTotal);
+    pr_debug("Number of heaps                 : %12u",   Heap->heapCount);
+    pr_debug("Heap memory in bytes            : %12llu", Heap->heapMemory);
+    pr_debug("Maximum number of heaps         : %12u",   Heap->heapCountMax);
+    pr_debug("Maximum heap memory in bytes    : %12llu", Heap->heapMemoryMax);
+    pr_debug("==============================================");
 
     /* Success. */
     gcmkFOOTER_NO();

@@ -71,7 +71,7 @@ static void light_tdm_snd_rxctrl(struct light_tdm_priv *priv, char on)
             TDMCTL_TDMEN_MSK, TDMCTL_TDMEN_SEL(on));
     regmap_read(priv->regmap, TDM_DMACTL, &dmactl);
     regmap_read(priv->regmap, TDM_TDMEN, &tdmen);
-    //printk("%s TDM_DMACTL=0x%x TDM_TDMEN=0x%x\n", __func__, dmactl, tdmen);
+    pr_debug("%s TDM_DMACTL=0x%x TDM_TDMEN=0x%x\n", __func__, dmactl, tdmen);
     return;
 }
 
@@ -123,7 +123,6 @@ static int light_tdm_set_fmt_dai(struct snd_soc_dai *dai, unsigned int fmt)
     if (priv->slot_num != 1) {
         return 0;
     }
-    printk("%s enter\n", __func__);
 
     pm_runtime_resume_and_get(priv->dev);
     
@@ -194,7 +193,7 @@ static void light_tdm_set_div(struct light_tdm_priv *priv, struct snd_pcm_hw_par
     div0 = src_clk / (sample_rate * (width * priv->slots));
 	regmap_update_bits(priv->regmap, TDM_DIV0_LEVEL,
 			TDMCTL_DIV0_MASK, div0);
-    //printk("src_clk=%d sample_rate=%d priv->slots=%d width=%d div0=%d\n", src_clk, sample_rate, priv->slots, width, div0);
+    pr_debug("src_clk=%d sample_rate=%d priv->slots=%d width=%d div0=%d\n", src_clk, sample_rate, priv->slots, width, div0);
 }
 
 
@@ -251,7 +250,7 @@ static int light_tdm_dai_hw_params(struct snd_pcm_substream *substream, struct s
 	regmap_update_bits(priv->regmap, TDM_TDMCTL,
 			TDMCTL_CHNUM_MSK, TDMCTL_CHNUM_SEL(chn_num));
     regmap_read(priv->regmap, TDM_TDMCTL, &tdmctl);
-    //printk("%s TDM_TDMCTL=0x%x\n", __func__, tdmctl); 
+    pr_debug("%s TDM_TDMCTL=0x%x\n", __func__, tdmctl); 
     light_tdm_set_div(priv, params);
 
     return 0;
@@ -442,7 +441,7 @@ static int light_tdm_probe(struct platform_device *pdev)
     struct device *dev = &pdev->dev;
 
     int data_register, ret = 0;
-    printk("%s enter\n", __func__);
+
     tdm_priv = devm_kzalloc(&pdev->dev, sizeof(struct light_tdm_priv), GFP_KERNEL);
     if (!tdm_priv) {
         return -ENOMEM;

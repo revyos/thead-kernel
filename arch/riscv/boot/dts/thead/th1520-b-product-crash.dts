@@ -5,6 +5,16 @@
 
 #include "th1520-crash.dtsi"
 
+/ {
+	model = "T-HEAD Light product board";
+	compatible = "thead,light-val", "thead,light";
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x200000 0x0 0x7fe00000>;
+	};
+};
+
 &aon {
 	aon_reg_ricoh: light-ricoh-reg {
 		compatible = "thead,light-ricoh-pmic";

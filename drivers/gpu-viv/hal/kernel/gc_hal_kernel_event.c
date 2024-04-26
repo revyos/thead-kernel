@@ -64,6 +64,7 @@
 #define gcdEVENT_ALLOCATION_COUNT       (4096 / gcmSIZEOF(gcsHAL_INTERFACE))
 #define gcdEVENT_MIN_THRESHOLD          4
 
+extern void _ResumeWaitLinkFE(gckHARDWARE Hardware);
 /******************************************************************************\
 ********************************* Support Code *********************************
 \******************************************************************************/
@@ -1870,6 +1871,12 @@ gckEVENT_Interrupt(
     )
 {
     /* Combine current interrupt status with pending flags. */
+     if (Data & (1 << 29))
+    {
+        /* Event ID 29 is not a normal event, but for invalidating pipe. */
+        _ResumeWaitLinkFE(Event->kernel->hardware);
+        Data &= ~(1 << 29);
+    }
     gckOS_AtomSetMask(Event->pending, Data);
 
 #if gcdINTERRUPT_STATISTIC
@@ -1978,7 +1985,7 @@ gckEVENT_Notify(
 
         if (pending & 0x80000000)
         {
-            gcmkPRINT("AXI BUS ERROR");
+            pr_err("AXI BUS ERROR");
             pending &= 0x7FFFFFFF;
 
             fault |= gcvEVENT_BUS_ERROR_FAULT;
@@ -2484,29 +2491,29 @@ _PrintRecord(
     switch (record->info.command)
     {
     case gcvHAL_WRITE_DATA:
-        gcmkPRINT("      gcvHAL_WRITE_DATA");
+        pr_warn("      gcvHAL_WRITE_DATA");
        break;
 
     case gcvHAL_UNLOCK_VIDEO_MEMORY:
-        gcmkPRINT("      gcvHAL_UNLOCK_VIDEO_MEMORY");
+        pr_warn("      gcvHAL_UNLOCK_VIDEO_MEMORY");
         break;
 
     case gcvHAL_SIGNAL:
-        gcmkPRINT("      gcvHAL_SIGNAL process=%lld signal=0x%llx",
+        pr_warn("      gcvHAL_SIGNAL process=%lld signal=0x%llx",
                   record->info.u.Signal.process,
                   record->info.u.Signal.signal);
         break;
 
     case gcvHAL_TIMESTAMP:
-        gcmkPRINT("      gcvHAL_TIMESTAMP");
+        pr_warn("      gcvHAL_TIMESTAMP");
         break;
 
     case gcvHAL_COMMIT_DONE:
-        gcmkPRINT("      gcvHAL_COMMIT_DONE");
+        pr_warn("      gcvHAL_COMMIT_DONE");
         break;
 
     case gcvHAL_DESTROY_MMU:
-        gcmkPRINT("      gcvHAL_DESTORY_MMU mmu=%p",
+        pr_warn("      gcvHAL_DESTORY_MMU mmu=%p",
                   gcmUINT64_TO_PTR(record->info.u.DestroyMmu.mmu));
 
         break;
@@ -2596,7 +2603,7 @@ gckEVENT_Dump(
                     );
         if (gcmIS_ERROR(status))
         {
-            gcmkPRINT("  READ INTR_ACKNOWLEDGE ERROR!");
+            pr_err("  READ INTR_ACKNOWLEDGE ERROR!");
         }
         else
         {

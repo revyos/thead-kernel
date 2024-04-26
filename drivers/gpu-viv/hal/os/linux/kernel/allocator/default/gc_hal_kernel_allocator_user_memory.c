@@ -225,14 +225,14 @@ static int import_page_map(gckOS Os, struct um_desc *um,
 #endif
     if (unlikely(result < 0))
     {
-        printk("[galcore]: %s: sg_alloc_table_from_pages failed\n", __FUNCTION__);
+        pr_debug("[galcore]: %s: sg_alloc_table_from_pages failed\n", __FUNCTION__);
         goto error;
     }
 
     result = dma_map_sg(galcore_device, um->sgt.sgl, um->sgt.nents, DMA_TO_DEVICE);
     if (unlikely(result != um->sgt.nents))
     {
-        printk("[galcore]: %s: dma_map_sg failed\n", __FUNCTION__);
+        pr_debug("[galcore]: %s: dma_map_sg failed\n", __FUNCTION__);
         goto error;
     }
 
@@ -393,7 +393,7 @@ static int import_pfn_map(gckOS Os, struct um_desc *um,
 #endif
         if (unlikely(result < 0))
         {
-            printk("[galcore]: %s: sg_alloc_table_from_pages failed\n", __FUNCTION__);
+            pr_debug("[galcore]: %s: sg_alloc_table_from_pages failed\n", __FUNCTION__);
             goto err;
         }
 
@@ -406,7 +406,7 @@ static int import_pfn_map(gckOS Os, struct um_desc *um,
 #else
             kfree(um->sgt.sgl);
 #endif
-            printk("[galcore]: %s: dma_map_sg failed\n", __FUNCTION__);
+            pr_debug("[galcore]: %s: dma_map_sg failed\n", __FUNCTION__);
             goto err;
         }
 

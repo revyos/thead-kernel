@@ -478,6 +478,10 @@ static struct snd_soc_dai_driver es8156_dai = {
 
 static int es8156_suspend(struct snd_soc_component *codec)
 {
+	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+
+	pr_debug("Entered: %s\n", __func__);
+
 	es8156_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	printk("es8156_suspend\n");
 	return 0;
@@ -485,6 +489,42 @@ static int es8156_suspend(struct snd_soc_component *codec)
 
 static int es8156_resume(struct snd_soc_component *codec)
 {	
+	struct es8156_priv *priv = snd_soc_component_get_drvdata(codec);
+
+	pr_debug("Entered: %s\n", __func__);
+
+	snd_soc_component_write(codec, ES8156_RESET_REG00, priv->suspend_reg_00);
+	snd_soc_component_write(codec, ES8156_MAINCLOCK_CTL_REG01, priv->suspend_reg_01);
+	snd_soc_component_write(codec, ES8156_SCLK_MODE_REG02, priv->suspend_reg_02);
+	snd_soc_component_write(codec, ES8156_LRCLK_DIV_H_REG03, priv->suspend_reg_03);
+	snd_soc_component_write(codec, ES8156_LRCLK_DIV_L_REG04, priv->suspend_reg_04);
+	snd_soc_component_write(codec, ES8156_SCLK_DIV_REG05, priv->suspend_reg_05);
+	snd_soc_component_write(codec, ES8156_NFS_CONFIG_REG06, priv->suspend_reg_06);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL1_REG07, priv->suspend_reg_07);
+	snd_soc_component_write(codec, ES8156_CLOCK_ON_OFF_REG08, priv->suspend_reg_08);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL2_REG09, priv->suspend_reg_09);
+	snd_soc_component_write(codec, ES8156_TIME_CONTROL1_REG0A, priv->suspend_reg_0A);
+	snd_soc_component_write(codec, ES8156_TIME_CONTROL2_REG0B, priv->suspend_reg_0B);
+	snd_soc_component_write(codec, ES8156_CHIP_STATUS_REG0C, priv->suspend_reg_0C);
+	snd_soc_component_write(codec, ES8156_P2S_CONTROL_REG0D, priv->suspend_reg_0D);
+	snd_soc_component_write(codec, ES8156_DAC_OSR_COUNTER_REG10, priv->suspend_reg_10);
+	snd_soc_component_write(codec, ES8156_DAC_SDP_REG11, priv->suspend_reg_11);
+	snd_soc_component_write(codec, ES8156_AUTOMUTE_SET_REG12, priv->suspend_reg_12);
+	snd_soc_component_write(codec, ES8156_DAC_MUTE_REG13, priv->suspend_reg_13);
+	snd_soc_component_write(codec, ES8156_VOLUME_CONTROL_REG14, priv->suspend_reg_14);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG1_REG15, priv->suspend_reg_15);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG2_REG16, priv->suspend_reg_16);
+	snd_soc_component_write(codec, ES8156_ALC_CONFIG3_REG17, priv->suspend_reg_17);
+	snd_soc_component_write(codec, ES8156_MISC_CONTROL3_REG18, priv->suspend_reg_18);
+	snd_soc_component_write(codec, ES8156_EQ_CONTROL1_REG19, priv->suspend_reg_19);
+	snd_soc_component_write(codec, ES8156_EQ_CONTROL2_REG1A, priv->suspend_reg_1A);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS1_REG20, priv->suspend_reg_20);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS2_REG21, priv->suspend_reg_21);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS3_REG22, priv->suspend_reg_22);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS4_REG23, priv->suspend_reg_23);
+	snd_soc_component_write(codec, ES8156_ANALOG_LP_REG24, priv->suspend_reg_24);
+	snd_soc_component_write(codec, ES8156_ANALOG_SYS5_REG25, priv->suspend_reg_25);
+
 	return 0;
 }
 
@@ -594,6 +634,34 @@ static struct snd_soc_component_driver soc_codec_dev_es8156 = {
 	.num_dapm_routes = ARRAY_SIZE(es8156_dapm_routes),
 };
 
+static ssize_t es8156_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+        return 0;
+}
+
+static ssize_t es8156_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int i;
+
+	for (i = 0; i < 0x26; i++) {
+		printk("reg 0x%x = 0x%x\n", i, snd_soc_component_read(es8156_codec, i));
+	}
+
+	return 0;
+}
+
+static DEVICE_ATTR(registers, 0644, es8156_show, es8156_store);
+
+static struct attribute *es8156_debug_attrs[] = {
+	&dev_attr_registers.attr,
+	NULL,
+};
+
+static struct attribute_group es8516_debug_attr_group = {
+	.name = "es8156_debug",
+	.attrs = es8156_debug_attrs,
+};
+
 /*
 *es8156 7bit i2c address:CE pin:0 0x08 / CE pin:1 0x09
 */
@@ -678,6 +746,11 @@ static int es8156_i2c_probe(struct i2c_client *i2c,
 				     &soc_codec_dev_es8156,
 				     &es8156_dai, 1);
 	
+	ret = sysfs_create_group(&i2c->dev.kobj, &es8516_debug_attr_group);
+	if (ret) {
+			pr_err("failed to create attr group\n");
+	}
+
 	return ret;
 }
 

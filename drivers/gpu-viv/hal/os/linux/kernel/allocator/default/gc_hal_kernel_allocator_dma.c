@@ -197,12 +197,12 @@ _DmaAlloc(
 #if gcdENABLE_BUFFERABLE_VIDEO_MEMORY
     if (set_memory_wc((unsigned long)(mdlPriv->kvaddr), NumPages) != 0)
     {
-        printk("%s(%d): failed to set_memory_wc\n", __func__, __LINE__);
+        pr_debug("%s(%d): failed to set_memory_wc\n", __func__, __LINE__);
     }
 #else
     if (set_memory_uc((unsigned long)(mdlPriv->kvaddr), NumPages) != 0)
     {
-        printk("%s(%d): failed to set_memory_uc\n", __func__, __LINE__);
+        pr_debug("%s(%d): failed to set_memory_uc\n", __func__, __LINE__);
     }
 #endif
 #endif

@@ -1159,7 +1159,7 @@ gckKERNEL_DestroyProcessDB(
     }
 
 #if gcdCAPTURE_ONLY_MODE
-    gcmkPRINT("Capture only mode: The max allocation from System Pool is %llu bytes", database->vidMemPool[gcvPOOL_SYSTEM].maxBytes);
+    pr_warn("Capture only mode: The max allocation from System Pool is %llu bytes", database->vidMemPool[gcvPOOL_SYSTEM].maxBytes);
 #endif
 
     /* Cannot remove the database from the hash list
@@ -1344,7 +1344,7 @@ gckKERNEL_DestroyProcessDB(
 
                     if (priorityID >= gcdMAX_PRIORITY_QUEUE_NUM)
                     {
-                        gcmkPRINT("Galcore Info: get an error priority.");
+                        pr_err("Galcore Info: get an error priority.");
                         break;
                     }
 

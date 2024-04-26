@@ -1345,6 +1345,8 @@ static int dc_suspend(struct device *dev)
         clk_set_rate(dc->pixclk[i], dc->pix_clk_rate[i] * 1000);
     }
 
+    dc_runtime_suspend(dev);
+
     return 0;
 }
 
@@ -1353,10 +1355,14 @@ static int dc_resume(struct device *dev)
     int i, ret;
     struct vs_dc *dc = dev_get_drvdata(dev);
     dev_info(dev,"dc resume\n");
+
+    dc_runtime_suspend(dev);
+    dc_runtime_resume(dev);
+
     regmap_write(dc->hw.vosys_regmap,0x4,0x7);  //release dpu reset
 
     ret = dc_hw_init(&dc->hw);
-    if (ret) 
+    if (ret)
         dev_err(dev, "failed to init DC HW\n");
     return 0;
 }
