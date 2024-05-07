@@ -63,6 +63,9 @@ struct gpu_plat_if {
     struct regmap *vosys_regmap;
 };
 
+int thead_sysfs_init(struct device *dev);
+void thead_sysfs_uninit(struct device *dev);
+
 struct gpu_plat_if *dt_hw_init(struct device *dev);
 void dt_hw_uninit(struct gpu_plat_if *mfg);
 

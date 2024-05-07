@@ -307,6 +307,8 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	dma_set_mask(pvOSDevice, DMA_BIT_MASK(40));
 #endif
 
+	thead_sysfs_init(pvOSDevice);
+
    mfg = dt_hw_init(pvOSDevice);
    if (IS_ERR(mfg)) {
        if (PTR_ERR(mfg) == -EPROBE_DEFER)
@@ -419,6 +421,7 @@ void SysDevDeInit(PVRSRV_DEVICE_CONFIG *psDevConfig)
 #endif
 
 	PhysHeapsDestroy(psDevConfig->pasPhysHeaps);
+	thead_sysfs_uninit(psDevConfig->pvOSDevice);
 	OSFreeMem(psDevConfig);
 }
 

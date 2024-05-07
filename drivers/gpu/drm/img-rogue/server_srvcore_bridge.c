@@ -373,7 +373,7 @@ PVRSRVBridgeEventObjectClose(IMG_UINT32 ui32DispatchTableEntry,
 		     (psEventObjectCloseOUT->eError != PVRSRV_ERROR_KERNEL_CCB_FULL) &&
 		     (psEventObjectCloseOUT->eError != PVRSRV_ERROR_RETRY)))
 	{
-		PVR_DPF((PVR_DBG_ERROR,
+		PVR_DPF((PVR_DBG_WARNING,
 			 "%s: %s", __func__, PVRSRVGetErrorString(psEventObjectCloseOUT->eError)));
 		UnlockHandle(psConnection->psHandleBase);
 		goto EventObjectClose_exit;

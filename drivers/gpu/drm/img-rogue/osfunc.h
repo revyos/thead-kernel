@@ -1022,34 +1022,24 @@ void OSWriteMemoryBarrier(volatile void *hReadback);
 	} while (0)
 
 #if defined(__linux__) && defined(__KERNEL__) && !defined(NO_HARDWARE)
+
+    void OSWriteHWRegl(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT32 ui32Value);
+    void OSWriteHWRegll(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT64 ui64Value);
+    IMG_UINT32 OSReadHWRegl(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+    IMG_UINT64 OSReadHWRegll(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset);
+
 	#define OSReadHWReg8(addr, off)  ((IMG_UINT8)readb((IMG_BYTE __iomem *)(addr) + (off)))
 	#define OSReadHWReg16(addr, off) ((IMG_UINT16)readw((IMG_BYTE __iomem *)(addr) + (off)))
-	#define OSReadHWReg32(addr, off) ((IMG_UINT32)readl((IMG_BYTE __iomem *)(addr) + (off)))
+	#define OSReadHWReg32(addr, off) OSReadHWRegl(addr, off)
 
 	/* Little endian support only */
-	#define OSReadHWReg64(addr, off) \
-			({ \
-				__typeof__(addr) _addr = addr; \
-				__typeof__(off) _off = off; \
-				(IMG_UINT64) \
-				( \
-					( (IMG_UINT64)(readl((IMG_BYTE __iomem *)(_addr) + (_off) + 4)) << 32) \
-					| readl((IMG_BYTE __iomem *)(_addr) + (_off)) \
-				); \
-			})
+	#define OSReadHWReg64(addr, off) OSReadHWRegll(addr, off)
 
 	#define OSWriteHWReg8(addr, off, val)  writeb((IMG_UINT8)(val), (IMG_BYTE __iomem *)(addr) + (off))
 	#define OSWriteHWReg16(addr, off, val) writew((IMG_UINT16)(val), (IMG_BYTE __iomem *)(addr) + (off))
-	#define OSWriteHWReg32(addr, off, val) writel((IMG_UINT32)(val), (IMG_BYTE __iomem *)(addr) + (off))
+	#define OSWriteHWReg32(addr, off, val) OSWriteHWRegl(addr, off, val)
 	/* Little endian support only */
-	#define OSWriteHWReg64(addr, off, val) do \
-			{ \
-				__typeof__(addr) _addr = addr; \
-				__typeof__(off) _off = off; \
-				__typeof__(val) _val = val; \
-				writel((IMG_UINT32)((_val) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off)); \
-				writel((IMG_UINT32)(((IMG_UINT64)(_val) >> 32) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off) + 4); \
-			} while (0)
+	#define OSWriteHWReg64(addr, off, val) OSWriteHWRegll(addr, off, val)
 
 
 #elif defined(NO_HARDWARE)

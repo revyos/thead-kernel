@@ -550,6 +550,14 @@ out:
 	return iErr;
 }
 
+static void wrap_pvr_sync_close(void *connection_data)
+{
+	CONNECTION_DATA *psConnection = (CONNECTION_DATA *)connection_data;
+	pvr_sync_close(connection_data);
+	OSConnectionPrivateDataDeInit(psConnection->hOsPrivateData);
+	kfree(psConnection);
+}
+
 /**************************************************************************/ /*!
 @Function     PVRSRVDeviceSyncOpen
 @Description  Sync device open.
@@ -633,7 +641,7 @@ static int PVRSRVDeviceSyncOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	psConnectionPriv->pfDeviceRelease = pvr_sync_close;
+	psConnectionPriv->pfDeviceRelease = wrap_pvr_sync_close;
 #endif
 #endif
 	psDRMFile->driver_priv = psConnectionPriv;

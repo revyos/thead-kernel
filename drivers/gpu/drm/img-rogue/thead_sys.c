@@ -54,8 +54,339 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/thermal.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
+#include <linux/sysfs.h>
+#include <linux/utsname.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+#include <linux/workqueue.h>
+#include <drm/drm_device.h>
 
+#include "pvrsrv.h"
+#include "pvr_drv.h"
+#include "proc_stats.h"
+#include "pvrversion.h"
+#include "rgxhwperf.h"
+#include "rgxinit.h"
+#include "process_stats.h"
 #include "thead_sys.h"
+
+#ifdef SUPPORT_RGX
+static IMG_HANDLE ghGpuUtilSysFS;
+#endif
+static int thead_gpu_period_ms = -1;
+static int thead_gpu_loading_max_percent = -1;
+static int thead_gpu_last_server_error = 0;
+static int thead_gpu_last_rgx_error = 0;
+
+struct gpu_sysfs_private_data {
+	struct device *dev;
+	struct timer_list timer;
+	struct workqueue_struct *workqueue;
+	struct work_struct work;
+};
+static struct gpu_sysfs_private_data thead_gpu_sysfs_private_data;
+
+/******************定义log的读写属性*************************************/
+static ssize_t thead_gpu_log_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+	PDLLIST_NODE pNext, pNode;
+	struct device *dev = kobj_to_dev(kobj);
+	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	struct pvr_drm_private *priv = drm_dev->dev_private;
+	PVRSRV_DEVICE_NODE *psDevNode = priv->dev_node;
+	PVRSRV_DEVICE_HEALTH_STATUS eHealthStatus = OSAtomicRead(&psDevNode->eHealthStatus);
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+
+	// 驱动信息
+	int dev_id = (int)psDevNode->sDevId.ui32InternalID;
+	int dev_connection_num = 0;
+	int dev_loading_percent = -1;
+
+	// 内存信息
+	IMG_UINT32 dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_COUNT];
+
+	// 实例/会话/通道信息
+	int instance_id = 0;
+
+	// 异常信息
+	char* server_state[3] = {"UNDEFINED", "OK", "BAD"};
+	char* rgx_state[5] = {"UNDEFINED", "OK", "NOT RESPONDING", "DEAD", "FAULT"};
+	int rgx_err = 0;
+
+	if (psDevNode->pvDevice != NULL)
+	{
+		PVRSRV_RGXDEV_INFO *psDevInfo = psDevNode->pvDevice;
+#ifdef SUPPORT_RGX
+		if (!PVRSRV_VZ_MODE_IS(GUEST) &&
+			psDevInfo->pfnGetGpuUtilStats &&
+			eHealthStatus == PVRSRV_DEVICE_HEALTH_STATUS_OK)
+		{
+			RGXFWIF_GPU_UTIL_STATS sGpuUtilStats;
+			PVRSRV_ERROR eError = PVRSRV_OK;
+
+			eError = psDevInfo->pfnGetGpuUtilStats(psDevNode,
+													ghGpuUtilSysFS,
+													&sGpuUtilStats);
+
+			if ((eError == PVRSRV_OK) &&
+				((IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative))
+			{
+				IMG_UINT64 util;
+				IMG_UINT32 rem;
+
+				util = 100 * sGpuUtilStats.ui64GpuStatActive;
+				util = OSDivide64(util, (IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative, &rem);
+
+				dev_loading_percent = (int)util;
+			}
+		}
+#endif
+		rgx_err = psDevInfo->sErrorCounts.ui32WGPErrorCount + psDevInfo->sErrorCounts.ui32TRPErrorCount;
+	}
+
+	if (dev_loading_percent > thead_gpu_loading_max_percent)
+		thead_gpu_loading_max_percent = dev_loading_percent;
+
+	PVRSRVFindProcessMemStats(0, PVRSRV_DRIVER_STAT_TYPE_COUNT, IMG_TRUE, dev_mem_state);
+
+	if (!psDevNode->hConnectionsLock)
+	{
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"[GPU] Version: %s\n"
+			"Build Info: %s %s %s %s\n"
+			"----------------------------------------MODULE PARAM-----------------------------------------\n"
+			"updatePeriod_ms\n"
+			"%d\n"
+			"----------------------------------------MODULE STATUS----------------------------------------\n"
+			"DevId     DevInstanceNum      DevLoading_%%   DevLoadingMax_%%\n"
+			"%-10d%-20d%-15d%-15d\n"
+			"----------------------------------------MEM INFO(KB)-----------------------------------------\n"
+			"KMalloc           VMalloc           PTMemoryUMA       VMapPTUMA\n"
+			"%-18d%-18d%-18d%-18d\n"
+			"PTMemoryLMA       IORemapPTLMA      GPUMemLMA         GPUMemUMA\n"
+			"%-18d%-18d%-18d%-18d\n"
+			"GPUMemUMAPool     MappedGPUMemUMA/LMA                 DmaBufImport\n"
+			"%-18d%-36d%-18d\n"
+			"----------------------------------------INSTANCE INFO----------------------------------------\n"
+			"Id   ProName             ProId     ThdId\n"
+			"---------------------------------------EXCEPTION INFO----------------------------------------\n"
+			"Server_State      Server_Error      RGX_State         RGX_Error\n"
+			"%-18s%-18d%-18s%-18d\n",
+			PVRVERSION_STRING, utsname()->sysname, utsname()->release, utsname()->version, utsname()->machine, thead_gpu_period_ms,
+			dev_id, 0, dev_loading_percent, thead_gpu_loading_max_percent,
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_KMALLOC] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_VMALLOC],
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_PT_MEMORY_UMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_VMAP_PT_UMA] >> 10,
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_PT_MEMORY_LMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_IOREMAP_PT_LMA] >> 10,
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_LMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_UMA] >> 10,
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_UMA_POOL] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_MAPPED_GPUMEM_UMA_LMA] >> 10,
+			dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_DMA_BUF_IMPORT] >> 10,
+			server_state[psPVRSRVData->eServicesState], PVRSRV_KM_ERRORS - thead_gpu_last_server_error,
+			rgx_state[eHealthStatus], rgx_err - thead_gpu_last_rgx_error);
+		return len;
+	}
+
+	OSLockAcquire(psDevNode->hConnectionsLock);
+	dllist_foreach_node(&psDevNode->sConnections, pNode, pNext)
+	{
+		dev_connection_num++;
+	}
+
+	// 格式化输出
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"[GPU] Version: %s\n"
+		"Build Info: %s %s %s %s\n"
+		"----------------------------------------MODULE PARAM-----------------------------------------\n"
+		"updatePeriod_ms\n"
+		"%d\n"
+		"----------------------------------------MODULE STATUS----------------------------------------\n"
+		"DevId     DevInstanceNum      DevLoading_%%   DevLoadingMax_%%\n"
+		"%-10d%-20d%-15d%-15d\n"
+		"----------------------------------------MEM INFO(KB)-----------------------------------------\n"
+		"KMalloc           VMalloc           PTMemoryUMA       VMapPTUMA\n"
+		"%-18d%-18d%-18d%-18d\n"
+		"PTMemoryLMA       IORemapPTLMA      GPUMemLMA         GPUMemUMA\n"
+		"%-18d%-18d%-18d%-18d\n"
+		"GPUMemUMAPool     MappedGPUMemUMA/LMA                 DmaBufImport\n"
+		"%-18d%-36d%-18d\n"
+		"----------------------------------------INSTANCE INFO----------------------------------------\n"
+		"Id   ProName             ProId     ThdId\n",
+		PVRVERSION_STRING, utsname()->sysname, utsname()->release, utsname()->version, utsname()->machine, thead_gpu_period_ms,
+		dev_id, dev_connection_num, dev_loading_percent, thead_gpu_loading_max_percent,
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_KMALLOC] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_VMALLOC],
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_PT_MEMORY_UMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_VMAP_PT_UMA] >> 10,
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_PT_MEMORY_LMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_IOREMAP_PT_LMA] >> 10,
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_LMA] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_UMA] >> 10,
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_ALLOC_GPUMEM_UMA_POOL] >> 10, dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_MAPPED_GPUMEM_UMA_LMA] >> 10,
+		dev_mem_state[PVRSRV_DRIVER_STAT_TYPE_DMA_BUF_IMPORT] >> 10);
+
+	dllist_foreach_node(&psDevNode->sConnections, pNode, pNext)
+	{
+		CONNECTION_DATA *sData = IMG_CONTAINER_OF(pNode, CONNECTION_DATA, sConnectionListNode);
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-5d%-20s%-10d%-10d\n",
+			instance_id, sData->pszProcName, sData->pid, sData->tid);
+		instance_id++;
+	}
+
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"---------------------------------------EXCEPTION INFO----------------------------------------\n"
+		"Server_State      Server_Error      RGX_State         RGX_Error\n"
+		"%-18s%-18d%-18s%-18d\n",
+		server_state[psPVRSRVData->eServicesState], PVRSRV_KM_ERRORS - thead_gpu_last_server_error,
+		rgx_state[eHealthStatus], rgx_err - thead_gpu_last_rgx_error);
+
+	OSLockRelease(psDevNode->hConnectionsLock);
+	return len;
+}
+
+static ssize_t thead_gpu_log_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	struct pvr_drm_private *priv = drm_dev->dev_private;
+	PVRSRV_DEVICE_NODE *psDevNode = priv->dev_node;
+
+	thead_gpu_loading_max_percent = -1;
+	thead_gpu_last_server_error = PVRSRV_KM_ERRORS;
+	if (psDevNode->pvDevice != NULL)
+	{
+		PVRSRV_RGXDEV_INFO *psDevInfo = psDevNode->pvDevice;
+		thead_gpu_last_rgx_error = psDevInfo->sErrorCounts.ui32WGPErrorCount + psDevInfo->sErrorCounts.ui32TRPErrorCount;
+	}
+	return count;
+}
+
+static struct kobj_attribute sthead_gpu_log_attr = __ATTR(log, 0664, thead_gpu_log_show, thead_gpu_log_store);
+
+/******************定义updatePeriod的读写属性*************************************/
+static ssize_t thead_gpu_updatePeriod_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n(set 50~10000 to enable update period, set other value to disable)\n",
+					thead_gpu_period_ms);
+}
+
+static ssize_t thead_gpu_updatePeriod_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	char *start = (char *)buf;
+	int temp_period_ms = simple_strtoul(start, &start, 0);
+	if (temp_period_ms >= 50 && temp_period_ms <= 10000) {
+		thead_gpu_period_ms = temp_period_ms;
+		mod_timer(&thead_gpu_sysfs_private_data.timer, jiffies + msecs_to_jiffies(thead_gpu_period_ms));
+	} else {
+		thead_gpu_period_ms = -1;
+		del_timer(&thead_gpu_sysfs_private_data.timer);
+	}
+	return count;
+}
+
+static struct kobj_attribute sthead_gpu_updateperiod_attr = __ATTR(updatePeriod_ms, 0664, thead_gpu_updatePeriod_show, thead_gpu_updatePeriod_store);
+
+/******************定义sysfs属性info group*************************************/
+static struct attribute *pthead_gpu_attrs[] = {
+	&sthead_gpu_log_attr.attr,
+	&sthead_gpu_updateperiod_attr.attr,
+	NULL,   // must be NULL
+};
+
+static struct attribute_group sthead_gpu_attr_group = {
+	.name = "info", // device下目录指定
+	.attrs = pthead_gpu_attrs,
+};
+
+static void thead_gpu_work_func(struct work_struct *w)
+{
+	struct gpu_sysfs_private_data *data = container_of(w, struct gpu_sysfs_private_data, work);
+	struct device *dev = data->dev;
+	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	struct pvr_drm_private *priv = drm_dev->dev_private;
+	PVRSRV_DEVICE_NODE *psDevNode = priv->dev_node;
+	PVRSRV_DEVICE_HEALTH_STATUS eHealthStatus = OSAtomicRead(&psDevNode->eHealthStatus);
+	int current_loading_percent = -1;
+	if (psDevNode->pvDevice != NULL)
+	{
+		PVRSRV_RGXDEV_INFO *psDevInfo = psDevNode->pvDevice;
+#ifdef SUPPORT_RGX
+		if (!PVRSRV_VZ_MODE_IS(GUEST) &&
+			psDevInfo->pfnGetGpuUtilStats &&
+			eHealthStatus == PVRSRV_DEVICE_HEALTH_STATUS_OK)
+		{
+			RGXFWIF_GPU_UTIL_STATS sGpuUtilStats;
+			PVRSRV_ERROR eError = PVRSRV_OK;
+
+			eError = psDevInfo->pfnGetGpuUtilStats(psDevNode,
+													ghGpuUtilSysFS,
+													&sGpuUtilStats);
+
+			if ((eError == PVRSRV_OK) &&
+				((IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative))
+			{
+				IMG_UINT64 util;
+				IMG_UINT32 rem;
+
+				util = 100 * sGpuUtilStats.ui64GpuStatActive;
+				util = OSDivide64(util, (IMG_UINT32)sGpuUtilStats.ui64GpuStatCumulative, &rem);
+
+				current_loading_percent = (int)util;
+			}
+		}
+#endif
+	}
+	if (current_loading_percent > thead_gpu_loading_max_percent)
+		thead_gpu_loading_max_percent = current_loading_percent;
+	mod_timer(&data->timer, jiffies + msecs_to_jiffies(thead_gpu_period_ms));
+}
+
+void thead_gpu_timer_callback(struct timer_list *t)
+{
+	struct gpu_sysfs_private_data *data = container_of(t, struct gpu_sysfs_private_data, timer);
+	queue_work(data->workqueue, &data->work);
+}
+
+int thead_sysfs_init(struct device *dev)
+{
+	int ret;
+	ret = sysfs_create_group(&dev->kobj, &sthead_gpu_attr_group);
+	if (ret) {
+		dev_err(dev, "Failed to create gpu dev sysfs.\n");
+		return ret;
+	}
+
+#if defined(SUPPORT_RGX) && !defined(NO_HARDWARE)
+	if (SORgxGpuUtilStatsRegister(&ghGpuUtilSysFS) != PVRSRV_OK)
+	{
+		dev_err(dev, "Failed to register GpuUtil for sysfs.\n");
+		return -ENOMEM;
+	}
+#endif
+
+	thead_gpu_sysfs_private_data.workqueue = create_workqueue("gpu_sysfs_workqueue");
+	if (!thead_gpu_sysfs_private_data.workqueue)
+		return -ENOMEM;
+	INIT_WORK(&thead_gpu_sysfs_private_data.work, thead_gpu_work_func);
+
+	thead_gpu_sysfs_private_data.dev = dev;
+	timer_setup(&thead_gpu_sysfs_private_data.timer, thead_gpu_timer_callback, 0);
+	return ret;
+}
+
+void thead_sysfs_uninit(struct device *dev)
+{
+	if (thead_gpu_sysfs_private_data.dev == dev)
+		del_timer(&thead_gpu_sysfs_private_data.timer);
+
+	if (thead_gpu_sysfs_private_data.workqueue)
+		destroy_workqueue(thead_gpu_sysfs_private_data.workqueue);
+
+#if defined(SUPPORT_RGX) && !defined(NO_HARDWARE)
+	if (SORgxGpuUtilStatsUnregister(ghGpuUtilSysFS) != PVRSRV_OK)
+	{
+		dev_err(dev, "Failed to unregister GpuUtil for sysfs.\n");
+	}
+#endif
+
+	sysfs_remove_group(&dev->kobj, &sthead_gpu_attr_group);
+}
 
 int thead_mfg_enable(struct gpu_plat_if *mfg)
 {

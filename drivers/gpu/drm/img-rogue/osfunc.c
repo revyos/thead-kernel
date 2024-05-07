@@ -1843,6 +1843,34 @@ void OSDumpVersionInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					utsname()->version,
 					utsname()->machine);
 }
+
+void OSWriteHWRegl(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT32 ui32Value)
+{
+	writel((IMG_UINT32)(ui32Value), (IMG_BYTE __iomem *)(pvLinRegBaseAddr) + (ui32Offset));
+}
+
+void OSWriteHWRegll(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset, IMG_UINT64 ui64Value)
+{
+	volatile void *_addr = pvLinRegBaseAddr;
+	IMG_UINT32 _off = ui32Offset;
+	IMG_UINT64 _val = ui64Value;
+	writel((IMG_UINT32)((_val) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off));
+	writel((IMG_UINT32)(((IMG_UINT64)(_val) >> 32) & 0xffffffff), (IMG_BYTE __iomem *)(_addr) + (_off) + 4);
+}
+
+IMG_UINT32 OSReadHWRegl(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset)
+{
+	return ((IMG_UINT32)readl((IMG_BYTE __iomem *)(pvLinRegBaseAddr) + (ui32Offset)));
+}
+
+IMG_UINT64 OSReadHWRegll(volatile void *pvLinRegBaseAddr, IMG_UINT32 ui32Offset)
+{
+	volatile void *_addr = pvLinRegBaseAddr;
+	IMG_UINT32 _off = ui32Offset;
+	return (IMG_UINT64)(( (IMG_UINT64)(readl((IMG_BYTE __iomem *)(_addr) + (_off) + 4)) << 32) \
+		| readl((IMG_BYTE __iomem *)(_addr) + (_off)));
+}
+
 #if defined(SUPPORT_DMA_TRANSFER)
 
 typedef struct _OS_CLEANUP_DATA_

@@ -127,6 +127,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pdump_physmem.h"
 #endif
 
+#undef linux
+#define CREATE_TRACE_POINTS
+#include "gpu_trace_point.h"
+
 static PVRSRV_ERROR RGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode);
 static PVRSRV_ERROR RGXDevVersionString(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_CHAR **ppszVersionString);
 static PVRSRV_ERROR RGXDevClockSpeed(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_PUINT32 pui32RGXClockSpeed);
@@ -402,6 +406,7 @@ static inline IMG_BOOL RGXAckHwIrq(PVRSRV_RGXDEV_INFO *psDevInfo,
 {
 	IMG_UINT32 ui32IRQStatus = OSReadHWReg32(psDevInfo->pvRegsBaseKM, ui32IRQStatusReg);
 
+	trace_gpu_interrupt(ui32IRQStatusReg, ui32IRQStatus);
 	if (ui32IRQStatus & ui32IRQStatusEventMsk)
 	{
 		/* acknowledge and clear the interrupt */
@@ -511,6 +516,9 @@ static IMG_BOOL RGX_LISRHandler(void *pvData)
 		{
 			UPDATE_LISR_DBG_STATUS(RGX_LISR_DEVICE_NOT_POWERED);
 		}
+		/* When handling interrupts, there may be a situation where the GPU is powered off,
+		 * return IMG_TRUE to avoid the OS considering that this interrupt is nobody cared */
+		bIrqAcknowledged = IMG_TRUE;
 	}
 
 	return bIrqAcknowledged;
