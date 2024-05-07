@@ -33,7 +33,6 @@ dtb-$(CONFIG_SOC_THEAD_TH1520_PRD) += th1520-a-product.dtb
 dtb-$(CONFIG_SOC_THEAD_TH1520_DEV) += th1520-a-val-full.dtb
 dtb-$(CONFIG_SOC_THEAD_TH1520_DEV) += th1520-a-ref.dtb th1520-a-ref-dsi0.dtb th1520-a-ref-dsi0-hdmi.dtb
 dtb-$(CONFIG_SOC_THEAD) += th1520-b-product.dtb th1520-b-product-sec.dtb
-dtb-$(CONFIG_SOC_THEAD) += th1520-b-dsi.dtb
 dtb-$(CONFIG_SOC_THEAD) += th1520-b-product-crash.dtb
 dtb-$(CONFIG_SOC_THEAD_TH1520_DEV) += th1520-b-product-ddr1G.dtb
 dtb-$(CONFIG_SOC_THEAD_TH1520_DEV) += th1520-b-product-miniapp-hdmi.dtb
