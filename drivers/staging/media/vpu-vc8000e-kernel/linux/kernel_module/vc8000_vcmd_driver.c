@@ -110,6 +110,9 @@
 #include "vcmdswhwregisters.h"
 #include "bidirect_list.h"
 #include "vc8000_driver.h"
+#undef linux
+#define CREATE_TRACE_POINTS
+#include "venc_trace_point.h"
 
 /*------------------------------------------------------------------------
 *****************************VCMD CONFIGURATION BY CUSTOMER********************************
@@ -1715,7 +1718,8 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
 
   if (down_interruptible(&vcmd_reserve_cmdbuf_sem[cmdbuf_obj->module_type]))
       return -ERESTARTSYS;
-  
+
+  venc_vcmd_profile.cur_submit_vcmd_id = input_para->cmdbuf_id;
   encoder_devfreq_record_busy( encoder_get_devfreq_priv_data() );
 
   return_value=select_vcmd(new_cmdbuf_node);
@@ -3815,12 +3819,24 @@ static int encoder_resume(struct device *dev)
 static void encoder_devfreq_update_utilization(struct encoder_devfreq *devfreq)
 {
     ktime_t now, last;
-
+    ktime_t busy;
     now = ktime_get();
     last = devfreq->time_last_update;
 
-    if (devfreq->busy_count > 0)
-      devfreq->busy_time += ktime_sub(now, last);
+    if (devfreq->busy_count > 0) {
+          busy = ktime_sub(now, last);
+          devfreq->busy_time += busy;
+          #ifndef CONFIG_PM_DEVFREQ
+            devfreq->based_maxfreq_last_busy_t = busy;
+          #else
+          if(devfreq->max_freq)
+              devfreq->based_maxfreq_last_busy_t = busy/(devfreq->max_freq/devfreq->cur_devfreq);
+          else
+              devfreq->based_maxfreq_last_busy_t = busy;
+          #endif
+          devfreq->based_maxfreq_busy_time +=  devfreq->based_maxfreq_last_busy_t;
+          devfreq->busy_record_count++;
+    }
     else
     {
       if(devfreq->busy_time > 0)  //if first time in not recorded busy time,ignore idle time.
@@ -3836,12 +3852,20 @@ static void encoder_devfreq_reset(struct encoder_devfreq *devfreq)
     devfreq->time_last_update = ktime_get();
 }
 
+void encoder_devfreq_reset_profile_record(struct encoder_devfreq *devfreq)
+{
+    devfreq->based_maxfreq_busy_time = 0;
+    devfreq->busy_record_count = 0;
+}
+
 void encoder_devfreq_record_busy(struct encoder_devfreq *devfreq)
 {
     unsigned long irqflags;
     int busy_count;
     if (!devfreq)
       return;
+    //when devfreq not enabled,need into record time also.
+
     encoder_dev_clk_lock();
     spin_lock_irqsave(&devfreq->lock, irqflags);
     busy_count = devfreq->busy_count;
@@ -3872,6 +3896,7 @@ void encoder_devfreq_record_idle(struct encoder_devfreq *devfreq)
 
     if (!devfreq)
       return;
+
     spin_lock_irqsave(&devfreq->lock, irqflags);
     //pr_info("record_idle:busy_count = %d\n",devfreq->busy_count);
     if(devfreq->busy_count > 1)
@@ -4038,8 +4063,9 @@ static int encoder_devfreq_get_cur_freq( struct device *dev, unsigned long *freq
     *freq = devfreq->cur_devfreq;
     return 0;
 }
-
+#ifdef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
 struct devfreq_simple_ondemand_data encoder_gov_data;
+#endif
 
 static struct devfreq_dev_profile encoder_devfreq_gov_data =
 {
@@ -4081,6 +4107,7 @@ int encoder_devfreq_init(struct device *dev)
     init_waitqueue_head(&devfreq->target_freq_wait_queue);
     mutex_init(&devfreq->clk_mutex);
 
+#ifdef CONFIG_PM_DEVFREQ
     opp_table = dev_pm_opp_set_clkname(dev,"cclk");
     if(IS_ERR(opp_table)) {
         pr_err("enc set cclk failed\n");
@@ -4102,6 +4129,7 @@ int encoder_devfreq_init(struct device *dev)
 
     encoder_devfreq_gov_data.initial_freq = devfreq->cur_devfreq;
 
+#ifdef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
     encoder_gov_data.upthreshold = 80;
     encoder_gov_data.downdifferential = 10;
 
@@ -4116,8 +4144,17 @@ int encoder_devfreq_init(struct device *dev)
         ret = PTR_ERR(df);
         goto err_fini;
     }
+    unsigned long *freq_table = df->profile->freq_table;
+    if (freq_table[0] < freq_table[df->profile->max_state - 1]) {
+        devfreq->max_freq = freq_table[df->profile->max_state - 1];
+    } else {
+        devfreq->max_freq  = freq_table[0];
+    }
+    pr_info("device max freq %ld\n",devfreq->max_freq);
     df->suspend_freq = 0; // not set freq when suspend,not suitable for async set rate
     devfreq->df = df;
+#endif
+#endif  
     return 0;
 
 err_fini:
@@ -4129,7 +4166,119 @@ err_fini:
 ******************************* VPU Devfreq support END ************************
 \******************************************************************************/
 
-int hantroenc_vcmd_probe(struct platform_device *pdev)
+void venc_vcmd_profile_update(struct work_struct *work);
+static DECLARE_DELAYED_WORK(venc_cmd_profile_work,venc_vcmd_profile_update);
+static ktime_t last_update;
+static long update_period_ms = 0;
+
+struct vcmd_profile venc_vcmd_profile;
+
+void venc_vcmd_profile_update(struct work_struct *work)
+{
+    //update busy time
+    ktime_t now,during;
+    struct encoder_devfreq *devfreq;
+    devfreq = encoder_get_devfreq_priv_data();
+    now = ktime_get();
+    during = ktime_sub(now,last_update);
+    last_update = now;
+    venc_vcmd_profile.dev_loading_percent = ktime_to_us(devfreq->based_maxfreq_busy_time) * 100/ktime_to_us(during);
+    if(venc_vcmd_profile.dev_loading_percent > venc_vcmd_profile.dev_loading_max_percent)
+      venc_vcmd_profile.dev_loading_max_percent = venc_vcmd_profile.dev_loading_percent;
+    pr_debug("based_maxfreq_busy_time %lldms,during period %lld ms",ktime_to_us(devfreq->based_maxfreq_busy_time)/1000,ktime_to_ms(during));
+
+    if(devfreq->busy_record_count > 0)
+      venc_vcmd_profile.avg_hw_proc_us = ktime_to_us(devfreq->based_maxfreq_busy_time)/devfreq->busy_record_count;
+    else
+      venc_vcmd_profile.avg_hw_proc_us = 0;
+
+    venc_vcmd_profile.last_hw_proc_us = ktime_to_us(devfreq->based_maxfreq_last_busy_t);
+    venc_vcmd_profile.proced_count  = devfreq->busy_record_count;
+    encoder_devfreq_reset_profile_record(devfreq);
+    if(update_period_ms > 0)
+      schedule_delayed_work(&venc_cmd_profile_work, msecs_to_jiffies(update_period_ms));
+}
+
+static ssize_t log_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    ssize_t len = 0;
+
+    const char *module_version = "1.0.0";
+    int dev_id = 0;
+
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "[VENC] Version: %s \n"
+        "----------------------------------------MODULE PARAM-----------------------------\n"
+        "updatePeriod_ms\n"
+        "       %d\n"
+        "----------------------------------------MODULE STATUS------------------------------\n"
+        "DevId         DevLoading_%%   DevLoadingMax_%%\n"
+        " %d                 %d               %d\n"
+
+        " avg_hw_proc_us     last_hw_proc_us    proced_count\n"
+        " %d                       %d                   %d \n"
+        "cur_submit_vcmd     cur_complete_vcmd   vcmd_num_share_irq\n"
+        " %d                       %d                   %d \n"
+        "----------------------------------------EXCEPTION INFO-----------------------------------------\n"
+        "BusErr    Abort     Timeout    CmdErr\n"
+        " %d         %d         %d        %d \n",
+        module_version, update_period_ms,
+        dev_id, venc_vcmd_profile.dev_loading_percent, venc_vcmd_profile.dev_loading_max_percent,
+
+        venc_vcmd_profile.avg_hw_proc_us, venc_vcmd_profile.last_hw_proc_us,venc_vcmd_profile.proced_count,
+        venc_vcmd_profile.cur_submit_vcmd_id,venc_vcmd_profile.cur_complete_vcmd_id,venc_vcmd_profile.vcmd_num_share_irq,
+        venc_vcmd_profile.vcmd_buserr_cnt, venc_vcmd_profile.vcmd_abort_cnt, venc_vcmd_profile.vcmd_timeout_cnt, venc_vcmd_profile.vcmd_cmderr_cnt);
+
+
+    return len;
+}
+
+static ssize_t log_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    /******************clear *********************/
+    venc_vcmd_profile.vcmd_buserr_cnt = 0;
+    venc_vcmd_profile.vcmd_abort_cnt  = 0;
+    venc_vcmd_profile.vcmd_timeout_cnt = 0;
+    venc_vcmd_profile.vcmd_cmderr_cnt = 0;
+
+    venc_vcmd_profile.dev_loading_max_percent = 0;
+    venc_vcmd_profile.last_hw_proc_us = 0;
+    return count;
+}
+
+/******************updatePeriod ************************************/
+static ssize_t updatePeriod_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf,"%u\n",update_period_ms);
+}
+
+static ssize_t updatePeriod_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    char *start = (char *)buf;
+    long old_period = update_period_ms;
+    update_period_ms = simple_strtoul(start, &start, 0);
+    if(old_period == 0 && update_period_ms)
+      schedule_delayed_work(&venc_cmd_profile_work,msecs_to_jiffies(update_period_ms));
+    return count;
+}
+/******************define log *************************************/
+static struct kobj_attribute log_attr = __ATTR(log, 0664, log_show, log_store);
+/******************define updatePeriod_ms*************************************/
+static struct kobj_attribute updatePeriod_attr = __ATTR(updatePeriod_ms, 0664, updatePeriod_show, updatePeriod_store);
+
+static struct attribute *attrs[] = {
+    &log_attr.attr,
+    &updatePeriod_attr.attr,
+    NULL,   // must be NULL
+};
+
+static struct attribute_group venc_dev_attr_group = {
+    .name = "info", // dir name
+    .attrs = attrs,
+};
+
+int __init hantroenc_vcmd_probe(struct platform_device *pdev)
 {
   int i,k;
   int result;
@@ -4372,6 +4521,10 @@ int hantroenc_vcmd_probe(struct platform_device *pdev)
   } else {
     pr_info("venc devfreq init ok\n");
   }
+  result = sysfs_create_group(&pdev->dev.kobj, &venc_dev_attr_group);
+    if(result)
+      pr_warn("venc create sysfs failed\n");
+
   pm_runtime_mark_last_busy(&pdev->dev);
   pm_runtime_put_autosuspend(&pdev->dev);
 
@@ -4405,6 +4558,7 @@ static int hantroenc_vcmd_remove(struct platform_device *pdev)
     debugfs_remove_recursive(root_debugfs_dir);
     root_debugfs_dir = NULL;
   }
+  cancel_delayed_work_sync(&venc_cmd_profile_work);
   pm_runtime_resume_and_get(&pdev->dev);
 
   for(i=0;i<total_vcmd_core_num;i++)
@@ -4452,6 +4606,7 @@ static int hantroenc_vcmd_remove(struct platform_device *pdev)
   device_destroy(hantrovcmd_class, hantrovcmd_devt);
   unregister_chrdev_region(hantrovcmd_devt, 1);
   class_destroy(hantrovcmd_class);
+  sysfs_remove_group(&pdev->dev.kobj,&venc_dev_attr_group);
 #ifndef DYNAMIC_MALLOC_VCMDNODE
   if (g_cmdbuf_obj_pool) {
     vfree(g_cmdbuf_obj_pool);
@@ -4649,6 +4804,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
     {
       //if error,read from register directly.
       cmdbuf_id = vcmd_get_register_value((const void *)dev->hwregs,dev->reg_mirror,HWIF_VCMD_CMDBUF_EXECUTING_ID);
+      venc_vcmd_profile.cur_complete_vcmd_id = cmdbuf_id;
       if(cmdbuf_id>=TOTAL_DISCRETE_CMDBUF_NUM)
       {
         pr_err("hantrovcmd_isr error cmdbuf_id greater than the ceiling !!\n");
@@ -4673,6 +4829,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
 #endif
 
       cmdbuf_id = *(dev->vcmd_reg_mem_virtualAddress+EXECUTING_CMDBUF_ID_ADDR);
+      venc_vcmd_profile.cur_complete_vcmd_id = cmdbuf_id;
       pr_debug("hantrovcmd_isr: cmdbuf_id %d from virtual!!\n", cmdbuf_id);
       if(cmdbuf_id>=TOTAL_DISCRETE_CMDBUF_NUM)
       {
@@ -4707,6 +4864,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         vcmd_start(dev,base_cmdbuf_node);
       }
       handled++;
+      trace_venc_interrupt(0xffffffff,irq_status,0);
       spin_unlock_irqrestore(dev->spinlock, flags);
       return IRQ_HANDLED;
     }
@@ -4715,6 +4873,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //abort error,don't need to reset
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      venc_vcmd_profile.vcmd_abort_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -4772,6 +4931,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
           vcmd_start(dev,base_cmdbuf_node);
         }
       }
+      trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -4785,6 +4945,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //bus error, don't need to reset where to record status?
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      venc_vcmd_profile.vcmd_buserr_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -4844,6 +5005,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -4854,6 +5016,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
     {
       //time out,need to reset
       new_cmdbuf_node = dev->list_manager.head;
+      venc_vcmd_profile.vcmd_timeout_cnt++;
       dev->working_state = WORKING_STATE_IDLE;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
@@ -4910,6 +5073,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -4921,6 +5085,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //command error,don't need to reset
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      venc_vcmd_profile.vcmd_cmderr_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -4980,6 +5145,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -5044,6 +5210,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -5089,7 +5256,8 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       handled++;
     }
-
+    venc_vcmd_profile.vcmd_num_share_irq = cmdbuf_processed_num;
+    trace_venc_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
     spin_unlock_irqrestore(dev->spinlock, flags);
     if(cmdbuf_processed_num)
       wake_up_all(dev->wait_queue);

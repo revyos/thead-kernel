@@ -166,7 +166,7 @@ MODULE_LICENSE("GPL");
 #    define MMUDEBUG(fmt, args...) fprintf(stderr, fmt, ## args)
 #  endif
 #else
-#  define MMUDEBUG(fmt, args...)
+#  define MMUDEBUG(fmt, args...) pr_debug("hantrommu: " fmt, ## args)
 #endif
 
 #define MMU_ON_ERROR(func) \

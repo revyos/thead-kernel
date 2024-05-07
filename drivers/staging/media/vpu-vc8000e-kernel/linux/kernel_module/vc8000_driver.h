@@ -98,7 +98,7 @@ typedef size_t ptr_t;
 #    define PDEBUG(fmt, args...) printf(__FILE__ ":%d: " fmt, __LINE__ , ## args)
 #  endif
 #else
-#  define PDEBUG(fmt, args...)  /* not debugging: nothing */
+#  define PDEBUG(fmt, args...)  pr_debug("vc8000: " fmt, ## args)
 #endif
 
 #define ENC_HW_ID1                  0x48320100
@@ -324,6 +324,24 @@ typedef struct
   SUBSYS_CORE_INFO core_info;
 }SUBSYS_DATA;
 
+struct vcmd_profile {
+    int dev_loading_percent;
+    int dev_loading_max_percent;
+
+    int last_hw_proc_us;
+    int avg_hw_proc_us;
+    int proced_count;
+    int cur_submit_vcmd_id;
+    int cur_complete_vcmd_id;
+    int vcmd_num_share_irq;
+
+    //error statistics
+    u32 vcmd_abort_cnt;
+    u32 vcmd_buserr_cnt;
+    u32 vcmd_timeout_cnt;
+    u32 vcmd_cmderr_cnt;
+};
+extern struct vcmd_profile venc_vcmd_profile;
 #ifdef __cplusplus
 }
 #endif

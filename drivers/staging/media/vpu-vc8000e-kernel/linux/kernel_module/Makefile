@@ -109,6 +109,12 @@ endif
 CC += -I$(obj)
 EXTRA_CFLAGS += -g
 
+ifeq ($(CONFIG_ANDROID), y)
+ccflags-y += -DTRACE_INCLUDE_PATH=$(src)
+else
+ccflags-y += -DTRACE_INCLUDE_PATH=$(PWD)
+endif
+
 # Print debugging messages from the device
 #EXTRA_CFLAGS	+= -DHANTRO_DRIVER_DEBUG
 
@@ -159,6 +165,7 @@ inst-m		:= $(wildcard *.ko)
 ifeq ($(inst-m),)
   inst-m	:= $(obj-m)
 endif
+
 
 # locales seem to cause trouble sometimes.
 LC_ALL = POSIX
