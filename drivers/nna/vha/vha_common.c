@@ -54,6 +54,7 @@
 #include <linux/crc32.h>
 
 #include <uapi/vha.h>
+#include <uapi/version.h>
 #include "vha_common.h"
 #include "vha_plat.h"
 #include <vha_regs.h>
@@ -71,6 +72,10 @@
 #elseif defined(HW_AX2) && defined(HW_AX3)
 #error Invalid HW architecture series define. Only one of HW_AX2 or HW_AX3 must be defined.
 #endif
+
+#undef linux
+#define CREATE_TRACE_POINTS
+#include <vha_trace_point.h>
 
 #define MIN_ONCHIP_MAP 1
 #define MAX_ONCHIP_MAP 128
@@ -230,6 +235,8 @@ static struct {
 
 /* Session id counter. */
 static uint32_t vha_session_id_cnt = 0;
+/* Reset counter. */
+static uint32_t vha_reset_cnt = 0;
 
 static void cmd_worker(struct work_struct *work);
 
@@ -821,6 +828,8 @@ int vha_add_session(struct vha_session *session)
 			"%s: %p ctxid:%d\n", __func__, session,
 			session->mmu_ctxs[VHA_MMU_REQ_MODEL_CTXID].id);
 
+	trace_vha_session_in(session->id, 0);
+
 	mutex_unlock(&vha->lock);
 	return ret;
 
@@ -987,6 +996,8 @@ void vha_rm_session(struct vha_session *session)
 		mutex_lock(&vha->lock);
 	}
 
+	trace_vha_session_out(session->id, session->kicks);
+
 	mutex_unlock(&vha->lock);
 
 	/* Reschedule once the session is removed. */
@@ -1004,6 +1015,7 @@ static int vha_alloc_common(struct vha_dev *vha)
 	return 0;
 }
 
+/****************** vha sysfs definition *************************************/
 static ssize_t
 BVNC_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -1017,6 +1029,68 @@ BVNC_show(struct device *dev, struct device_attribute *attr, char *buf)
 			(unsigned short)props->core_id);
 }
 
+static ssize_t log_store(struct device *dev, struct device_attribute *attr, 
+			const char *buf, size_t count)
+{
+	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+
+	mutex_lock(&vha->lock);
+	memset(&vha->stats, 0, sizeof(struct vha_stats));
+	vha_reset_cnt++;
+	mutex_unlock(&vha->lock);
+
+	return count;
+}
+
+static ssize_t log_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+	struct vha_dev *vha = vha_dev_get_drvdata(dev);
+	struct vha_session *session = NULL;
+	int ret = 0;
+	size_t mem_val = 0;
+
+	mutex_lock(&vha->lock);
+
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"[NPU] Driver Version: " VERSION_STRING "\n"
+		"---------------------------------------MODULE STATUS--------------------------------------\n"
+		"DevId    DevStatus    DevSessionNum    DevLoadingAvg_%%    TotalTasks    CompletedTasks\n"
+		"  %d         %d             %d               %d               %lld            %lld\n"
+		"-----------------------------------------MEM INFO-----------------------------------------\n"
+		"MMU_page_size      MMU_mode\n"
+		"    %ld              %d\n"
+		"---------------------------------------INSTANCE INFO--------------------------------------\n"
+		"AvgHwProcUs       LastHwProcUs       TotalHwProcUs       LastMemUsage       LastMmuUsage\n"
+		"   %lld                 %lld               %lld                %d                %d\n"
+		"--------------------------------------EXCEPTION INFO--------------------------------------\n"
+		"total_failures      reset\n"
+		"     %lld             %d\n",
+		vha->id, vha->state, vha_session_id_cnt, vha->stats.cnn_utilization/10,
+					vha->stats.cnn_kicks, vha->stats.cnn_kicks_completed,
+		mmu_page_size_kb_lut[vha->mmu_page_size], vha->mmu_mode,
+		vha->stats.cnn_avg_proc_us, vha->stats.last_proc_us, vha->stats.cnn_total_proc_us,
+					vha->stats.mem_usage_last, vha->stats.mmu_usage_last,
+		vha->stats.total_failures, vha_reset_cnt);
+
+	list_for_each_entry(session, &vha->sessions, list) {
+		if (!ret++) {
+			len += scnprintf(buf + len, PAGE_SIZE - len,
+				"---------------------------------------SESSION INFO--------------------------------------\n"
+				"SessionId     MemUsage      Cmds      AvgProcUs      LastProcUs     TotalProcUs\n");
+		}
+		img_mem_get_usage(session->mem_ctx, &mem_val, NULL);
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"    %-7d   %-12ld  %-8lld  %-13lld  %-13lld  %lld\n",
+			session->id, mem_val, session->kicks, session->avg_proc_us,
+					session->last_proc_us, session->total_proc_us);
+	}
+
+	mutex_unlock(&vha->lock);
+
+	return len;
+}
+
 static DEVICE_ATTR_RO(BVNC);
 
 static struct attribute *vha_sysfs_entries[] = {
@@ -1024,9 +1098,21 @@ static struct attribute *vha_sysfs_entries[] = {
 	NULL,
 };
 
+static struct device_attribute dev_attr_log = __ATTR(log, 0664, log_show, log_store);
+
+static struct attribute *vha_sysfs_attrs[] = {
+	&dev_attr_log.attr,
+	NULL,
+};
+
 static const struct attribute_group vha_attr_group = {
 	.name = NULL,     /* put in device directory */
 	.attrs  = vha_sysfs_entries,
+};
+
+static struct attribute_group vha_dev_attr_group = {
+	.name = "info",    /* put in info directory */
+	.attrs = vha_sysfs_attrs,
 };
 
 void vha_sched_apm(struct vha_dev *vha, struct vha_apm_work *apm_work)
@@ -1224,6 +1310,9 @@ int vha_add_dev(struct device *dev,
 	if (sysfs_create_group(&dev->kobj, &vha_attr_group))
 		dev_err(dev, "failed to create sysfs entries\n");
 
+	if (sysfs_create_group(&dev->kobj, &vha_dev_attr_group))
+		dev_err(dev, "failed to create info sysfs entries\n");
+
 	vha->freq_khz = freq_khz;
 #ifndef CONFIG_VHA_DUMMY
 	if (vha->freq_khz < 0)
@@ -1358,6 +1447,7 @@ void vha_rm_dev(struct device *dev)
 	list_del(&vha->heaps);
 	BUG_ON(!drv.num_devs--);
 	sysfs_remove_group(&dev->kobj, &vha_attr_group);
+	sysfs_remove_group(&dev->kobj, &vha_dev_attr_group);
 
 	vha_dbg_deinit(vha);
 	vha_pdump_deinit(&vha_common->pdump);
@@ -1412,7 +1502,7 @@ int vha_map_to_onchip(struct vha_session *session,
 
 	buf = vha_find_bufid(session, buf_id);
 	if (!buf) {
-		pr_err("%s: buffer id %d not found\n", __func__, buf_id);
+		dev_err(vha->dev, "%s: buffer id %d not found\n", __func__, buf_id);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -1427,7 +1517,7 @@ int vha_map_to_onchip(struct vha_session *session,
 		map_id = idr_alloc(&session->onchip_maps, onchip_map,
 					MIN_ONCHIP_MAP, MAX_ONCHIP_MAP, GFP_KERNEL);
 		if (map_id < 0) {
-			pr_err("%s: idr_alloc failed\n", __func__);
+			dev_err(vha->dev, "%s: idr_alloc failed\n", __func__);
 			ret = map_id;
 			goto alloc_id_failed;
 		}
@@ -1450,7 +1540,7 @@ int vha_map_to_onchip(struct vha_session *session,
 	} else {
 		onchip_map = idr_find(&session->onchip_maps, map_id);
 		if (!onchip_map) {
-			pr_err("%s: idr_find failed\n", __func__);
+			dev_err(vha->dev, "%s: idr_find failed\n", __func__);
 			ret = -EINVAL;
 			goto out_unlock;
 		}

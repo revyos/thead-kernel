@@ -54,6 +54,8 @@
 #include <hwdefs/nn_sys_cr_vagus.h>
 #endif
 
+#include <vha_trace_point.h>
+
 #define ERR_EVENT_DESC(b) VHA_CR_OS(VHA_EVENT_STATUS_VHA_##b##_EN), __stringify(b)
 
 static void vha_dev_disable_events(struct vha_dev *vha)
@@ -824,6 +826,7 @@ exit:
 	if (vha->fault_inject & VHA_FI_IRQ_WORKER)
 		current->make_it_fail = false;
 #endif
+	trace_vha_irq(vha->id, status, count, vha->stats.last_proc_us);
 	mutex_unlock(&vha->lock);
 
 	return ret;

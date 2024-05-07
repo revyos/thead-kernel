@@ -163,9 +163,9 @@ static int vhafreq_get_dev_status(struct device *dev,
 
     vha_get_cnntotal_proc_us(dev, &proc_total_time, &proc_cur_time);
 
-    /* Galculate the busy_time */ 
+    /* Calculate the busy_time */
     busytime = proc_total_time + proc_cur_time;
-    if (busytime < vhafreq_dev->vha_load_data.total_proc_us){
+    if (busytime < vhafreq_dev->vha_load_data.total_proc_us) {
         busytime = 0;
     } else {
         busytime = busytime - vhafreq_dev->vha_load_data.total_proc_us;
@@ -173,7 +173,7 @@ static int vhafreq_get_dev_status(struct device *dev,
 
     vhafreq_dev->vha_load_data.total_proc_us = proc_total_time + proc_cur_time;
 
-     /* Galculate the total_time */
+    /* Calculate the total_time */
     GETNSTIMEOFDAY(&vhafreq_dev->vha_load_data.new_mark);
     if (!get_timespan_us(&vhafreq_dev->vha_load_data.old_mark, 
                         &vhafreq_dev->vha_load_data.new_mark, &proc_cur_time)) 
@@ -181,7 +181,7 @@ static int vhafreq_get_dev_status(struct device *dev,
 
     vhafreq_dev->vha_load_data.old_mark = vhafreq_dev->vha_load_data.new_mark;
 
-     /* correct the busytime */ 
+    /* correct the busytime */
     if (busytime > proc_cur_time) {
         dev_dbg(dev,"busytime :%lu bigger, totaltime :%lu .\n", busytime, proc_cur_time);
         busytime = proc_cur_time;
@@ -450,7 +450,7 @@ int vha_devfreq_init(struct device *dev)
 #ifdef CONFIG_DEVFREQ_THERMAL
     if (of_property_read_u32(dev->of_node, "dynamic-power-coefficient",
 					(u32 *)&vha_cooling_power.dyn_power_coeff))
-        pr_err("Failed to read dynamic power coefficient property.\n");
+        dev_err(dev, "%s: Failed to read dynamic power coefficient property.\n", __func__);
 
     devfreq_vhadev->devfreq_cooling = of_devfreq_cooling_register_power(
 		dev->of_node, devfreq_vhadev->devfreq, &vha_cooling_power);

@@ -192,6 +192,21 @@
 #define GET_CNN_DBG_MODE(type, session) \
 	(session->cnn_dbg.cnn_dbg_modes[VHA_CNN_DBG_MODE_##type])
 
+extern int debug_log_enable;
+#if defined(CONFIG_DYNAMIC_DEBUG) || \
+	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE)) || \
+     defined(DEBUG)
+#else
+#define dev_dbg(dev, fmt, ...)						\
+({									\
+	do {								\
+        if(debug_log_enable)                \
+		   printk(KERN_DEBUG,dev_fmt(fmt), ##__VA_ARGS__); \
+
+    }while(0);\
+})
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0)
 # define TIMESPEC timespec
 # define TIMESPEC_VALID(ts) timespec_valid(ts)
@@ -760,6 +775,9 @@ struct vha_session {
 	uint64_t         		kicks;
 	uint64_t         		polled;
 	uint64_t         		responsed;
+	uint64_t         		avg_proc_us;
+	uint64_t         		total_proc_us;
+	uint64_t         		last_proc_us;
 };
 
 /* pdump cache info structure used for LDB commands */

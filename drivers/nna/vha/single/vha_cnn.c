@@ -50,6 +50,8 @@
 #include "vha_plat.h"
 #include "vha_regs.h"
 
+#include <vha_trace_point.h>
+
 static uint32_t cnn_pdump_poll_count = 10000000;
 module_param(cnn_pdump_poll_count, uint, 0444);
 MODULE_PARM_DESC(cnn_pdump_poll_count,
@@ -314,6 +316,7 @@ hw_kick:
 	img_pdump_printf("-- CNN_SETUP_END\n");
 
 	/* Remember the time cnn is kicked */
+	trace_vha_hwexec_in(session->id, cmd->subseg_current);
 	GETNSTIMEOFDAY(&cmd->hw_proc_start);
 	vha->stats.hw_proc_start = cmd->hw_proc_start;
 	/* Need to generate proper pdump */
@@ -638,6 +641,14 @@ void vha_cnn_cmd_completed(struct vha_cmd *cmd, int status)
 		cnn_submit_rsp->hw_cycles = cmd->hw_cycles;
 		dev_dbg(session->vha->dev, "%s: %p, hw_cycles %llx\n", __func__,
 				cmd, session->vha->stats.cnn_last_cycles);
+
+		session->last_proc_us = cmd->proc_us;
+		session->total_proc_us += cmd->proc_us;
+		if (session->kicks) {
+			uint64_t avg = session->total_proc_us;
+			do_div(avg, session->kicks);
+			session->avg_proc_us = avg;
+		}
 
 		if (session->vha->stats.cnn_last_cycles > (uint32_t)~0)
 			dev_warn(session->vha->dev,

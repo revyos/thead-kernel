@@ -52,6 +52,12 @@
 #include "vha_plat.h"
 #include "vha_io.h"
 
+int debug_log_enable = 0;
+module_param(debug_log_enable, int, 0644);
+MODULE_PARM_DESC(
+	debug_log_enable,
+	"flag to on/off debug log when dynamic debug is dissable.0:disable, other :enable");
+
 #ifdef CONFIG_DEBUG_FS
 
 #define VHA_DBG_CONBINED_CRC_BUF_SIZE 0x1000
