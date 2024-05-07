@@ -7,18 +7,23 @@ struct devfreq;
 struct opp_table;
 
 struct decoder_devfreq {
+    int busy_count;
     struct devfreq *df;
     struct opp_table *clkname_opp_table;
 	bool opp_of_table_added;
 	bool update_freq_flag;
 	unsigned long next_target_freq;
 	unsigned long cur_devfreq;
+	unsigned long max_freq;
 	wait_queue_head_t target_freq_wait_queue;
 
 	ktime_t busy_time;
 	ktime_t idle_time;
 	ktime_t time_last_update;
-	int busy_count;
+	ktime_t based_maxfreq_busy_time;
+	ktime_t based_maxfreq_last_busy_t;
+	int busy_record_count;
+
 	/*
 	 * Protect busy_time, idle_time, time_last_update and busy_count
 	 * because these can be updated concurrently, for example by the GP

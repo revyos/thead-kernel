@@ -97,6 +97,9 @@
 #include "hantrovcmd.h"
 #include "subsys.h"
 #include "dec_devfreq.h"
+#undef linux
+#define CREATE_TRACE_POINTS
+#include "vdec_trace_point.h"
 /*
  * Macros to help debugging
  */
@@ -112,7 +115,7 @@
 #    define PDEBUG(fmt, args...) printf(__FILE__ ":%d: " fmt, __LINE__ , ## args)
 #  endif
 #else
-#  define PDEBUG(fmt, args...)  /* not debugging: nothing */
+#  define PDEBUG(fmt, args...)  pr_debug("vc8000d_vcmd: " fmt, ## args)
 #endif
 
 /*------------------------------------------------------------------------
@@ -1698,6 +1701,8 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
 
   if (down_interruptible(&vcmd_reserve_cmdbuf_sem[cmdbuf_obj->module_type]))
       return -ERESTARTSYS;
+
+  vdec_vcmd_profile.cur_submit_vcmd_id = input_para->cmdbuf_id;
   decoder_devfreq_record_busy( decoder_get_devfreq_priv_data() );
   return_value=select_vcmd(new_cmdbuf_node);
   if(return_value)
@@ -1705,7 +1710,7 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
 
   dev = &hantrovcmd_data[cmdbuf_obj->core_id];
   input_para->core_id = cmdbuf_obj->core_id;
-  pr_debug("filp=%p, VCMD Link    CMDBUF [%d] to core [%d]\n", (void *)filp, cmdbuf_id, input_para->core_id);
+  PDEBUG("filp=%p, VCMD Link    CMDBUF [%d] to core [%d]\n", (void *)filp, cmdbuf_id, input_para->core_id);
   //set ddr address for vcmd registers copy.
   if(dev->hw_version_id > HW_ID_1_0_C )
   {
@@ -1952,7 +1957,7 @@ static unsigned int wait_cmdbuf_ready(struct file *filp,u16 cmdbuf_id,u32 *irq_s
         return -ETIME;
     }
 
-    pr_debug("filp=%p, VCMD Wait    CMDBUF [%d]\n", (void *)filp, cmdbuf_id);
+    PDEBUG("filp=%p, VCMD Wait    CMDBUF [%d]\n", (void *)filp, cmdbuf_id);
     return 0;
   } else {
     if (check_mc_cmdbuf_irq(filp, cmdbuf_obj, irq_status_ret))
@@ -2091,7 +2096,7 @@ long hantrovcmd_ioctl(struct file *filp,
        ret = reserve_cmdbuf(filp,&input_para);
        if (ret == 0)
         copy_to_user((struct exchange_parameter*)arg,&input_para,sizeof(struct exchange_parameter));
-       pr_debug("filp=%p, VCMD Reserve CMDBUF [%d]\n", (void *)filp, input_para.cmdbuf_id);
+       PDEBUG("filp=%p, VCMD Reserve CMDBUF [%d]\n", (void *)filp, input_para.cmdbuf_id);
        return ret;
       }
 
@@ -3539,6 +3544,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
     {
       //if error,read from register directly.
       cmdbuf_id = vcmd_get_register_value((const void *)dev->hwregs,dev->reg_mirror,HWIF_VCMD_CMDBUF_EXECUTING_ID);
+      vdec_vcmd_profile.cur_complete_vcmd_id = cmdbuf_id;
       if(cmdbuf_id>=TOTAL_DISCRETE_CMDBUF_NUM)
       {
         pr_err("hantrovcmd_isr error cmdbuf_id greater than the ceiling !!\n");
@@ -3563,6 +3569,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
 #endif
 
       cmdbuf_id = *(dev->vcmd_reg_mem_virtualAddress+EXECUTING_CMDBUF_ID_ADDR);
+      vdec_vcmd_profile.cur_complete_vcmd_id = cmdbuf_id;
       if(cmdbuf_id>=TOTAL_DISCRETE_CMDBUF_NUM)
       {
         pr_err("hantrovcmd_isr error cmdbuf_id greater than the ceiling !!\n");
@@ -3596,6 +3603,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         vcmd_start(dev,base_cmdbuf_node);
       }
       handled++;
+      trace_vdec_interrupt(0xffffffff,irq_status,0);
       spin_unlock_irqrestore(dev->spinlock, flags);
       return IRQ_HANDLED;
     }
@@ -3604,6 +3612,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //abort error,don't need to reset
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      vdec_vcmd_profile.vcmd_abort_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -3651,6 +3660,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       }
       base_cmdbuf_node=base_cmdbuf_node->next;
       vcmd_delink_cmdbuf(dev,base_cmdbuf_node);
+      trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -3665,6 +3675,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //bus error, don't need to reset where to record status?
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      vdec_vcmd_profile.vcmd_buserr_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -3724,6 +3735,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -3736,6 +3748,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //time out,need to reset
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      vdec_vcmd_profile.vcmd_timeout_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -3791,6 +3804,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -3803,6 +3817,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       //command error,don't need to reset
       new_cmdbuf_node = dev->list_manager.head;
       dev->working_state = WORKING_STATE_IDLE;
+      vdec_vcmd_profile.vcmd_cmderr_cnt++;
       if(dev->hw_version_id > HW_ID_1_0_C )
       {
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
@@ -3862,6 +3877,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -3927,6 +3943,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         //restart new command
         vcmd_start(dev,base_cmdbuf_node);
       }
+      trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
       spin_unlock_irqrestore(dev->spinlock, flags);
       if(cmdbuf_processed_num)
         wake_up_all(dev->wait_queue);
@@ -3974,6 +3991,8 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       handled++;
     }
 
+    vdec_vcmd_profile.vcmd_num_share_irq = cmdbuf_processed_num;
+    trace_vdec_interrupt(cmdbuf_id,irq_status,cmdbuf_processed_num);
     spin_unlock_irqrestore(dev->spinlock, flags);
     if(cmdbuf_processed_num)
       wake_up_all(dev->wait_queue);

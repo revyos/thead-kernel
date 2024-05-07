@@ -175,7 +175,7 @@ MODULE_LICENSE("GPL");
 #    define MMUDEBUG(fmt, args...) fprintf(stderr, fmt, ## args)
 #  endif
 #else
-#  define MMUDEBUG(fmt, args...)
+#  define MMUDEBUG(fmt, args...) pr_debug("hantrommu: " fmt, ## args)
 #endif
 
 #define MMU_ON_ERROR(func) \
@@ -1118,7 +1118,7 @@ enum MMUStatus MMURelease(void *filp, volatile unsigned char *hwregs) {
       return MMU_STATUS_OK;
   }
 
-  pr_debug(" *****MMU Release*****\n");
+  MMUDEBUG(" *****MMU Release*****\n");
 
   AcquireMutex(g_mmu->page_table_mutex, MMU_INFINITE);
 
@@ -1857,8 +1857,8 @@ bool MMU_CheckPowerStayOn(volatile unsigned char *hwregs[MAX_SUBSYS_NUM][2])
   address_ext = ((u32)(g_mmu->page_table_array_physical >> 32))&0xff;
   for (i = 0; i < MAX_SUBSYS_NUM; i++) {
     if (hwregs[i][0] != NULL) {
-      pr_debug("software save pg table addr %lx\n",g_mmu->page_table_array_physical);
-      pr_debug("subsys[%d]: MMU reg LSB %x MSB %x\n",i,ioread32( (void*)(hwregs[i][0] + MMU_REG_ADDRESS)),
+      MMUDEBUG("software save pg table addr %lx\n",g_mmu->page_table_array_physical);
+      MMUDEBUG("subsys[%d]: MMU reg LSB %x MSB %x\n",i,ioread32( (void*)(hwregs[i][0] + MMU_REG_ADDRESS)),
               ioread32( (void *)(hwregs[i][0] + MMU_REG_ADDRESS_MSB)));
 
       if(address != ioread32( (void*)(hwregs[i][0] + MMU_REG_ADDRESS) )

@@ -109,7 +109,7 @@
 #    define PDEBUG(fmt, args...) fprintf(stderr, fmt, ## args)
 #  endif
 #else
-#  define PDEBUG(fmt, args...)
+#  define PDEBUG(fmt, args...) pr_debug("hantrodec: " fmt, ## args)
 #endif
 int debug_pr_devfreq_info = 0;
 
@@ -923,11 +923,12 @@ long DecFlushRegs(hantrodec_t *dev, struct core_desc *core) {
 #ifdef HANTRODEC_DEBUG
     flush_count++;
     flush_regs += reg_wr;
-#endif
+
 
     PDEBUG("flushed registers on core %d\n", id);
     PDEBUG("%d DecFlushRegs: flushed %d/%d registers (dec_mode = %d, avg %d regs per flush)\n",
            flush_count, reg_wr, flush_regs, dec_regs[id][3]>>27, flush_regs/flush_count);
+#endif
   } else {
     /* write all regs but the status reg[1] to hardware */
     for(i = 0; i < vpu_subsys[id].submodule_iosize[type]/4; i++) {
@@ -1881,7 +1882,6 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd,
 
 static int hantrodec_open(struct inode *inode, struct file *filp) {
   PDEBUG("dev opened\n");
-  pr_debug("==========%s:open!============\n",__func__);
   if (vcmd)
     hantrovcmd_open(inode, filp);
 
@@ -2186,7 +2186,7 @@ static int decoder_runtime_suspend(struct device *dev)
 {
 	hantrodec_t *decdev = &hantrodec_data;
 
-	pr_debug("%s, %d: Disable clock\n", __func__, __LINE__);
+	PDEBUG("%s, %d: Disable clock\n", __func__, __LINE__);
 
 	clk_disable_unprepare(decdev->cclk);
 	clk_disable_unprepare(decdev->aclk);
@@ -2255,7 +2255,7 @@ static int decoder_runtime_resume(struct device *dev)
 			pr_info("%s, %d,hantrovcmd not need reset\n",__func__, __LINE__);
 	}
 
-	pr_debug("%s, %d: Enabled clock  %d\n", __func__, __LINE__);
+	PDEBUG("%s, %d: Enabled clock  %d\n", __func__, __LINE__);
 	decoder_devfreq_resume(decoder_get_devfreq_priv_data());
 	return 0;
 }
@@ -2267,7 +2267,7 @@ static int decoder_suspend(struct device *dev)
 	hantrovcmd_suspend_record();
 	/*pm_runtime_force_suspend will check current clk state*/
 
-	pr_debug("  suspend pm_count %ld\n",atomic_read(&dev->power.usage_count));
+	PDEBUG("  suspend pm_count %ld\n",atomic_read(&dev->power.usage_count));
 	return pm_runtime_force_suspend(dev);
 
 }
@@ -2295,16 +2295,29 @@ static int decoder_resume(struct device *dev)
 /******************************************************************************\
 ******************************* VPU Devfreq support START***********************
 \******************************************************************************/
+unsigned int g_cur_devfreq = 594000000;
 
 static void decoder_devfreq_update_utilization(struct decoder_devfreq *devfreq)
 {
     ktime_t now, last;
-
+    ktime_t busy;
     now = ktime_get();
     last = devfreq->time_last_update;
 
-    if (devfreq->busy_count > 0)
-      devfreq->busy_time += ktime_sub(now, last);
+    if (devfreq->busy_count > 0) {
+          busy = ktime_sub(now, last);
+          devfreq->busy_time += busy;
+          #ifndef CONFIG_PM_DEVFREQ
+            devfreq->based_maxfreq_last_busy_t = busy;
+          #else
+          if(devfreq->max_freq)
+              devfreq->based_maxfreq_last_busy_t = busy/(devfreq->max_freq/devfreq->cur_devfreq);
+          else
+              devfreq->based_maxfreq_last_busy_t = busy;
+          #endif
+          devfreq->based_maxfreq_busy_time +=  devfreq->based_maxfreq_last_busy_t;
+          devfreq->busy_record_count++;
+    }
     else
     {
       if(devfreq->busy_time > 0)  //if first time in not recorded busy time,ignore idle time.
@@ -2319,6 +2332,11 @@ static void decoder_devfreq_reset(struct decoder_devfreq *devfreq)
     devfreq->idle_time = 0;
     devfreq->time_last_update = ktime_get();
 }
+void decoder_devfreq_reset_profile_record(struct decoder_devfreq *devfreq)
+{
+    devfreq->based_maxfreq_busy_time = 0;
+    devfreq->busy_record_count = 0;
+}
 
 void decoder_devfreq_record_busy(struct decoder_devfreq *devfreq)
 {
@@ -2326,6 +2344,7 @@ void decoder_devfreq_record_busy(struct decoder_devfreq *devfreq)
     int busy_count;
     if (!devfreq)
       return;
+    //when devfreq not enabled,need into record time also.
     decoder_dev_clk_lock();
     spin_lock_irqsave(&devfreq->lock, irqflags);
     busy_count = devfreq->busy_count;
@@ -2424,7 +2443,7 @@ void decoder_dev_clk_unlock(void)
     mutex_unlock(&devfreq->clk_mutex);
 }
 
-unsigned int g_cur_devfreq = 594000000;
+
 bool hantrovcmd_devfreq_check_state(void);
 
 /* set rate need clk disabled,so carefully calling this function
@@ -2524,9 +2543,9 @@ static int decoder_devfreq_get_cur_freq(IN struct device *dev, OUT unsigned long
     *freq = devfreq->cur_devfreq;
     return 0;
 }
-
+#ifdef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
 struct devfreq_simple_ondemand_data decoder_gov_data;
-
+#endif
 static struct devfreq_dev_profile decoder_devfreq_gov_data =
 {
     .polling_ms = 100,
@@ -2567,6 +2586,7 @@ int decoder_devfreq_init(struct device *dev)
     init_waitqueue_head(&devfreq->target_freq_wait_queue);
     mutex_init(&devfreq->clk_mutex);
 
+#ifdef CONFIG_PM_DEVFREQ
     opp_table = dev_pm_opp_set_clkname(dev,"cclk");
     if(IS_ERR(opp_table)) {
         pr_err("dec set cclk failed\n");
@@ -2588,6 +2608,7 @@ int decoder_devfreq_init(struct device *dev)
 
     decoder_devfreq_gov_data.initial_freq = devfreq->cur_devfreq;
 
+#ifdef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
     decoder_gov_data.upthreshold = 80;
     decoder_gov_data.downdifferential = 10;
 
@@ -2602,8 +2623,17 @@ int decoder_devfreq_init(struct device *dev)
         ret = PTR_ERR(df);
         goto err_fini;
     }
+    unsigned long *freq_table = df->profile->freq_table;
+    if (freq_table[0] < freq_table[df->profile->max_state - 1]) {
+        devfreq->max_freq = freq_table[df->profile->max_state - 1];
+    } else {
+        devfreq->max_freq  = freq_table[0];
+    }
+    pr_info("device max freq %ld\n",devfreq->max_freq);
     df->suspend_freq = 0; // not set freq when suspend,not suitable for async set rate
     devfreq->df = df;
+#endif
+#endif
     return 0;
 
 err_fini:
@@ -2614,6 +2644,119 @@ err_fini:
 /******************************************************************************\
 ******************************* VPU Devfreq support END ************************
 \******************************************************************************/
+void vdec_vcmd_profile_update(struct work_struct *work);
+static DECLARE_DELAYED_WORK(vdec_cmd_profile_work,vdec_vcmd_profile_update);
+static ktime_t last_update;
+static long update_period_ms = 0;
+
+
+struct vcmd_profile vdec_vcmd_profile;
+void vdec_vcmd_profile_update(struct work_struct *work)
+{
+    //update busy time
+    ktime_t now,during;
+    struct decoder_devfreq *devfreq;
+    devfreq = decoder_get_devfreq_priv_data();
+    now = ktime_get();
+    during = ktime_sub(now,last_update);
+    last_update = now;
+    vdec_vcmd_profile.dev_loading_percent = ktime_to_us(devfreq->based_maxfreq_busy_time) * 100/ktime_to_us(during);
+    if(vdec_vcmd_profile.dev_loading_percent > vdec_vcmd_profile.dev_loading_max_percent)
+      vdec_vcmd_profile.dev_loading_max_percent = vdec_vcmd_profile.dev_loading_percent;
+    pr_debug("based_maxfreq_busy_time %lldms,during period %lld ms",ktime_to_us(devfreq->based_maxfreq_busy_time)/1000,ktime_to_ms(during));
+
+    if(devfreq->busy_record_count > 0)
+      vdec_vcmd_profile.avg_hw_proc_us = ktime_to_us(devfreq->based_maxfreq_busy_time)/devfreq->busy_record_count;
+    else
+      vdec_vcmd_profile.avg_hw_proc_us = 0;
+
+    vdec_vcmd_profile.last_hw_proc_us = ktime_to_us(devfreq->based_maxfreq_last_busy_t);
+    vdec_vcmd_profile.proced_count  = devfreq->busy_record_count;
+    decoder_devfreq_reset_profile_record(devfreq);
+    if(update_period_ms > 0)
+      schedule_delayed_work(&vdec_cmd_profile_work, msecs_to_jiffies(update_period_ms));
+}
+
+static ssize_t log_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    ssize_t len = 0;
+
+    const char *module_version = "1.0.0";
+    int dev_id = 0;
+
+
+    len += scnprintf(buf + len, PAGE_SIZE - len,
+        "[VDEC] Version: %s q\n"
+        "----------------------------------------MODULE PARAM-----------------------------\n"
+        "updatePeriod_ms\n"
+        "       %d\n"
+        "----------------------------------------MODULE STATUS------------------------------\n"
+        "DevId         DevLoading_%%   DevLoadingMax_%%\n"
+        " %d                 %d               %d\n"
+
+        " avg_hw_proc_us     last_hw_proc_us    proced_count\n"
+        " %d                       %d                   %d \n"
+        "cur_submit_vcmd     cur_complete_vcmd   vcmd_num_share_irq\n"
+        " %d                       %d                   %d \n"
+        "----------------------------------------EXCEPTION INFO-----------------------------------------\n"
+        "BusErr    Abort     Timeout    CmdErr\n"
+        " %d         %d         %d        %d \n",
+        module_version, update_period_ms,
+        dev_id, vdec_vcmd_profile.dev_loading_percent, vdec_vcmd_profile.dev_loading_max_percent,
+
+        vdec_vcmd_profile.avg_hw_proc_us, vdec_vcmd_profile.last_hw_proc_us,vdec_vcmd_profile.proced_count,
+        vdec_vcmd_profile.cur_submit_vcmd_id,vdec_vcmd_profile.cur_complete_vcmd_id,vdec_vcmd_profile.vcmd_num_share_irq,
+        vdec_vcmd_profile.vcmd_buserr_cnt, vdec_vcmd_profile.vcmd_abort_cnt, vdec_vcmd_profile.vcmd_timeout_cnt, vdec_vcmd_profile.vcmd_cmderr_cnt);
+
+
+    return len;
+}
+static ssize_t log_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    /******************clear *********************/
+    vdec_vcmd_profile.vcmd_buserr_cnt = 0;
+    vdec_vcmd_profile.vcmd_abort_cnt  = 0;
+    vdec_vcmd_profile.vcmd_timeout_cnt = 0;
+    vdec_vcmd_profile.vcmd_cmderr_cnt = 0;
+
+    vdec_vcmd_profile.dev_loading_max_percent = 0;
+    vdec_vcmd_profile.last_hw_proc_us = 0;
+    return count;
+}
+
+
+/******************updatePeriod ************************************/
+static ssize_t updatePeriod_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf,"%u\n",update_period_ms);
+}
+
+static ssize_t updatePeriod_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    char *start = (char *)buf;
+    long old_period = update_period_ms;
+    update_period_ms = simple_strtoul(start, &start, 0);
+    if(old_period == 0 && update_period_ms)
+      schedule_delayed_work(&vdec_cmd_profile_work,msecs_to_jiffies(update_period_ms));
+    return count;
+}
+/******************define log *************************************/
+static struct kobj_attribute log_attr = __ATTR(log, 0664, log_show, log_store);
+/******************define updatePeriod_ms*************************************/
+static struct kobj_attribute updatePeriod_attr = __ATTR(updatePeriod_ms, 0664, updatePeriod_show, updatePeriod_store);
+
+
+static struct attribute *attrs[] = {
+    &log_attr.attr,
+    &updatePeriod_attr.attr,
+    NULL,   // must be NULL
+};
+
+
+static struct attribute_group vdec_dev_attr_group = {
+    .name = "info", // dir name
+    .attrs = attrs,
+};
 
 
 static int decoder_hantrodec_probe(struct platform_device *pdev)
@@ -2856,6 +2999,9 @@ static int decoder_hantrodec_probe(struct platform_device *pdev)
       pr_info("vdec devfreq init ok\n");
     }
 
+    result = sysfs_create_group(&pdev->dev.kobj, &vdec_dev_attr_group);
+    if(result)
+      pr_warn("vdec create sysfs failed\n");
     pm_runtime_mark_last_busy(&pdev->dev);
     pm_runtime_put_sync_suspend(&pdev->dev);
     if (result) return result;
@@ -2963,6 +3109,7 @@ static int decoder_hantrodec_remove(struct platform_device *pdev)
     debugfs_remove_recursive(root_debugfs_dir);
     root_debugfs_dir = NULL;
   }
+  cancel_delayed_work_sync(&vdec_cmd_profile_work);
   pm_runtime_resume_and_get(&pdev->dev);
   /* When vcmd is true, irq free  in hantrovcmd_cleanup!  
     When vcmd is flase, it is not need because in line 2528 freed */
@@ -3028,6 +3175,7 @@ static int decoder_hantrodec_remove(struct platform_device *pdev)
   device_destroy(hantrodec_class, hantrodec_devt);
   unregister_chrdev_region(hantrodec_devt, 1);
   class_destroy(hantrodec_class);
+  sysfs_remove_group(&pdev->dev.kobj,&vdec_dev_attr_group);
 
   pr_info("hantrodec: module removed\n");
   return 0;

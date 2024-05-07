@@ -189,4 +189,22 @@ struct exchange_parameter
   u16 core_id;                        //just used for polling.
 };
 
+struct vcmd_profile {
+    int dev_loading_percent;
+    int dev_loading_max_percent;
+
+    int last_hw_proc_us;
+    int avg_hw_proc_us;
+    int proced_count;
+    int cur_submit_vcmd_id;
+    int cur_complete_vcmd_id;
+    int vcmd_num_share_irq;
+
+    //error statistics
+    u32 vcmd_abort_cnt;
+    u32 vcmd_buserr_cnt;
+    u32 vcmd_timeout_cnt;
+    u32 vcmd_cmderr_cnt;
+};
+extern struct vcmd_profile vdec_vcmd_profile;
 #endif /* !_VC8000_VCMD_DRIVER_H_ */
