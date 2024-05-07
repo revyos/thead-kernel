@@ -293,6 +293,9 @@ struct ddr_pmu {
 	int irq;
 	int id;
 	u64 hwc_version[NUM_INST];
+	int inst_id;
+	int axi_id;
+	int axi_mask;
 };
 
 // # for debugfs configuration
@@ -1445,7 +1448,10 @@ static void ddr_perf_event_start(struct perf_event *event, int flags)
 	}
 
 	if (ddr_perf_is_axid_masked(event)) {
-		axid = event->attr.config1 & ATTR_AXID_MASK;
+		if (pmu->axi_id == -1)
+			axid = event->attr.config1 & ATTR_AXID_MASK;
+		else
+			axid = (pmu->axi_id << 16) | (pmu->axi_mask & 0xffff);
 		ddr_pmu_config_axid(pmu, inst, axid);
 	}
 	thres_event = ddr_perf_contain_threshold(event);
@@ -1504,8 +1510,12 @@ static int ddr_perf_event_add(struct perf_event *event, int flags)
 	dev_dbg(pmu->dev, "%s\n", __func__);
 
 	if (hwc->idx == -1) { // first initial
-		if (ddr_perf_is_axid_masked(event))
-			inst = (cfg & ATTR_INST_MASK) >> ATTR_INST_SHIFT;
+		if (ddr_perf_is_axid_masked(event)) {
+			if (pmu->inst_id == -1)
+				inst = (cfg & ATTR_INST_MASK) >> ATTR_INST_SHIFT;
+			else
+				inst = pmu->inst_id;
+		}
 		else if (ddr_perf_is_misc_masked(event))
 			inst = INST_MISC;
 		else if (ddr_perf_is_capture_masked(event))
@@ -1636,6 +1646,9 @@ static int ddr_perf_init(struct ddr_pmu *pmu, void __iomem *base[],
 	pmu->period = PMU_PERIOD_CNT;
 	pmu->freq_khz = APB_CLK / 1000; // unit KHz
 	pmu->id = ida_simple_get(&ddr_ida, 0, 0, GFP_KERNEL);
+	pmu->inst_id = -1;
+	pmu->axi_id = -1;
+	pmu->axi_mask = -1;
 
 	pmu_trace.trace_data_fmt = FMT_DECIMAL;
 
@@ -1868,6 +1881,9 @@ static int ddr_perf_probe(struct platform_device *pdev)
 				sprintf(node, "hwc%d_active_events", i);
 				debugfs_create_u32(node, 0444, events_dir, &pmu->hwc_active_events[i]);
 			}
+			debugfs_create_x32("inst_id", 0666, events_dir, &pmu->inst_id);
+			debugfs_create_x32("axi_id", 0666, events_dir, &pmu->axi_id);
+			debugfs_create_x32("axi_mask", 0666, events_dir, &pmu->axi_mask);
 		}
 		debugfs_create_u32("trace_enable", 0666, ddr_pmu_dir, &pmu_trace.trace_enable);
 		//debugfs_create_u32("trace_period_ms", 0666, ddr_pmu_dir, &pmu_trace.trace_period_ms);
