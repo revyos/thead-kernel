@@ -64,11 +64,11 @@ EXTRA_CFLAGS += $(DEBFLAGS)
 # EXTRA_CFLAGS   += -DDYNAMIC_MALLOC_VCMDNODE
 
  #adapt for andriod $src is where this dir.
-ifeq ($(CONFIG_ANDROID), y)
-ccflags-y += -DTRACE_INCLUDE_PATH=$(src)
-else
-ccflags-y += -DTRACE_INCLUDE_PATH=$(PWD)
-endif
+#ifeq ($(CONFIG_ANDROID), y)
+#ccflags-y += -DTRACE_INCLUDE_PATH=$(src)
+#else
+#ccflags-y += -DTRACE_INCLUDE_PATH=$(PWD)
+#endif
 ifneq ($(KERNELRELEASE),)
 # recursive call from kernel build system
 
