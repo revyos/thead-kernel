@@ -261,9 +261,9 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 
 	if (dev->dw_i2c_enable_dma) {
 		i2c_dw_xfer_dma_init(dev);
-		regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK & (~DW_IC_INTR_TX_EMPTY));
+		regmap_write(dev->map, DW_IC_INTR_MASK,  (DW_IC_INTR_MASTER_MASK & (~DW_IC_INTR_TX_EMPTY))|DW_IC_INTR_RX_OVER);
 	} else {
-		regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK);
+		regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK|DW_IC_INTR_RX_OVER);
 	}
 }
 
@@ -433,7 +433,6 @@ i2c_dw_read(struct dw_i2c_dev *dev)
 		}
 
 		regmap_read(dev->map, DW_IC_RXFLR, &rx_valid);
-
 		for (; len > 0 && rx_valid > 0; len--, rx_valid--) {
 			u32 flags = msgs[dev->msg_read_idx].flags;
 
@@ -546,12 +545,14 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	}
 
 	if (dev->status || dev->tx_status) {
-		dev_err(dev->dev, "transfer terminated early - interrupt latency too high? sta 0x%x\n", dev->status);
-
-		dev_err(dev->dev, "laststa 0x%x, laststatus 0x%x\n", dev->laststat, dev->laststatus);
-		dev_err(dev->dev, "dev->tx_status 0x%x\n", dev->tx_status);
-		dev_err(dev->dev, "dev->rx_outstanding %d\n", dev->rx_outstanding);
-    }
+		dev_err(dev->dev, "transfer terminated early - interrupt latency too high? sta 0x%x,tx_status 0x%x\n",dev->status,dev->tx_status);
+		dev_err(dev->dev, "laststa 0x%x, laststatus 0x%x,rx_outstanding %d\n", dev->laststat, dev->laststatus, dev->rx_outstanding);
+		if(dev->laststat&DW_IC_INTR_RX_OVER)
+		{
+			ret = -EAGAIN;
+			goto done;
+		}
+	}
 
 	ret = -EIO;
 
@@ -640,6 +641,19 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 	u32 stat, status;
 
 	stat = i2c_dw_read_clear_intrbits(dev);
+
+	if(!(dev->status & STATUS_ACTIVE)) {
+		/*
+		 * Unexpected interrupt in driver point of view. State
+		 * variables are either unset or stale so acknowledge and
+		 * disable interrupts for suppressing further interrupts if
+		 * interrupt really came from this HW (E.g. firmware has left
+		 * the HW active).
+		 */
+		regmap_write(dev->map, DW_IC_INTR_MASK, 0);
+		return 0;
+	}
+
 	if (stat & DW_IC_INTR_TX_ABRT) {
 		dev->cmd_err |= DW_IC_ERR_TX_ABRT;
 		dev->status = STATUS_IDLE;
@@ -653,8 +667,13 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 		}
 		goto tx_aborted;
 	}
-
-	if (stat & DW_IC_INTR_RX_FULL)
+	if(stat & DW_IC_INTR_RX_OVER)
+	{
+		/* Anytime RX_OVER is set, Make sure to skip them.*/
+		regmap_write(dev->map, DW_IC_INTR_MASK, 0);
+		goto tx_aborted;
+	}
+	if ((stat & DW_IC_INTR_RX_FULL) || (dev->rx_outstanding >0))
 		i2c_dw_read(dev);
 
 	if (stat & DW_IC_INTR_TX_EMPTY) {
@@ -669,13 +688,14 @@ static int i2c_dw_irq_handler_master(struct dw_i2c_dev *dev)
 
 tx_aborted:
 	regmap_read(dev->map, DW_IC_STATUS, &status);
-	if ((stat & DW_IC_INTR_TX_ABRT) || dev->msg_err ||
+
+	if ((stat & (DW_IC_INTR_TX_ABRT|DW_IC_INTR_RX_OVER))|| dev->msg_err ||
 			((status & DW_IC_STATUS_TFE) &&
 			 (!(status & DW_IC_STATUS_RFNE)) &&
 			 (!(status & DW_IC_STATUS_MASTER_ACTIVITY)))) {
+		dev->laststat = stat;
+		dev->laststatus = status;
 		complete(&dev->cmd_complete);
-        dev->laststat = stat;
-        dev->laststatus = status;
     } else if (unlikely(dev->flags & ACCESS_INTR_MASK)) {
 		/* Workaround to trigger pending interrupt */
 		regmap_read(dev->map, DW_IC_INTR_MASK, &stat);
@@ -690,7 +710,8 @@ static irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 {
 	struct dw_i2c_dev *dev = dev_id;
 	u32 stat, enabled;
-
+	if (pm_runtime_suspended(dev->dev))
+		return IRQ_NONE;
 	regmap_read(dev->map, DW_IC_ENABLE, &enabled);
 	regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &stat);
 	dev_dbg(dev->dev, "enabled=%#x stat=%#x\n", enabled, stat);

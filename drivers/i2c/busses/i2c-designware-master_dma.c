@@ -267,6 +267,25 @@ error:
     return -1;
 }
 
+static int i2x_dw_get_read_size(struct dw_i2c_dev *dev)
+{
+    struct i2c_msg *msgs = dev->msgs;
+    u32 addr = msgs[dev->msg_write_idx].addr;
+    int i = 0;
+    int len = 0;
+    __dev_vdgb(dev->dev, "%s, %d, enter\n", __func__, __LINE__);
+    for (i = dev->msg_write_idx; i < dev->msgs_num; i++) {
+        if (msgs[i].addr != addr) {
+            dev_err(dev->dev, "%s: invalid target address\n", __func__);
+            dev->msg_err = -EINVAL;
+            break;
+        }
+        if(msgs[i].flags & I2C_M_RD)
+            len += msgs[i].len;
+    }
+    __dev_vdgb(dev->dev, "%s, %d, exit\n", __func__, __LINE__);
+    return len;
+}
 int i2c_dw_xfer_dma_init(struct dw_i2c_dev *dev)
 {
     struct i2c_dw_dma *dma = &dev->dma;
@@ -274,6 +293,9 @@ int i2c_dw_xfer_dma_init(struct dw_i2c_dev *dev)
 
     // i2c dma set tx data level
     regmap_write(dev->map, DW_IC_DMA_TDLR, dev->tx_fifo_depth / 2);
+
+    if(i2x_dw_get_read_size(dev)>(dev->rx_fifo_depth / 2))
+	    regmap_write(dev->map, DW_IC_RX_TL,  dev->rx_fifo_depth / 2);
 
     // i2c dma tx enable
     regmap_write(dev->map, DW_IC_DMA_CR, DW_IC_DMA_CR_TXEN);
