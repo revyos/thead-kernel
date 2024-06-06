@@ -1,0 +1,5 @@
+config BT_RTKBT
+	tristate "BT_RTKBT"
+	default n
+	help
+	  Help message of RTKBT
