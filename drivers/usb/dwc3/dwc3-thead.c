@@ -263,7 +263,7 @@ static int dwc3_thead_pm_suspend(struct device *dev)
 
 	dwc3_thead_assert(thead);
 
-	if (!IS_ERR(thead->hubswitch)) {
+	if (!IS_ERR(thead->hub1v2)) {
 		ret = regulator_disable(thead->hub1v2);
 		if (ret) {
 			dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
