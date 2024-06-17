@@ -259,40 +259,12 @@ static int dwc3_thead_remove(struct platform_device *pdev)
 static int dwc3_thead_pm_suspend(struct device *dev)
 {
 	struct dwc3_thead *thead = dev_get_drvdata(dev);
-	int ret;
 
 	dwc3_thead_assert(thead);
 
-	if (!IS_ERR(thead->hub1v2)) {
-		ret = regulator_disable(thead->hub1v2);
-		if (ret) {
-			dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
-		}
-	}
-
-	if (!IS_ERR(thead->hub5v)) {
-		ret = regulator_disable(thead->hub5v);
-		if (ret) {
-			dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
-		}
-	}
-
 	clk_bulk_disable(thead->num_clocks, thead->clks);
-    ret = regulator_disable(thead->vbus);
-    if (ret) {
-			dev_err(dev, "failed to disable regulator vbus %d\n", ret);
-    }
-    ret = regulator_disable(thead->hub1v2);
-    if (ret) {
-        dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
-    }
-    ret = regulator_disable(thead->hub5v);
 
-    if (ret) {
-        dev_err(dev, "failed to disable regulator hub1v2 %d\n", ret);
-    }
-
-	return ret;
+	return 0;
 }
 
 
@@ -300,35 +272,6 @@ static int dwc3_thead_pm_resume(struct device *dev)
 {
 	struct dwc3_thead *thead = dev_get_drvdata(dev);
 	int ret;
-    dev_info(dev,"%s\n",__func__);
-    ret = regulator_enable(thead->vbus);
-    if (ret) {
-			dev_err(dev, "failed to enable regulator vbus %d\n", ret);
-    }
-    ret = regulator_enable(thead->hub1v2);
-    if (ret) {
-        dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
-    }
-    ret = regulator_enable(thead->hub5v);
-
-    if (ret) {
-        dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
-    }
-
-	/* enable regulator here for some extend regulator does not have pm func */
-	if (!IS_ERR(thead->hub1v2)) {
-		ret = regulator_enable(thead->hub1v2);
-		if (ret) {
-			dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
-		}
-	}
-
-	if (!IS_ERR(thead->hub5v)) {
-		ret = regulator_enable(thead->hub5v);
-		if (ret) {
-		dev_err(dev, "failed to enable regulator hub1v2 %d\n", ret);
-		}
-	}
 
 	ret = clk_bulk_prepare_enable(thead->num_clocks, thead->clks);
 	if (ret) {
