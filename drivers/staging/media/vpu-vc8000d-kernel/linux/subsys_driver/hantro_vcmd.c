@@ -580,6 +580,7 @@ struct process_manager_obj
     u64 total_exe_time;
     spinlock_t spinlock;
     u32 pm_count;
+
     wait_queue_head_t wait_queue;
 } ;
 
@@ -602,7 +603,7 @@ struct cmdbuf_obj
   u16 cmdbuf_id;                 //used to manage CMDBUF in driver.It is a handle to identify cmdbuf.also is an interrupt vector.position in pool,same as status position.
   u8 cmdbuf_data_loaded;        //0 means sw has not copied data into this CMDBUF; 1 means sw has copied data into this CMDBUF
   u8 cmdbuf_data_linked;        //0 :not linked, 1:linked.
-  u8 cmdbuf_run_done;           //if 0,waiting for CMDBUF finish; if 1, op code in CMDBUF has finished one by one. HANTRO_VCMD_IOCH_WAIT_CMDBUF will check this variable.
+  volatile u8 cmdbuf_run_done;           //if 0,waiting for CMDBUF finish; if 1, op code in CMDBUF has finished one by one. HANTRO_VCMD_IOCH_WAIT_CMDBUF will check this variable.
   u8 cmdbuf_need_remove;        // if 0, not need to remove CMDBUF; 1 CMDBUF can be removed if it is not the last CMDBUF;
   u32 waited;                   // if 0, the cmd buf hasn't been waited, otherwise, has been waited.
   u8 has_end_cmdbuf;            //if 1, the last opcode is end opCode.
@@ -896,8 +897,47 @@ static void free_cmdbuf_mem(u16 cmdbuf_id )
     spin_lock_irqsave(&vcmd_cmdbuf_alloc_lock, flags);
     cmdbuf_used[cmdbuf_id]=0;
     cmdbuf_used_residual +=1;
+    PDEBUG(" ## real free cmdbuf[%d]\n",cmdbuf_id);
     spin_unlock_irqrestore(&vcmd_cmdbuf_alloc_lock, flags);
-    wake_up_interruptible_all(&vcmd_cmdbuf_memory_wait);
+    wake_up_all(&vcmd_cmdbuf_memory_wait);
+}
+
+static void free_cmdbuf_not_linked_by_flip(struct file *filp)
+{
+    unsigned long flags;
+    int i;
+    struct cmdbuf_obj* cmdbuf_obj;
+    bi_list_node* new_cmdbuf_node;
+    bool freed_flag = false;
+    spin_lock_irqsave(&vcmd_cmdbuf_alloc_lock, flags);
+
+    for(i = 0; i < TOTAL_DISCRETE_CMDBUF_NUM; i++)
+    {
+      if(cmdbuf_used[i] && global_cmdbuf_node[i] != NULL)
+      {
+          new_cmdbuf_node = global_cmdbuf_node[i];
+          if(new_cmdbuf_node == 0x55555555)
+          {
+              continue;
+          }
+          cmdbuf_obj = (struct cmdbuf_obj* )new_cmdbuf_node->data;
+          if(cmdbuf_obj->filp == filp && !cmdbuf_obj->cmdbuf_data_linked && !cmdbuf_obj->cmdbuf_run_done)
+          {
+              cmdbuf_used[i]=0;
+              cmdbuf_used_residual +=1;
+              global_cmdbuf_node[i] = NULL;
+              freed_flag = true;
+              PDEBUG(" ## Find left node not freed,real free cmdbuf[%d],remain %d\n",i,cmdbuf_used_residual);
+          }
+      }
+
+      if(cmdbuf_used_residual >= (TOTAL_DISCRETE_CMDBUF_NUM-2))
+        break;
+
+    }
+    spin_unlock_irqrestore(&vcmd_cmdbuf_alloc_lock, flags);
+    if(freed_flag)
+      wake_up_all(&vcmd_cmdbuf_memory_wait);
 }
 
 static bi_list_node* create_cmdbuf_node(void)
@@ -907,8 +947,13 @@ static bi_list_node* create_cmdbuf_node(void)
   struct noncache_mem  new_cmdbuf_addr;
   struct noncache_mem  new_status_cmdbuf_addr;
 
-  if(wait_event_interruptible(vcmd_cmdbuf_memory_wait, allocate_cmdbuf(&new_cmdbuf_addr,&new_status_cmdbuf_addr)) )
+  if(!wait_event_interruptible_timeout(vcmd_cmdbuf_memory_wait, allocate_cmdbuf(&new_cmdbuf_addr,&new_status_cmdbuf_addr),
+      msecs_to_jiffies(500)) )
+  {
+      pr_err("wait allocate_cmdbuf timeout\n");
       return NULL;
+  }
+
 #ifdef DYNAMIC_MALLOC_VCMDNODE
   cmdbuf_obj=create_cmdbuf_obj();
 #else
@@ -1028,18 +1073,21 @@ static u64 calculate_executing_time_after_node_high_priority(bi_list_node* exe_c
   }
   return time_run_all;
 }
-
-
+#ifdef DEBUG_CMDBUF_ALLOC
+int cmdbuf_node_unexpected[TOTAL_DISCRETE_CMDBUF_NUM];
+#endif
 /**********************************************************************************************************\
 *cmdbuf pool management
 \***********************************************************************************************************/
 static int allocate_cmdbuf(struct noncache_mem*  new_cmdbuf_addr,struct noncache_mem*  new_status_cmdbuf_addr)
 {
   unsigned long flags;
+  u16  cmdbuf_used_pos_start = cmdbuf_used_pos;
   spin_lock_irqsave(&vcmd_cmdbuf_alloc_lock, flags);
   if(cmdbuf_used_residual==0)
   {
     spin_unlock_irqrestore(&vcmd_cmdbuf_alloc_lock, flags);
+    pr_err("%s:no empty cmdbuf\n",__func__);
     //no empty cmdbuf
     return 0;
   }
@@ -1060,6 +1108,7 @@ static int allocate_cmdbuf(struct noncache_mem*  new_cmdbuf_addr,struct noncache
       new_status_cmdbuf_addr->mmu_bus_address=vcmd_status_buf_mem_pool.mmu_bus_address + cmdbuf_used_pos*CMDBUF_MAX_SIZE;
       new_status_cmdbuf_addr->size=CMDBUF_MAX_SIZE;
       new_status_cmdbuf_addr->cmdbuf_id = cmdbuf_used_pos;
+      global_cmdbuf_node[cmdbuf_used_pos]=0x55555555; //temp set it,for another thread not hit  cmdbuf_used[x] set but global_cmdbuf_node[x] is null
       cmdbuf_used_pos++;
       if(cmdbuf_used_pos>=TOTAL_DISCRETE_CMDBUF_NUM)
         cmdbuf_used_pos=0;
@@ -1068,11 +1117,30 @@ static int allocate_cmdbuf(struct noncache_mem*  new_cmdbuf_addr,struct noncache
     }
     else
     {
+    #ifdef DEBUG_CMDBUF_ALLOC
+      if(cmdbuf_used[cmdbuf_used_pos]==0 && (global_cmdbuf_node[cmdbuf_used_pos]!=NULL ) && (cmdbuf_node_unexpected[cmdbuf_used_pos] == 0x55))
+      {
+        pr_warn("unexpected cmdbuf_used[%d] is 0,but global_cmdbuf_node[%d] != NULL\n",
+          cmdbuf_used_pos,cmdbuf_used_pos);
+        cmdbuf_node_unexpected[cmdbuf_used_pos] = 0x55;
+      }
+      else if(cmdbuf_used[cmdbuf_used_pos]!=0 && (global_cmdbuf_node[cmdbuf_used_pos] == NULL ) && (cmdbuf_node_unexpected[cmdbuf_used_pos] == 0x55))
+      {
+        pr_warn("unexpected cmdbuf_used[%d] != 0,but global_cmdbuf_node[%d] is NULL\n",
+          cmdbuf_used_pos,cmdbuf_used_pos);
+        cmdbuf_node_unexpected[cmdbuf_used_pos] = 0x55;
+      }
+    #endif
       cmdbuf_used_pos++;
       if(cmdbuf_used_pos>=TOTAL_DISCRETE_CMDBUF_NUM)
         cmdbuf_used_pos=0;
+      
+      if(cmdbuf_used_pos_start == cmdbuf_used_pos)  //searched all,not find one,should return;
+        break;
     }
   }
+  spin_unlock_irqrestore(&vcmd_cmdbuf_alloc_lock, flags);
+  pr_err("%s: no cmdbuf found,cmdbuf_used_residual %d\n",__func__,cmdbuf_used_residual);
   return 0;
 }
 
@@ -1113,7 +1181,9 @@ static int select_vcmd(bi_list_node* new_cmdbuf_node)
   size_t exe_cmdbuf_addr=0;
   struct cmdbuf_obj* cmdbuf_obj_temp=NULL;
   u32 cmdbuf_id=0;
+  struct process_manager_obj* process_manager_temp;
   cmdbuf_obj=(struct cmdbuf_obj*)new_cmdbuf_node->data;
+
   //there is an empty vcmd to be used
   while(1)
   {
@@ -1446,7 +1516,7 @@ static long reserve_cmdbuf(struct file *filp,struct exchange_parameter* input_pa
   {
     return -1;
   }
-  PDEBUG("reserve cmdbuf filp %p\n", (void *)filp);
+  PDEBUG("reserve cmdbuf filp %px\n", (void *)filp);
   spin_lock_irqsave(&vcmd_process_manager_lock, flags);
   process_manager_node = global_process_manager.head;
   while(1)
@@ -1459,7 +1529,7 @@ static long reserve_cmdbuf(struct file *filp,struct exchange_parameter* input_pa
       return -1;
     }
     process_manager_obj = (struct process_manager_obj*)process_manager_node->data;
-    PDEBUG("reserve loop: node %p, filp %p\n", (void *)process_manager_node,
+    PDEBUG("reserve loop: node %px, filp %px\n", (void *)process_manager_node,
            (void *)process_manager_obj->filp);
     if (filp == process_manager_obj->filp)
       break;
@@ -1470,12 +1540,18 @@ static long reserve_cmdbuf(struct file *filp,struct exchange_parameter* input_pa
   spin_lock_irqsave(&process_manager_obj->spinlock, flags);
   process_manager_obj->total_exe_time += input_para->executing_time;
   spin_unlock_irqrestore(&process_manager_obj->spinlock, flags);
-  if(wait_event_interruptible(process_manager_obj->wait_queue, wait_process_resource_rdy(process_manager_obj)))
-     return -1;
+  if(!wait_event_interruptible_timeout(process_manager_obj->wait_queue, wait_process_resource_rdy(process_manager_obj),
+       msecs_to_jiffies(500) ))
+  {
+      pr_err("wait_process_resource_rdy timeout! total_exe_time %lld\n",process_manager_obj->total_exe_time);
+      return -1;
+  }
+
 
   new_cmdbuf_node=create_cmdbuf_node();
   if(new_cmdbuf_node==NULL)
     return -1;
+
 
   cmdbuf_obj = (struct cmdbuf_obj* )new_cmdbuf_node->data;
   cmdbuf_obj->module_type = input_para->module_type;
@@ -1559,6 +1635,7 @@ static long release_cmdbuf(struct file *filp,u16 cmdbuf_id)
   up(&vcmd_reserve_cmdbuf_sem[module_type]);
   return 0;
 }
+
 static long release_cmdbuf_node(bi_list* list,bi_list_node*cmdbuf_node)
 {
   bi_list_node* new_cmdbuf_node=NULL;
@@ -1710,7 +1787,7 @@ static long link_and_run_cmdbuf(struct file *filp,struct exchange_parameter* inp
 
   dev = &hantrovcmd_data[cmdbuf_obj->core_id];
   input_para->core_id = cmdbuf_obj->core_id;
-  PDEBUG("filp=%p, VCMD Link    CMDBUF [%d] to core [%d]\n", (void *)filp, cmdbuf_id, input_para->core_id);
+  PDEBUG("filp=%px, VCMD Link    CMDBUF [%d] to core [%d]\n", (void *)filp, cmdbuf_id, input_para->core_id);
   //set ddr address for vcmd registers copy.
   if(dev->hw_version_id > HW_ID_1_0_C )
   {
@@ -1953,11 +2030,11 @@ static unsigned int wait_cmdbuf_ready(struct file *filp,u16 cmdbuf_id,u32 *irq_s
               check_cmdbuf_irq(dev,cmdbuf_obj,irq_status_ret),msecs_to_jiffies(500))
       )
     {
-        pr_err("vcmd_wait_queue_0 timeout");
+        pr_err("vcmd_wait_queue_0 timeout cmdbuf[%d]\n",cmdbuf_id);
         return -ETIME;
     }
 
-    PDEBUG("filp=%p, VCMD Wait    CMDBUF [%d]\n", (void *)filp, cmdbuf_id);
+    PDEBUG("filp=%px, VCMD Wait    CMDBUF [%d]\n", (void *)filp, cmdbuf_id);
     return 0;
   } else {
     if (check_mc_cmdbuf_irq(filp, cmdbuf_obj, irq_status_ret))
@@ -2096,7 +2173,7 @@ long hantrovcmd_ioctl(struct file *filp,
        ret = reserve_cmdbuf(filp,&input_para);
        if (ret == 0)
         copy_to_user((struct exchange_parameter*)arg,&input_para,sizeof(struct exchange_parameter));
-       PDEBUG("filp=%p, VCMD Reserve CMDBUF [%d]\n", (void *)filp, input_para.cmdbuf_id);
+       PDEBUG("filp=%px, VCMD Reserve CMDBUF [%d] remain %d \n", (void *)filp, input_para.cmdbuf_id,cmdbuf_used_residual);
        return ret;
       }
 
@@ -2106,7 +2183,7 @@ long hantrovcmd_ioctl(struct file *filp,
         long retVal;
         copy_from_user(&input_para,(struct exchange_parameter*)arg,sizeof(struct exchange_parameter));
 
-        PDEBUG("filp=%p,VCMD link and run cmdbuf,[%d] \n",(void *)filp, input_para.cmdbuf_id);
+        PDEBUG("filp=%px,VCMD link and run cmdbuf,[%d] \n",(void *)filp, input_para.cmdbuf_id);
 
         if (process_manager_obj)
           process_manager_obj->pm_count++;
@@ -2126,11 +2203,11 @@ long hantrovcmd_ioctl(struct file *filp,
         __get_user(cmdbuf_id, (u16*)arg);
         /*high 16 bits are core id, low 16 bits are cmdbuf_id*/
 
-        PDEBUG("filp=%p,VCMD wait for CMDBUF finishing. %d,\n",filp,cmdbuf_id);
+        PDEBUG("filp=%px,VCMD wait for CMDBUF finishing. %d,\n",filp,cmdbuf_id);
 
         //TODO
         tmp = wait_cmdbuf_ready(filp,cmdbuf_id,&irq_status_ret);
-        PDEBUG("filp=%p,VCMD wait for CMDBUF finished. %d,\n",filp,cmdbuf_id);
+        PDEBUG("filp=%px,VCMD wait for CMDBUF finished. %d,\n",filp,cmdbuf_id);
         cmdbuf_id=(u16)irq_status_ret;
         if (tmp==0)
         {
@@ -2151,11 +2228,11 @@ long hantrovcmd_ioctl(struct file *filp,
         __get_user(cmdbuf_id, (u16*)arg);
         /*16 bits are cmdbuf_id*/
 
-        PDEBUG("filp=%p,VCMD release CMDBUF ,%d\n",filp,cmdbuf_id);
 
         if (process_manager_obj)
           process_manager_obj->pm_count--;
         release_cmdbuf(filp,cmdbuf_id);
+        PDEBUG("filp=%px,VCMD release CMDBUF ,%d,remain %d \n",filp,cmdbuf_id,cmdbuf_used_residual);
         return 0;
         break;
       }
@@ -2403,7 +2480,7 @@ int hantrovcmd_open(struct inode *inode, struct file *filp)
     filp->private_data = process_manager_node->data;
 
     PDEBUG("dev opened\n");
-    PDEBUG("process node %p for filp opened %p\n", (void *)process_manager_node, (void *)filp);
+    PDEBUG("process node %px for filp opened %px\n", (void *)process_manager_node, (void *)filp);
     return result;
 }
 
@@ -2422,7 +2499,7 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
     unsigned long flags;
     long retVal=0;
 
-    PDEBUG("dev closed for process %p via hantrovcmd_release\n", (void *)filp);
+    PDEBUG("dev closed for process %px via hantrovcmd_release\n", (void *)filp);
     down(&vcmd_reserve_cmdbuf_sem[dev->vcmd_core_cfg.sub_module_type]);
 
     for (core_id = 0;core_id < total_vcmd_core_num; core_id++)
@@ -2436,8 +2513,13 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
         if(new_cmdbuf_node==NULL)
           break;
         cmdbuf_obj_temp=(struct cmdbuf_obj*)new_cmdbuf_node->data;
-        PDEBUG("Process %p is releasing: checking cmdbuf %d of process %p.\n",
-               filp, cmdbuf_obj_temp->cmdbuf_id, cmdbuf_obj_temp->filp);
+        if(cmdbuf_obj_temp->cmdbuf_id > 1)
+        {
+            PDEBUG("Process %px is releasing: checking cmdbuf %d (done %d,linked %d wstat %d)  process %px. remain %d\n",
+               filp, cmdbuf_obj_temp->cmdbuf_id, cmdbuf_obj_temp->cmdbuf_run_done,cmdbuf_obj_temp->cmdbuf_data_linked,
+               dev[core_id].working_state,
+               cmdbuf_obj_temp->filp,cmdbuf_used_residual);
+        }
         if (dev[core_id].hwregs && (cmdbuf_obj_temp->filp == filp))
         {
           if(cmdbuf_obj_temp->cmdbuf_run_done)
@@ -2473,105 +2555,122 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
             bi_list_node* done_cmdbuf_node = NULL;
             int abort_cmdbuf_id;
             int loop_count = 0;
-
-            //abort the vcmd and wait
-            pr_info("Abort due to linked cmdbuf %d of current process.\n", cmdbuf_obj_temp->cmdbuf_id);
-            printk_vcmd_register_debug((const void *)dev->hwregs, "Before trigger to 0");
-            // disable abort interrupt
-            //vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_IRQ_ABORT_EN,0);
-            vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_START_TRIGGER,0);
-            vcmd_aborted = 1;
-
-            printk_vcmd_register_debug((const void *)dev->hwregs,"After trigger to 0");
-            // Wait vcmd core aborted and vcmd enters IDLE mode.
-            //while (dev[core_id].working_state != WORKING_STATE_IDLE) {
-            while (vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_WORK_STATE)) {
-              loop_count++;
-              if (!(loop_count % 10)) {
-                u32 irq_status = vcmd_read_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET);
-                pr_err("hantrovcmd: expected idle state, but irq status = 0x%0x\n", irq_status);
-                pr_err("hantrovcmd: vcmd current status is %d\n", vcmd_get_register_value((const void *)dev->hwregs, dev[core_id].reg_mirror, HWIF_VCMD_WORK_STATE));
-              }
-              mdelay(10);  // wait 10ms
-              if (loop_count > 100) { // too long
-                pr_err("hantrovcmd: too long before vcmd core to IDLE state\n");
-
-
-                spin_unlock_irqrestore(dev[core_id].spinlock, flags);
-                pm_runtime_mark_last_busy(&dev[0].pdev->dev);
-                pm_runtime_put_sync_suspend(&dev[0].pdev->dev);
-                up(&vcmd_reserve_cmdbuf_sem[dev->vcmd_core_cfg.sub_module_type]);
-                return -ERESTARTSYS;
-              }
+            u32 irq_status_ret;
+            
+            spin_unlock_irqrestore(dev[core_id].spinlock, flags);
+            if(wait_event_timeout(*dev[core_id].wait_queue,
+                      check_cmdbuf_irq(dev,cmdbuf_obj_temp,&irq_status_ret),msecs_to_jiffies(1000))
+              )
+            {
+                spin_lock_irqsave(dev[core_id].spinlock, flags);
+                PDEBUG("  ## wait got cmdbuf[%d] done %d \n",cmdbuf_obj_temp->cmdbuf_id,cmdbuf_obj_temp->cmdbuf_run_done);
+                cmdbuf_obj_temp->cmdbuf_need_remove=1;
+                retVal=release_cmdbuf_node(&dev[core_id].list_manager,new_cmdbuf_node);
+                if(retVal==1)
+                  cmdbuf_obj_temp->process_manager_obj = NULL;
             }
-            dev[core_id].working_state = WORKING_STATE_IDLE;
-            // clear interrupt & restore abort_e
-            if (vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_IRQ_ABORT)) {
-              PDEBUG("Abort interrupt triggered, now clear it to avoid abort int...\n");
-              vcmd_write_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET, 0x1<<4);
-              PDEBUG("Now irq status = 0x%0x.\n", vcmd_read_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET));
-            }
-            //printk_vcmd_register_debug((const void *)dev->hwregs, "vcmd status to IDLE");
+            else
+            {
+                spin_lock_irqsave(dev[core_id].spinlock, flags);
+                //abort the vcmd and wait
+                pr_info("Abort due to linked cmdbuf %d of current process.\n", cmdbuf_obj_temp->cmdbuf_id);
+                printk_vcmd_register_debug((const void *)dev->hwregs, "Before trigger to 0");
+                // disable abort interrupt
+                //vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_IRQ_ABORT_EN,0);
+                vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_START_TRIGGER,0);
+                vcmd_aborted = 1;
 
-            abort_cmdbuf_id = vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_CMDBUF_EXECUTING_ID);
-            PDEBUG("Abort when executing cmd buf %d.\n", abort_cmdbuf_id);
-            dev[core_id].sw_cmdbuf_rdy_num = 0;
-            dev[core_id].duration_without_int = 0;
-            vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_EXE_CMDBUF_COUNT,0);
-            vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_RDY_CMDBUF_COUNT,0);
+                printk_vcmd_register_debug((const void *)dev->hwregs,"After trigger to 0");
+                // Wait vcmd core aborted and vcmd enters IDLE mode.
+                //while (dev[core_id].working_state != WORKING_STATE_IDLE) {
+                while (vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_WORK_STATE)) {
+                  loop_count++;
+                  if (!(loop_count % 10)) {
+                    u32 irq_status = vcmd_read_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET);
+                    pr_err("hantrovcmd: expected idle state, but irq status = 0x%0x\n", irq_status);
+                    pr_err("hantrovcmd: vcmd current status is %d\n", vcmd_get_register_value((const void *)dev->hwregs, dev[core_id].reg_mirror, HWIF_VCMD_WORK_STATE));
+                  }
+                  mdelay(50);  // wait 10ms
+                  if (loop_count > 100) { // too long
+                    pr_err("hantrovcmd: too long before vcmd core to IDLE state\n");
 
-            /* Mark cmdbuf_run_done to 1 for all the cmd buf executed. */
-            done_cmdbuf_node = dev[core_id].list_manager.head;
-            while (done_cmdbuf_node) {
-              if (!((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_run_done) {
-                ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_run_done = 1;
-                ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_data_linked = 0;
-                PDEBUG("Set cmdbuf [%d] cmdbuf_run_done to 1.\n", ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id);
-              }
-              if (((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id == abort_cmdbuf_id)
-                break;
-              done_cmdbuf_node = done_cmdbuf_node->next;
-            }
-            if (cmdbuf_obj_temp->cmdbuf_run_done) {
-              /* current cmdbuf is in fact has been executed, but due to interrupt is not triggered, the status is not updated.
-                 Just delink and remove it from the list. */
-              if (done_cmdbuf_node && done_cmdbuf_node->data) {
-                PDEBUG("done_cmdbuf_node is cmdbuf [%d].\n", ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id);
-              }
-              if (done_cmdbuf_node) {
-                done_cmdbuf_node = done_cmdbuf_node->next;
-                if (done_cmdbuf_node)
-                  restart_cmdbuf = (struct cmdbuf_obj*)done_cmdbuf_node->data;
-              }
-              if (restart_cmdbuf) {
-                PDEBUG("Set restart cmdbuf [%d] via if.\n", restart_cmdbuf->cmdbuf_id);
-              }
-            } else {
-              last_cmdbuf_node = new_cmdbuf_node;
-              /* cmd buf num from aborted cmd buf to current cmdbuf_obj_temp */
-              if (cmdbuf_obj_temp->cmdbuf_id != abort_cmdbuf_id) {
-                last_cmdbuf_node  = new_cmdbuf_node->previous;
 
-                while (last_cmdbuf_node &&
-                      ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_id != abort_cmdbuf_id) {
-                  restart_cmdbuf = (struct cmdbuf_obj*)last_cmdbuf_node->data;
-                  last_cmdbuf_node = last_cmdbuf_node->previous;
-                  dev[core_id].sw_cmdbuf_rdy_num++;
-                  dev[core_id].duration_without_int += restart_cmdbuf->executing_time;
-                  PDEBUG("Keep valid cmdbuf [%d] in the list.\n", restart_cmdbuf->cmdbuf_id);
+                    spin_unlock_irqrestore(dev[core_id].spinlock, flags);
+                    pm_runtime_mark_last_busy(&dev[0].pdev->dev);
+                    pm_runtime_put_sync_suspend(&dev[0].pdev->dev);
+                    up(&vcmd_reserve_cmdbuf_sem[dev->vcmd_core_cfg.sub_module_type]);
+                    return -ERESTARTSYS;
+                  }
                 }
-              }
-              if (restart_cmdbuf) {
-                PDEBUG("Set restart cmdbuf [%d] via else.\n", restart_cmdbuf->cmdbuf_id);
-              }
-            }
+                dev[core_id].working_state = WORKING_STATE_IDLE;
+                // clear interrupt & restore abort_e
+                if (vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_IRQ_ABORT)) {
+                  PDEBUG("Abort interrupt triggered, now clear it to avoid abort int...\n");
+                  vcmd_write_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET, 0x1<<4);
+                  PDEBUG("Now irq status = 0x%0x.\n", vcmd_read_reg((const void *)dev->hwregs, VCMD_REGISTER_INT_STATUS_OFFSET));
+                }
+                //printk_vcmd_register_debug((const void *)dev->hwregs, "vcmd status to IDLE");
 
-            // remove first linked cmdbuf from list
-            vcmd_delink_rm_cmdbuf(&dev[core_id], new_cmdbuf_node);
+                abort_cmdbuf_id = vcmd_get_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_CMDBUF_EXECUTING_ID);
+                PDEBUG("Abort when executing cmd buf %d.\n", abort_cmdbuf_id);
+                dev[core_id].sw_cmdbuf_rdy_num = 0;
+                dev[core_id].duration_without_int = 0;
+                vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_EXE_CMDBUF_COUNT,0);
+                vcmd_write_register_value((const void *)dev[core_id].hwregs,dev[core_id].reg_mirror,HWIF_VCMD_RDY_CMDBUF_COUNT,0);
+
+                /* Mark cmdbuf_run_done to 1 for all the cmd buf executed. */
+                done_cmdbuf_node = dev[core_id].list_manager.head;
+                while (done_cmdbuf_node) {
+                  if (!((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_run_done) {
+                    ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_run_done = 1;
+                    ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_data_linked = 0;
+                    PDEBUG("Set cmdbuf [%d] cmdbuf_run_done to 1.\n", ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id);
+                  }
+                  if (((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id == abort_cmdbuf_id)
+                    break;
+                  done_cmdbuf_node = done_cmdbuf_node->next;
+                }
+                if (cmdbuf_obj_temp->cmdbuf_run_done) {
+                  /* current cmdbuf is in fact has been executed, but due to interrupt is not triggered, the status is not updated.
+                    Just delink and remove it from the list. */
+                  if (done_cmdbuf_node && done_cmdbuf_node->data) {
+                    PDEBUG("done_cmdbuf_node is cmdbuf [%d].\n", ((struct cmdbuf_obj*)done_cmdbuf_node->data)->cmdbuf_id);
+                  }
+                  if (done_cmdbuf_node) {
+                    done_cmdbuf_node = done_cmdbuf_node->next;
+                    if (done_cmdbuf_node)
+                      restart_cmdbuf = (struct cmdbuf_obj*)done_cmdbuf_node->data;
+                  }
+                  if (restart_cmdbuf) {
+                    PDEBUG("Set restart cmdbuf [%d] via if.\n", restart_cmdbuf->cmdbuf_id);
+                  }
+                } else {
+                  last_cmdbuf_node = new_cmdbuf_node;
+                  /* cmd buf num from aborted cmd buf to current cmdbuf_obj_temp */
+                  if (cmdbuf_obj_temp->cmdbuf_id != abort_cmdbuf_id) {
+                    last_cmdbuf_node  = new_cmdbuf_node->previous;
+
+                    while (last_cmdbuf_node &&
+                          ((struct cmdbuf_obj*)last_cmdbuf_node->data)->cmdbuf_id != abort_cmdbuf_id) {
+                      restart_cmdbuf = (struct cmdbuf_obj*)last_cmdbuf_node->data;
+                      last_cmdbuf_node = last_cmdbuf_node->previous;
+                      dev[core_id].sw_cmdbuf_rdy_num++;
+                      dev[core_id].duration_without_int += restart_cmdbuf->executing_time;
+                      PDEBUG("Keep valid cmdbuf [%d] in the list.\n", restart_cmdbuf->cmdbuf_id);
+                    }
+                  }
+                  if (restart_cmdbuf) {
+                    PDEBUG("Set restart cmdbuf [%d] via else.\n", restart_cmdbuf->cmdbuf_id);
+                  }
+                }
+
+                // remove first linked cmdbuf from list
+                vcmd_delink_rm_cmdbuf(&dev[core_id], new_cmdbuf_node);
+            }
 
           }
           release_cmdbuf_num++;
-          PDEBUG("release reserved cmdbuf\n");
+          PDEBUG("release reserved cmdbuf,remain %d\n",cmdbuf_used_residual);
         } else  if (vcmd_aborted && !cmdbuf_obj_temp->cmdbuf_run_done) {
           /* VCMD is aborted, need to re-calculate the duration_without_int */
           if (!restart_cmdbuf)
@@ -2630,7 +2729,12 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
     }
 
     if(release_cmdbuf_num)
-      wake_up_interruptible_all(&vcmd_cmdbuf_memory_wait);
+      wake_up_all(&vcmd_cmdbuf_memory_wait);
+
+    // free reserved but unlinkd node
+    // Here is powerfull free all this process reserved/linked cmdbuf
+    free_cmdbuf_not_linked_by_flip(filp);
+
     spin_lock_irqsave(&vcmd_process_manager_lock, flags);
     process_manager_node = global_process_manager.head;
     while(1)
@@ -2642,10 +2746,10 @@ int hantrovcmd_release(struct inode *inode, struct file *filp)
         break;
       process_manager_node = process_manager_node->next;
     }
-    
+
     
     //remove node from list
-    PDEBUG("process node %p for filp to be removed: %p\n", (void *)process_manager_node, (void *)process_manager_obj->filp);
+    PDEBUG("process node %px for filp to be removed: %px remain %d\n", (void *)process_manager_node, (void *)process_manager_obj->filp,cmdbuf_used_residual);
     bi_list_remove_node(&global_process_manager,process_manager_node);
     spin_unlock_irqrestore(&vcmd_process_manager_lock, flags);
     free_process_manager_node(process_manager_node);
@@ -3140,7 +3244,7 @@ static void read_main_module_all_registers(u32 main_module_type)
   //msleep(1000);
   hantrovcmd_isr(input_para.core_id, &hantrovcmd_data[input_para.core_id]);
   wait_cmdbuf_ready(NULL,input_para.cmdbuf_id,&irq_status_ret);
-  decoder_devfreq_record_idle( decoder_get_devfreq_priv_data() );
+  pr_info("%s:record_idle:busy_count = %d\n",__func__,decoder_get_devfreq_priv_data()->busy_count);
   status_base_virt_addr=vcmd_status_buf_mem_pool.virtualAddress + input_para.cmdbuf_id*CMDBUF_MAX_SIZE/4+(vcmd_manager[input_para.module_type][0]->vcmd_core_cfg.submodule_main_addr/2/4+0);
   pr_info("vc8000_vcmd_driver: main module register 0:0x%x\n",*status_base_virt_addr);
   pr_info("vc8000_vcmd_driver: main module register 50:0x%08x\n",*(status_base_virt_addr+50));
@@ -3293,6 +3397,7 @@ int hantrovcmd_init(struct platform_device *pdev)
   cmdbuf_used_pos=1;
   cmdbuf_used[0]=1;
   cmdbuf_used_residual -=1;
+  pr_info(" CMDBUF[0] reserved,remain %d\n",cmdbuf_used_residual);
 
   create_kernel_process_manager();
   for(i=0;i<MAX_VCMD_TYPE;i++)
@@ -3618,7 +3723,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
         if(new_cmdbuf_node==NULL)
         {
-          pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+          pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);      
           spin_unlock_irqrestore(dev->spinlock, flags);
           return IRQ_HANDLED;
         }
@@ -3681,7 +3786,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
         if(new_cmdbuf_node==NULL)
         {
-          pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+          pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);
           spin_unlock_irqrestore(dev->spinlock, flags);
           return IRQ_HANDLED;
         }
@@ -3754,7 +3859,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
         if(new_cmdbuf_node==NULL)
         {
-          pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+          pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);
           spin_unlock_irqrestore(dev->spinlock, flags);
           return IRQ_HANDLED;
         }
@@ -3823,7 +3928,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
         if(new_cmdbuf_node==NULL)
         {
-          pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+          pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);
           spin_unlock_irqrestore(dev->spinlock, flags);
           return IRQ_HANDLED;
         }
@@ -3896,7 +4001,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
         new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
         if(new_cmdbuf_node==NULL)
         {
-          pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+          pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);
           spin_unlock_irqrestore(dev->spinlock, flags);
           return IRQ_HANDLED;
         }
@@ -3967,7 +4072,7 @@ static irqreturn_t hantrovcmd_isr(int irq, void *dev_id)
       new_cmdbuf_node = global_cmdbuf_node[cmdbuf_id];
       if(new_cmdbuf_node==NULL)
       {
-        pr_err("hantrovcmd_isr error cmdbuf_id !!\n");
+        pr_err("hantrovcmd_isr error cmdbuf_id %d line %d!!\n",cmdbuf_id,__LINE__);
         spin_unlock_irqrestore(dev->spinlock, flags);
         return IRQ_HANDLED;
       }

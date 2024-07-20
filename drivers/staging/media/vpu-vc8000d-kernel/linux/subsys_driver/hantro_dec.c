@@ -2348,7 +2348,7 @@ void decoder_devfreq_record_busy(struct decoder_devfreq *devfreq)
     decoder_dev_clk_lock();
     spin_lock_irqsave(&devfreq->lock, irqflags);
     busy_count = devfreq->busy_count;
-    //pr_info("record_busy:busy_count = %d\n",busy_count);
+    PDEBUG("record_busy:busy_count = %d\n",busy_count);
     if(devfreq->busy_count > 0)
     { 
         devfreq->busy_count++;
@@ -2376,7 +2376,7 @@ void decoder_devfreq_record_idle(struct decoder_devfreq *devfreq)
     if (!devfreq)
       return;
     spin_lock_irqsave(&devfreq->lock, irqflags);
-    //pr_info("record_idle:busy_count = %d\n",devfreq->busy_count);
+    PDEBUG("record_idle:busy_count = %d\n",devfreq->busy_count);
     if(devfreq->busy_count > 1)
     { 
       devfreq->busy_count--;
@@ -2581,7 +2581,7 @@ int decoder_devfreq_init(struct device *dev)
     int ret = 0;
     struct decoder_devfreq *devfreq = decoder_get_devfreq_priv_data();
     
-    memset(devfreq,sizeof(struct decoder_devfreq),0);
+    memset(devfreq,0,sizeof(struct decoder_devfreq));
     spin_lock_init(&devfreq->lock);
     init_waitqueue_head(&devfreq->target_freq_wait_queue);
     mutex_init(&devfreq->clk_mutex);
