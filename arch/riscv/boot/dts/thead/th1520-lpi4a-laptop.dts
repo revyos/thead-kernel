@@ -145,14 +145,12 @@
 };
 
 &wcn_wifi {
-	// WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
-	/delete-property/ WIFI,poweren_gpio;
+	WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
 };
 
 
 &wcn_bt {
-	// BT,power_gpio = <&pcal6408ahk_c 5 0>;
-	/delete-property/ BT,power_gpio;
+	BT,power_gpio = <&pcal6408ahk_c 5 0>;
 };
 
 &usb_1 {

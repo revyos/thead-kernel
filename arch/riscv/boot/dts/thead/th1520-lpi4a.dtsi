@@ -273,7 +273,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_wifi_wake>;
 		wifi_chip_type = "rtl8723ds";
-		// WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
+		WIFI,poweren_gpio = <&pcal6408ahk_c 4 0>;
 		status = "okay";
 	};
 
@@ -281,7 +281,7 @@
 		compatible = "bluetooth-platdata";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_bt_wake>;
-		// BT,power_gpio    = <&pcal6408ahk_c 5 0>;
+		BT,power_gpio    = <&pcal6408ahk_c 5 0>;
 		status = "okay";
 	};
 
