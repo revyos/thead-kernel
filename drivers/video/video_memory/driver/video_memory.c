@@ -86,6 +86,7 @@
 #include "video_memory.h"
 #include "rsvmem_pool.h"
 
+
 //#define VIDMEM_DMA_MAP
 #define DISCRETE_PAGES 0
 //#define VIDMEM_DEBUG
@@ -202,6 +203,7 @@ struct mem_block
     struct vm_area_struct     * vma;
     bool is_cma;
     bool is_vi_mem;
+    bool cache_en;
     void *va;
 
     union
@@ -441,6 +443,42 @@ OnError:
     return status;
 }
 
+
+static void invalid_data_cache(IN struct file *filp, IN unsigned long bus_address )
+{
+    struct mem_block *memBlk = NULL;
+    struct mem_node *mnode = NULL;
+    mnode = get_mem_node(filp, bus_address, 0);
+    if (NULL == mnode)
+    {
+        return;
+    }
+
+    memBlk = &mnode->memBlk;
+    dma_addr_t dma_handle = memBlk->dma_addr;
+    size_t size = memBlk->size;
+    dma_sync_single_for_cpu(gdev,dma_handle ,memBlk->size,DMA_FROM_DEVICE);
+
+}
+
+static void flush_data_cache(IN struct file *filp, IN unsigned long bus_address )
+{
+    struct mem_block *memBlk = NULL;
+    struct mem_node *mnode = NULL;
+
+    mnode = get_mem_node(filp, bus_address, 0);
+    if (NULL == mnode)
+    {
+        return;
+    }
+
+    memBlk = &mnode->memBlk;
+    dma_addr_t dma_handle = memBlk->dma_addr;
+    size_t size = memBlk->size;
+    dma_sync_single_for_device(gdev,dma_handle ,memBlk->size,DMA_TO_DEVICE);
+
+}
+
 static int
 Mmap(
     IN struct mem_block *MemBlk,
@@ -455,16 +493,21 @@ Mmap(
     vma->vm_flags |= VM_FLAGS;
 
     /* Make this mapping write combined. */
-    vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-
+    if (!memBlk->cache_en) {
+        vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+    }
+    DEBUG_PRINT("vm_page_prot:0x%llx\n",vma->vm_page_prot);
     /* Now map all the vmalloc pages to this user address. */
     if (memBlk->contiguous)
     {
         /* map kernel memory to user space.. */
+        #if 0
         if (memBlk->is_cma == true) {
             return dma_mmap_coherent(gdev, vma, memBlk->va,
 					   memBlk->dma_addr, vma->vm_end - vma->vm_start);
-        } else {
+        } else
+        #endif
+        {
             if (remap_pfn_range(vma,
                                 vma->vm_start,
                                 page_to_pfn(memBlk->contiguousPages) + skipPages,
@@ -991,6 +1034,13 @@ GFP_Alloc(
         gfp |= __GFP_DMA32;
     }
 
+
+    if (Flags & ALLOC_FLAG_ENABLE_CACHE) {
+        memBlk->cache_en = true;
+    } else {
+        memBlk->cache_en = false;
+    }
+
     memBlk->contiguous = contiguous;
     memBlk->numPages = numPages;
     memBlk->size = size;
@@ -1349,6 +1399,21 @@ static long vidalloc_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
         }
         break;
     }
+
+    case MEMORY_IOC_DMABUF_FLUSH_CACHE:
+        ret = copy_from_user(&params, (void*)arg, sizeof(VidmemParams));
+        if (!ret)
+        {
+            flush_data_cache(filp, params.bus_address);
+        }
+        break;
+    case MEMORY_IOC_DMABUF_INVALID_CACHE:
+        ret = copy_from_user(&params, (void*)arg, sizeof(VidmemParams));
+        if (!ret)
+        {
+            invalid_data_cache(filp, params.bus_address);
+        }
+        break;
     default:
         ret = EINVAL;
     }

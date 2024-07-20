@@ -34,10 +34,15 @@ extern "C" {
 #define VMEM_FLAG_CMA                   0x00000008
 /* Use VI reserved memory */
 #define VMEM_FLAG_VI                    0x00000010
+/* Buffer enable cache */
+#define VMEM_FLAG_ENABLE_CACHE          0x00000020
 
 /* Alloc rsvmem pool region id should be 0~15 */
+#define MAX_REGION_ID 15
+
 #define SET_ALLOC_FLAG_REGION(flag, region_id) (flag & 0x00ffffff) | (region_id << 24)
 #define GET_ALLOC_FLAG_REGION(flag)            (flag >> 24)
+
 
 typedef enum _VmemStatus
 {
@@ -50,10 +55,16 @@ typedef struct _VmemParams
 {
     int size;
     int flags;
-    unsigned int phy_address;
+    unsigned long phy_address;
     void *vir_address;
     int fd;
 } VmemParams;
+
+typedef enum{
+    VEME_CACHE_DIR_TO_DEV = 0,
+    VEME_CACHE_DIR_FROM_DEV,
+    VEME_CACHE_DIR_INVALID,
+}VmemCacheDir;
 
 VmemStatus VMEM_create(void **vmem);
 VmemStatus VMEM_allocate(void *vmem, VmemParams *params);
@@ -64,6 +75,8 @@ VmemStatus VMEM_destroy(void *vmem);
 VmemStatus VMEM_export(void *vmem, VmemParams *params);
 VmemStatus VMEM_import(void *vmem, VmemParams *params);
 VmemStatus VMEM_release(void *vmem, VmemParams *params);
+
+VmemStatus VMEM_flush_cache(void *vmem, VmemParams *params,VmemCacheDir dir);
 
 #ifdef __cplusplus
 }

@@ -120,20 +120,20 @@ int main(int argc, char **argv)
                 }
                 if (VMEM_mmap(vmem, params) != VMEM_STATUS_OK)
                 {
-                    printf("ERROR: Failed to mmap busAddress: 0x%08x\n",
+                    printf("ERROR: Failed to mmap busAddress: 0x%lx\n",
                             params->phy_address);
                     err = 1;
                     break;
                 }
                 if (VMEM_export(vmem, params) != VMEM_STATUS_OK)
                 {
-                    printf("ERROR: Failed to export buffer: 0x%08x\n",
+                    printf("ERROR: Failed to export buffer: 0x%lx\n",
                             params->phy_address);
                     err = 1;
                     break;
                 }
 
-                printf("Allocated buffer %d of type %d at paddr 0x%08x vaddr %p size %d fd %d\n",
+                printf("Allocated buffer %d of type %d at paddr 0x%lx vaddr %p size %d fd %d\n",
                     i, type, params->phy_address, params->vir_address, size, params->fd);
 
                 memset(&imp_params, 0, sizeof(imp_params));
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
                     break;
                 }
 
-                printf("Imported fd %d: paddr 0x%08x vaddr %p size %d\n",
+                printf("Imported fd %d: paddr 0x%lx vaddr %p size %d\n",
                     params->fd, params->phy_address, params->vir_address, size);
                 VMEM_release(vmem, &imp_params);
             }

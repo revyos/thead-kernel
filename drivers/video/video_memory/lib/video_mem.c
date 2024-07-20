@@ -26,7 +26,6 @@
 #include "video_memory.h"
 #include "video_mem.h"
 
-
 #define VMEM_PRINT(level, ...) \
     { \
         if (log_level >= VMEM_LOG_##level) \
@@ -115,7 +114,7 @@ VMEM_allocate(void *vmem, VmemParams *params)
     }
 
     params->phy_address = p.bus_address;
-    VMEM_LOGI("Allocated %d bytes, phy addr 0x%08x\n", 
+    VMEM_LOGI("Allocated %d bytes, phy addr 0x%lx\n",
             params->size, params->phy_address);
 
     return VMEM_STATUS_OK;
@@ -129,7 +128,7 @@ VMEM_mmap(void *vmem, VmemParams *params)
 
     if (vmem == NULL || params == NULL)
         return VMEM_STATUS_ERROR;
-    
+
     if (params->vir_address != NULL)
         return VMEM_STATUS_OK;
 
@@ -140,13 +139,13 @@ VMEM_mmap(void *vmem, VmemParams *params)
                     MAP_SHARED, fd, offset);
     if (vir_addr == MAP_FAILED)
     {
-        VMEM_LOGE("Failed to mmap physical address: 0x%08x, using fd %d\n",
+        VMEM_LOGE("Failed to mmap physical address: 0x%lx, using fd %d\n",
                 params->phy_address, fd);
         return VMEM_STATUS_ERROR;
     }
 
     params->vir_address = vir_addr;
-    VMEM_LOGI("Mapped phy addr 0x%08x to vir addr %p, size %d\n", 
+    VMEM_LOGI("Mapped phy addr 0x%lx to vir addr %p, size %d\n",
             params->phy_address, params->vir_address, params->size);
 
     return VMEM_STATUS_OK;
@@ -163,7 +162,7 @@ VMEM_free(void *vmem, VmemParams *params)
 
     ctx = (VmemContext *)vmem;
 
-    VMEM_LOGI("Free virt addr %p, phy addr 0x%08x, size %d\n", 
+    VMEM_LOGI("Free virt addr %p, phy addr 0x%lx, size %d\n",
             params->vir_address, params->phy_address, params->size);
     if (params->vir_address != MAP_FAILED && params->vir_address != NULL)
         munmap(params->vir_address, params->size);
@@ -188,7 +187,7 @@ VMEM_destroy(void *vmem)
         VmemContext *ctx = (VmemContext *)vmem;
         if (ctx->fd_alloc != -1)
             close(ctx->fd_alloc);
-        
+
         free(vmem);
     }
 
@@ -215,7 +214,7 @@ VMEM_export(void *vmem, VmemParams *params)
     }
 
     params->fd = p.fd;
-    VMEM_LOGI("Exported phy addr 0x%08x to fd %d, size %d\n", 
+    VMEM_LOGI("Exported phy addr 0x%lx to fd %d, size %d\n",
             params->phy_address, params->fd, params->size);
 
     return VMEM_STATUS_OK;
@@ -241,7 +240,7 @@ VMEM_import(void *vmem, VmemParams *params)
 
     params->phy_address = p.bus_address;
     params->size = p.size;
-    VMEM_LOGI("Imported fd %d to phy addr 0x%08x, size %d\n", 
+    VMEM_LOGI("Imported fd %d to phy addr 0x%lx, size %d\n",
             params->fd, params->phy_address, params->size);
 
     return VMEM_STATUS_OK;
@@ -256,7 +255,7 @@ VMEM_release(void *vmem, VmemParams *params)
         return VMEM_STATUS_ERROR;
     ctx = (VmemContext *)vmem;
 
-    VMEM_LOGI("Released imported phy addr 0x%08x, fd %d, size %d\n", 
+    VMEM_LOGI("Released imported phy addr 0x%lx, fd %d, size %d\n",
             params->phy_address, params->fd, params->size);
     if (params->vir_address != MAP_FAILED && params->vir_address != NULL)
         munmap(params->vir_address, params->size);
@@ -271,6 +270,49 @@ VMEM_release(void *vmem, VmemParams *params)
     }
 
     return VMEM_STATUS_OK;
+}
+
+
+VmemStatus
+VMEM_flush_cache(void *vmem, VmemParams *params,VmemCacheDir dir)
+{
+    VmemContext *ctx = NULL;
+    VidmemParams p;
+    int ret;
+    if (vmem == NULL || params == NULL)
+        return VMEM_STATUS_ERROR;
+
+    ctx = (VmemContext *)vmem;
+
+    VMEM_LOGI("Flush phy addr 0x%lx, size %d,dir:%d\n",
+                      params->phy_address, params->size,dir);
+
+    if (params->phy_address != 0)
+    {
+        memset(&p, 0, sizeof(p));
+        p.bus_address = params->phy_address;
+        if(dir == VEME_CACHE_DIR_TO_DEV)
+        {
+            ret = ioctl(ctx->fd_alloc, MEMORY_IOC_DMABUF_FLUSH_CACHE, &p);
+        }else if(dir == VEME_CACHE_DIR_FROM_DEV)
+        {
+            ret = ioctl(ctx->fd_alloc, MEMORY_IOC_DMABUF_INVALID_CACHE, &p);
+        }
+        else
+        {
+            return VMEM_STATUS_ERROR;
+        }
+
+        if(ret)
+        {
+            VMEM_LOGE("fail ret %d\n",ret);
+            return VMEM_STATUS_ERROR;
+        }
+        return VMEM_STATUS_OK;
+    }
+
+
+    return VMEM_STATUS_ERROR;
 }
 
 static int getLogLevel()
