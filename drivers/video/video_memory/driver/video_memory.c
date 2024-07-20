@@ -184,6 +184,7 @@
 #ifndef VIDMEM_DEBUG
 #define DEBUG_PRINT(...) \
   do {                     \
+        pr_debug(__VA_ARGS__);\
   } while (0)
 #else
 #undef DEBUG_PRINT
@@ -205,7 +206,7 @@ struct mem_block
     bool is_vi_mem;
     bool cache_en;
     void *va;
-
+    struct file *filp;
     union
     {
         /* Pointer to a array of pages. */
@@ -260,6 +261,11 @@ getPhysical(
     IN struct mem_block *MemBlk,
     IN unsigned int Offset,
     OUT unsigned long * Physical
+    );
+void
+GFP_Free(
+    IN struct file *filp,
+    IN unsigned long bus_address
     );
 
 static struct file_node * find_and_delete_file_node(struct file *filp)
@@ -701,6 +707,20 @@ OnError:
 
 static void _dmabuf_release(struct dma_buf *dmabuf)
 {
+    struct mem_block *memBlk = dmabuf->priv;
+    unsigned long physical;
+
+    if (!memBlk)
+        return;
+    if(!memBlk->filp)
+    {
+        DEBUG_PRINT("[vidmem] %s, %d: memBlk filp null\n", __func__, __LINE__);
+        return;
+    }
+    getPhysical(memBlk, 0, &physical);
+    DEBUG_PRINT("[vidmem] %s, %d: free physical %llx\n", __func__, __LINE__,physical);
+    GFP_Free(memBlk->filp,physical);
+
 }
 
 static void *_dmabuf_kmap(struct dma_buf *dmabuf, unsigned long offset)
@@ -749,6 +769,7 @@ DMABUF_Export(
     }
 
     memBlk = &mnode->memBlk;
+    memBlk->filp = filp;
 
     dmabuf = memBlk->dmabuf;
     if (dmabuf == NULL)
@@ -818,7 +839,7 @@ DMABUF_Import(
     }
 
     memBlk = &mnode->memBlk;
-
+    memBlk->filp = filp;
     /* Import dma buf handle. */
     memBlk->dmabuf = dma_buf_get(FD);
     if (!memBlk->dmabuf)
